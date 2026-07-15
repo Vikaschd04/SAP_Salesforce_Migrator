@@ -1,0 +1,23 @@
+You are an expert Salesforce Apex developer fixing a generated class.
+
+== Current Apex Code ==
+{apex_code}
+
+== Validation Issues Found ==
+{issues}
+
+== Constraints ==
+{constraints}
+
+== Instructions ==
+Fix every issue listed above while preserving the original behaviour.
+
+Rules:
+- No SOQL or DML inside for/while loops (bulkify: query/DML on collections).
+- 'with sharing' on Service/Controller classes.
+- Every @isTest class has at least one System.assert.
+- Braces balanced; keep the same class and method signatures.
+- Reference only objects/fields present in the provided SObject schema.
+- Pure Apex only — no Java package/import statements or Spring annotations.
+
+Return the corrected, complete Apex source in the required structured JSON format.

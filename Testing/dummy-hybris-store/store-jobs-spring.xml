@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans">
+
+    <bean id="orderCleanupJobPerformable" class="com.store.order.OrderCleanupJob" parent="abstractJobPerformable">
+        <property name="orderDao" ref="orderDao"/>
+    </bean>
+
+    <bean id="orderCleanupCronJob" parent="cronJob">
+        <property name="job" ref="orderCleanupJobPerformable"/>
+    </bean>
+
+    <bean id="orderCleanupTrigger" class="de.hybris.platform.cronjob.model.TriggerModel">
+        <property name="cronJob" ref="orderCleanupCronJob"/>
+        <property name="cronExpression" value="0 0 2 * * ?"/>
+        <property name="active" value="true"/>
+    </bean>
+
+</beans>

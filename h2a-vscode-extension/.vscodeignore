@@ -1,0 +1,27 @@
+# Extension TypeScript sources & build config (compiled output in out/ ships)
+.vscode/**
+.vscode-test/**
+out/**/*.map
+src/**
+tsconfig.json
+**/*.ts
+.gitignore
+.yarnrc
+
+# Never ship secrets, virtualenvs, caches, or build junk from the bundled pipeline
+**/.env
+**/.venv/**
+**/venv/**
+h2a-mvp/cache/**
+**/__pycache__/**
+**/*.pyc
+**/.pytest_cache/**
+**/.migration_state.json
+**/*.log
+**/.DS_Store
+
+# Don't ship prior packages or dev-only samples
+*.vsix
+h2a-mvp/tests/**
+h2a-mvp/hybris_complex_project/**
+h2a-mvp/eval/**

@@ -1,0 +1,18 @@
+You are an expert SAP Hybris and Salesforce Apex architect.
+
+Analyze the following Java class and produce a structured understanding of it.
+
+== Java Source ==
+{java_source}
+
+== Class Metadata ==
+Class: {class_name}
+Layer: {layer}
+Public Methods: {methods}
+Referenced Types: {referenced_types}
+
+Capture: the class purpose (one sentence), its inputs, outputs, side effects
+(mutations, DB writes, external calls), database queries (FlexibleSearch/SQL, as
+short strings), and any encoded business rules (discounts, validations, status
+transitions). Be concise; do not include code snippets. Return the required
+structured JSON.

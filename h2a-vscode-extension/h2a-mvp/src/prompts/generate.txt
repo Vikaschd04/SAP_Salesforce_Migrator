@@ -1,0 +1,24 @@
+Translate the following SAP Hybris class into Salesforce Apex.
+
+== Target ==
+Class name: {target_class_name}
+Apex kind: {apex_kind}
+Layer-specific rules:
+{layer_rules}
+
+== Source class understanding ==
+{comprehension_json}
+
+== Original Java source ==
+{java_source}
+
+== Upstream dependency signatures (already-generated Apex you may call) ==
+{dependency_signatures}
+
+== Instructions ==
+Produce the Apex main class named {target_class_name} and its matching @isTest class ({target_class_name}Test).
+- Faithfully preserve the source business logic.
+- Obey every rule in the system prompt (no SOQL/DML in loops, with sharing, pure Apex, schema-grounded SOQL).
+- The test class must set up its own data with @testSetup and include meaningful System.assert statements.
+- List every custom object (X__c) the main class references in sobject_refs.
+Return the result in the required structured JSON format.

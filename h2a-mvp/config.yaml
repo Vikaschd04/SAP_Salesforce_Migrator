@@ -1,0 +1,74 @@
+# h2a-mvp configuration
+# ─────────────────────
+# provider:
+#   anthropic  → real Claude calls           (needs ANTHROPIC_API_KEY)   — best quality
+#   openrouter → free/cheap models via OpenRouter (needs OPENROUTER_API_KEY) — dev/testing
+#   mock       → deterministic keyless stub   (no key)                    — CI / dry runs
+#
+# Same pipeline, prompts, schema grounding, and validation for every provider —
+# only the underlying LLM changes.
+provider: anthropic
+model: claude-opus-4-8        # used when provider=anthropic
+
+# Used when provider=openrouter. Pick any model from https://openrouter.ai/models
+# (":free" suffix = free tier). Override per-run with H2A_CUSTOM_MODEL / the
+# extension's "customModel" setting.
+openrouter:
+  base_url: https://openrouter.ai/api/v1
+  # Free tiers change often & rate-limit; if one 404s/429s, pick another from
+  # https://openrouter.ai/models?max_price=0 (code-capable ones work best).
+  model: qwen/qwen3-coder:free
+
+cache_dir: cache/
+mappings_file: mappings/hybris_to_apex.yaml
+incremental: true
+max_repair_attempts: 2
+
+# Adaptive-thinking effort per stage (Anthropic only; ignored by other providers)
+effort:
+  comprehend: low
+  generate: high
+
+# Output token budgets per stage
+max_tokens:
+  comprehend: 800
+  generate: 8000        # large fflib test classes need headroom to avoid truncation
+
+# Behavioral parity: after generation, add test assertions for any comprehended
+# business rule the tests don't yet check (skipped for the mock provider).
+parity:
+  strengthen: true
+  max_attempts: 1
+
+# Phase 1 — agentic core (used by the `agent-migrate` command; the linear
+# `repo-migrate` path ignores this block).
+agentic:
+  critic: true               # run the adversarial Critic review gate on each artifact
+  rag:                       # ground generation + review in bundled Salesforce docs
+    enabled: true            # lexical retrieval over src/agentic/knowledge/*.md (no deps)
+    top_k: 3                 # how many doc chunks to inject per prompt
+  routing:                   # per-task model routing (anthropic only; saves cost)
+    enabled: false           # turn on to use a cheap model for comprehend/plan
+    models:
+      cheap: claude-haiku-4-5-20251001
+      frontier: claude-opus-4-8
+    tiers:                   # which tier each task family uses
+      comprehend: cheap
+      plan: cheap
+      generate: frontier
+      repair: frontier
+      critic: frontier
+      strengthen: frontier
+      parity: frontier
+
+# Optional real compile/deploy verification via the Salesforce CLI, with a
+# self-healing loop: real compiler errors are fed back into the LLM repair loop
+# and the offending classes are rewritten + re-deployed until they compile.
+# Requires `sf` on PATH and an authorised org (`sf org login web`).
+verify:
+  deploy: false            # set true (or pass --verify) to dry-run deploy the output
+  run_tests: false         # also run generated Apex tests for coverage
+  target_org: ""           # org alias/username; empty uses the default org
+  auto_repair: true        # feed deploy errors back into repair + re-deploy (self-heal)
+  max_deploy_attempts: 2   # max heal rounds (deploy → repair → re-deploy) before giving up
+  coverage_threshold: 75   # if run_tests, strengthen tests until coverage ≥ this %% (Salesforce's min)

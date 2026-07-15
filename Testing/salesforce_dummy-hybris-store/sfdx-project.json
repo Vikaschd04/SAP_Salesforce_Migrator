@@ -1,0 +1,12 @@
+{
+  "packageDirectories": [
+    {
+      "path": "force-app",
+      "default": true
+    }
+  ],
+  "name": "salesforce-h2a-project",
+  "namespace": "",
+  "sfdxclientversion": "2.0.0",
+  "sourceApiVersion": "60.0"
+}

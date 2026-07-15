@@ -1,0 +1,69 @@
+{
+  "nodes": [
+    {
+      "id": "OrderController.setOrderService",
+      "class": "OrderController",
+      "layer": "Controller"
+    },
+    {
+      "id": "OrderController.getOrder",
+      "class": "OrderController",
+      "layer": "Controller"
+    },
+    {
+      "id": "DefaultOrderService.setOrderDao",
+      "class": "DefaultOrderService",
+      "layer": "Service"
+    },
+    {
+      "id": "DefaultOrderService.setCustomerDao",
+      "class": "DefaultOrderService",
+      "layer": "Service"
+    },
+    {
+      "id": "DefaultOrderService.getOrder",
+      "class": "DefaultOrderService",
+      "layer": "Service"
+    },
+    {
+      "id": "DefaultOrderService.isExpedited",
+      "class": "DefaultOrderService",
+      "layer": "Service"
+    },
+    {
+      "id": "DefaultOrderService.placeOrder",
+      "class": "DefaultOrderService",
+      "layer": "Service"
+    },
+    {
+      "id": "DefaultPromotionService.applyDiscount",
+      "class": "DefaultPromotionService",
+      "layer": "Service"
+    },
+    {
+      "id": "DefaultPromotionService.applyPromoCode",
+      "class": "DefaultPromotionService",
+      "layer": "Service"
+    },
+    {
+      "id": "OrderCleanupJob.setOrderDao",
+      "class": "OrderCleanupJob",
+      "layer": "Utility"
+    },
+    {
+      "id": "OrderCleanupJob.perform",
+      "class": "OrderCleanupJob",
+      "layer": "Utility"
+    }
+  ],
+  "links": [
+    {
+      "source": "OrderController.setOrderService",
+      "target": "DefaultOrderService.getOrder"
+    },
+    {
+      "source": "OrderController.getOrder",
+      "target": "DefaultOrderService.getOrder"
+    }
+  ]
+}

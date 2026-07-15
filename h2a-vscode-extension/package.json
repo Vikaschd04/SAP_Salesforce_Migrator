@@ -1,0 +1,105 @@
+{
+  "name": "h2a-vscode-extension",
+  "displayName": "SAP Hybris to Salesforce Apex Migrator",
+  "description": "Automated migration pipeline for translating Hybris slices to governor-limit-aware Salesforce Apex.",
+  "version": "0.7.0",
+  "publisher": "iamvikaas",
+  "author": "Vikas",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iamvikaas/h2a-vscode-extension.git"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:h2a-migrator.translateFolder"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "h2a-migrator.translateFolder",
+        "title": "H2A: Migrate to Apex"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "h2a-migrator.translateFolder",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "H2A Migrator Settings",
+      "properties": {
+        "h2aMigrator.pipelinePath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the central h2a-mvp directory. If left empty, searches for h2a-mvp folder in active workspace."
+        },
+        "h2aMigrator.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the Python environment executable (e.g. .venv/bin/python). If left empty, searches inside pipeline directory."
+        },
+        "h2aMigrator.engine": {
+          "type": "string",
+          "default": "agentic",
+          "enum": ["agentic", "linear"],
+          "enumDescriptions": [
+            "Agentic (recommended) — Planner + Builder + Critic + Verifier over a shared blackboard, with RAG grounding. Richest output; more LLM calls.",
+            "Linear — the deterministic pipeline (fewer LLM calls, lower cost)."
+          ],
+          "description": "Which migration engine to run. Both produce the same SFDX output shape; agentic adds planning (what-not-to-migrate), adversarial review, and RAG grounding."
+        },
+        "h2aMigrator.provider": {
+          "type": "string",
+          "default": "anthropic",
+          "enum": ["anthropic", "openrouter", "mock"],
+          "enumDescriptions": [
+            "Anthropic Claude — best quality (needs Anthropic API key)",
+            "OpenRouter — free/cheap models for dev/testing (needs OpenRouter API key)",
+            "Mock — keyless deterministic stub (no key; for testing the pipeline)"
+          ],
+          "description": "LLM provider. Same pipeline and prompts for all — only the model changes."
+        },
+        "h2aMigrator.anthropicApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Anthropic API key (sk-ant-...). Used when provider = anthropic. If empty, ANTHROPIC_API_KEY from the environment / h2a-mvp/.env is used."
+        },
+        "h2aMigrator.openrouterApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OpenRouter API key (sk-or-...). Used when provider = openrouter. If empty, OPENROUTER_API_KEY from the environment / h2a-mvp/.env is used."
+        },
+        "h2aMigrator.incrementalMode": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable delta (incremental) migrations. Skip compiling domains whose source Java files are unchanged."
+        },
+        "h2aMigrator.customModel": {
+          "type": "string",
+          "default": "",
+          "description": "Override the model for the active provider (e.g. claude-sonnet-5 for Anthropic, or meta-llama/llama-3.3-70b-instruct:free for OpenRouter)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^16.11.7",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^4.9.5"
+  }
+}

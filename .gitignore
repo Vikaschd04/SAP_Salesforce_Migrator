@@ -1,0 +1,37 @@
+# ── Secrets — never commit ──────────────────────────────────────────────────
+.env
+**/.env
+!.env.example
+!**/.env.example
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+dist/
+build/
+*.egg
+
+# ── Node / VS Code extension build output ───────────────────────────────────
+node_modules/
+h2a-vscode-extension/out/
+*.vsix
+
+# ── Pipeline runtime state (regenerated per run) ────────────────────────────
+cache/
+.migration_state.json
+*.log
+
+# ── IDE / OS ─────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

@@ -1,0 +1,3 @@
+Code__c,TotalAmount__c,Status__r.Code__c,Customer__r.Uid__c
+ORD-1001,149.99,NEW,alice@example.com
+ORD-1002,19.50,SHIPPED,bob@example.com

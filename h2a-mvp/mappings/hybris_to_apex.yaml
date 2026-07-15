@@ -1,0 +1,65 @@
+# Hybris-to-Apex Mapping Rules
+# ─────────────────────────────
+# Deterministic rules used by the generate stage to translate
+# SAP Hybris layers into Salesforce Apex equivalents.
+
+layers:
+  Controller:
+    apex_kind: "RestResource"
+    rules:
+      - "Expose as @RestResource with @HttpGet/@HttpPost."
+      - "No business logic here; delegate to the Service class."
+      - "Handle nulls; return a DTO/wrapper, not sObjects directly."
+  Facade:
+    apex_kind: "ServiceWrapper"
+    rules:
+      - "Merge into the Service layer for the MVP; map DTOs to wrapper classes."
+  Service:
+    apex_kind: "Service"
+    rules:
+      - "Standard fflib-like Service pattern. Delegate queries to Selectors instead of inline SOQL."
+      - "Consolidate DML operations or bundle them using a Unit of Work (fflib_SObjectUnitOfWork) pattern."
+      - "Stateless. Public static methods operate on List<> inputs (bulkified)."
+  DAO:
+    apex_kind: "Selector"
+    rules:
+      - "Standard fflib-like Selector pattern extending a virtual selector template."
+      - "Implement getSObjectFieldList() returning Schema.SObjectField list and selectSObjectsById(Set<Id> ids)."
+      - "All SOQL queries live here; enforce field-level security checks using Security.stripInaccessible on return values."
+      - "Translate FlexibleSearch to SOQL; :bind variables, WHERE Id IN :ids for bulk."
+  Model:
+    apex_kind: "SObject"
+    rules:
+      - "Becomes a custom object X__c with mapped custom fields."
+  Utility:
+    apex_kind: "Utility"
+    rules:
+      - "Standard Apex utility/helper class."
+      - "Methods should be static and public."
+      - "Bulk-safe and governor-limit compliant."
+  Job:
+    apex_kind: "Schedulable"
+    rules:
+      - "Implement the Schedulable interface; the class name ends in 'Scheduler'."
+      - "Move the original perform(CronJobModel) body into execute(SchedulableContext sc), preserving the same business logic and rules exactly."
+      - "Delegate queries/DML to the domain's Selector/Service classes already generated (or generate the needed Selector-style query inline if none exists), never inline SOQL/DML in a loop."
+      - "The cron schedule itself is handled outside Apex (System.schedule at deploy time) — do not hardcode scheduling inside the class."
+
+types:
+  java.lang.String: "Text(255)"
+  java.lang.Integer: "Number(9,0)"
+  java.lang.Long: "Number(18,0)"
+  java.lang.Double: "Number(16,2)"
+  java.math.BigDecimal: "Currency(16,2)"
+  java.lang.Boolean: "Checkbox"
+  java.util.Date: "DateTime"
+
+constraints:
+  - "No SOQL or DML inside for/while loops."
+  - "Every generated class has a matching @isTest class with at least one System.assert."
+  - "Use 'with sharing' on Service/Controller classes."
+  - "Bulk-safe: methods accept and return collections where the Hybris method processed one record."
+  - "Translate Spring @Autowired dependency injections to constructor injection patterns in Apex."
+  - "Translate SLF4J/Log4j logging (e.g. LOG.info(), LOG.error()) to System.debug()."
+  - "Translate Java/Spring exceptions to Custom exceptions extending Exception, or AuraHandledException in Controllers."
+  - "Remove Java package statements and org.springframework.* imports."

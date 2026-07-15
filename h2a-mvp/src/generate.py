@@ -1,0 +1,557 @@
+"""
+generate.py — Apex code generation from comprehended Java classes.
+
+Production rework:
+  - Stable, reusable context (mapping rules, type table, constraints, SObject
+    schema, output format) is built once as a *cached system prompt* so every
+    class in a repo reuses it at ~0.1x token cost.
+  - Generation uses **structured outputs** (a JSON schema) — no more scraping
+    `===MARKER===` blocks from free-form text.
+  - Only the *scoped* dependency signatures relevant to the class are injected,
+    not every signature generated so far.
+  - The SObject schema catalog is injected so the model writes SOQL against
+    fields that actually exist.
+
+Target mapping:
+  DAO        → Selector
+  Service    → Service   (Facade merged in)
+  Controller → RestResource
+  Model/DTO  → SObject (handled by metadata_generator; no Apex class)
+  Utility    → Utility
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+import yaml
+
+from src.llm import call_llm, _load_config
+from src.schema import schema_prompt_block
+
+
+# Structured-output schema for one generated artifact.
+GENERATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "main_class": {"type": "string", "description": "Complete Apex main class source."},
+        "test_class": {"type": "string", "description": "Complete @isTest Apex class source."},
+        "sobject_refs": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Custom objects (X__c) referenced by the main class.",
+        },
+        "mapping_notes": {"type": "string", "description": "Brief notes on mapping decisions."},
+    },
+    "required": ["main_class", "test_class", "mapping_notes"],
+    "additionalProperties": False,
+}
+
+_SKIP_LAYERS = {"Model", "Facade"}
+
+
+# ── Target planning ───────────────────────────────────────────────────────────
+
+def _get_domain(class_name: str) -> str:
+    name = class_name
+    if name.startswith("Default"):
+        name = name[len("Default"):]
+    for suffix in ["Dao", "DAO", "Service", "Facade", "Controller", "Data", "Job"]:
+        if name.endswith(suffix):
+            return name[:-len(suffix)]
+    return name
+
+
+def plan_targets(classes: list[dict]) -> list[dict]:
+    """Plan which target Apex artifacts to generate from ingested classes."""
+    targets = []
+    facade_class = next((c for c in classes if c["layer"] == "Facade"), None)
+
+    for cls in classes:
+        if cls["layer"] in _SKIP_LAYERS:
+            continue
+        domain = _get_domain(cls["class_name"])
+        if cls["layer"] == "DAO":
+            target_name = f"{domain}Selector"
+        elif cls["layer"] == "Service":
+            target_name = f"{domain}Service"
+        elif cls["layer"] == "Controller":
+            target_name = f"{domain}Controller"
+        elif cls["layer"] == "Utility":
+            target_name = cls["class_name"]
+        elif cls["layer"] == "Job":
+            target_name = f"{domain}Scheduler"
+        else:
+            continue
+
+        source_classes = [cls]
+        if cls["layer"] == "Service" and facade_class:
+            source_classes.append(facade_class)
+
+        targets.append({
+            "target_name": target_name,
+            "layer": cls["layer"],
+            "source_classes": source_classes,
+        })
+    return targets
+
+
+# ── Prompt building ───────────────────────────────────────────────────────────
+
+def _load_prompt_template() -> str:
+    return (Path(__file__).resolve().parent / "prompts" / "generate.txt").read_text(encoding="utf-8")
+
+
+def _load_system_template() -> str:
+    path = Path(__file__).resolve().parent / "prompts" / "generate_system.txt"
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    return ""
+
+
+def _load_mappings() -> dict:
+    config = _load_config()
+    mappings_file = config.get("mappings_file", "mappings/hybris_to_apex.yaml")
+    path = Path(__file__).resolve().parent.parent / mappings_file
+    with open(path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def _get_layer_rules(mappings: dict, layer: str) -> tuple[str, str]:
+    info = mappings.get("layers", {}).get(layer, {})
+    apex_kind = info.get("apex_kind", "Unknown")
+    rules = "\n".join(f"  - {r}" for r in info.get("rules", []))
+    return apex_kind, rules
+
+
+def _format_type_mappings(mappings: dict) -> str:
+    return "\n".join(f"  {k} -> {v}" for k, v in mappings.get("types", {}).items())
+
+
+def _format_constraints(mappings: dict) -> str:
+    return "\n".join(f"  - {c}" for c in mappings.get("constraints", []))
+
+
+def _format_dependency_sigs(dependency_sigs: list[str]) -> str:
+    if not dependency_sigs:
+        return "  (none — this is a leaf class in the dependency chain)"
+    return "\n".join(f"  {s}" for s in dependency_sigs)
+
+
+def build_system_prompt(mappings: dict, schema: dict | None) -> str:
+    """
+    Build the stable, cacheable system prompt: role + global rules + type table +
+    constraints + SObject schema. Identical across every class in a repo, so it is
+    sent once and re-read from cache thereafter.
+    """
+    parts = [_load_system_template().strip() or (
+        "You are an expert Salesforce Apex engineer migrating SAP Hybris "
+        "(Java/Spring) code to governor-limit-safe Apex following fflib-style "
+        "Enterprise Patterns (Selectors for SOQL, stateless bulk-safe Services, "
+        "RestResource controllers). Output pure Apex only — never Java packages, "
+        "imports, or Spring annotations."
+    )]
+    parts.append("\n== Java -> Salesforce type mappings ==\n" + _format_type_mappings(mappings))
+    parts.append("\n== Hard constraints (must always hold) ==\n" + _format_constraints(mappings))
+    parts.append(
+        "\n== Target SObject schema (write SOQL only against these objects/fields) ==\n"
+        + schema_prompt_block(schema or {})
+    )
+    return "\n".join(parts)
+
+
+def _build_source_summary(source_classes: list[dict], comprehensions: dict) -> tuple[str, str]:
+    sources, comp_summaries = [], []
+    for cls in source_classes:
+        sources.append(f"// --- {cls['class_name']} ({cls['layer']}) ---\n{cls['source']}")
+        comp = comprehensions.get(cls["class_name"], {})
+        comp_summaries.append({"class": cls["class_name"], "layer": cls["layer"], **comp})
+    return "\n\n".join(sources), json.dumps(comp_summaries, indent=2)
+
+
+# ── Deterministic Java/Spring sanitisation ────────────────────────────────────
+
+def _as_str(v) -> str:
+    """Coerce a model-returned field to a string. A well-behaved provider returns
+    a string; a misbehaving one (or a proxy) may return a dict/None — never let
+    that crash downstream string handling."""
+    return v if isinstance(v, str) else ""
+
+
+def clean_java_artifacts(code: str) -> str:
+    """Deterministically strip Java/Spring-isms and convert JUnit asserts."""
+    if not isinstance(code, str) or not code:
+        return ""
+    lines = []
+    for line in code.splitlines():
+        clean = line.strip()
+        if clean.startswith("package ") and clean.endswith(";"):
+            continue
+        if clean.startswith("import ") and clean.endswith(";") and (
+            "java." in clean or "org.springframework" in clean or "com.example" in clean
+        ):
+            continue
+        if clean in ("@Autowired", "@Service", "@Component", "@RestController",
+                     "@RequestMapping", "@Override"):
+            continue
+        if clean.startswith("// package") or clean.startswith("// import"):
+            continue
+        lines.append(line)
+    code = "\n".join(lines)
+
+    # Only convert *bare* JUnit asserts — the (?<![\w.]) guard prevents matching an
+    # already-qualified call like System.assertEquals(...) and double-prefixing it
+    # into System.System.assertEquals(...).
+    code = re.sub(r"(?<![\w.])assertEquals\s*\(", "System.assertEquals(", code)
+    code = re.sub(r"(?<![\w.])assertNotEquals\s*\(", "System.assertNotEquals(", code)
+    code = re.sub(r"(?<![\w.])assertNull\s*\(([^)]+)\)", r"System.assertEquals(null, \1)", code)
+    code = re.sub(r"(?<![\w.])assertNotNull\s*\(([^)]+)\)", r"System.assertNotEquals(null, \1)", code)
+    code = re.sub(r"(?<![\w.])assertTrue\s*\(", "System.assert(", code)
+    code = re.sub(r"(?<![\w.])assertFalse\s*\(([^)]+)\)", r"System.assert(!(\1))", code)
+    code = re.sub(r"\bassert\s+([^;:]+)\s*:\s*([^;]+);", r"System.assert(\1, \2);", code)
+    code = re.sub(r"\bassert\s+([^;:]+)\s*;", r"System.assert(\1);", code)
+    return code
+
+
+# ── Response parsing (fallback for non-structured responses) ──────────────────
+
+def _extract_field(raw: str, field: str) -> str:
+    """
+    Best-effort pull of a single Apex field from a model response that may be a
+    JSON object, a fenced code block, or plain text. Critically, if the response
+    is a JSON object for this field but is truncated/unparseable, return "" rather
+    than let the raw `{"field": "..."}` wrapper get written to a .cls file.
+    """
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    if s.startswith("{"):
+        try:
+            obj = json.loads(s)
+            if isinstance(obj, dict) and isinstance(obj.get(field), str):
+                return obj[field]
+        except Exception:
+            pass
+        if f'"{field}"' in s:      # a JSON object for this field that won't parse → give up
+            return ""
+    if "```" in s:
+        blocks = re.findall(r"```(?:apex|java|cls)?\s*\n(.*?)```", s, re.DOTALL)
+        if blocks:
+            return blocks[0].strip()
+    return s
+
+
+def _parse_generation_response(content: str) -> dict:
+    # A structured response that wasn't pre-parsed (e.g. truncated JSON) — try JSON first.
+    stripped = (content or "").strip()
+    if stripped.startswith("{"):
+        try:
+            obj = json.loads(stripped)
+            if isinstance(obj, dict) and obj.get("main_class"):
+                return {"main_class": obj.get("main_class", ""),
+                        "test_class": obj.get("test_class", ""),
+                        "mapping_notes": obj.get("mapping_notes", ""),
+                        "sobject_refs": obj.get("sobject_refs", [])}
+        except Exception:
+            pass
+    result = {"main_class": "", "test_class": "", "mapping_notes": "", "sobject_refs": []}
+    m = re.search(r"===MAIN_CLASS===(.*?)===END_MAIN_CLASS===", content, re.DOTALL)
+    if m:
+        result["main_class"] = m.group(1).strip()
+    m = re.search(r"===TEST_CLASS===(.*?)===END_TEST_CLASS===", content, re.DOTALL)
+    if m:
+        result["test_class"] = m.group(1).strip()
+    m = re.search(r"===MAPPING_NOTES===(.*?)===END_MAPPING_NOTES===", content, re.DOTALL)
+    if m:
+        result["mapping_notes"] = m.group(1).strip()
+    if not result["main_class"] and "```" in content:
+        blocks = re.findall(r"```(?:apex|java|cls)?\s*\n(.*?)```", content, re.DOTALL)
+        if blocks:
+            result["main_class"] = blocks[0].strip()
+        if len(blocks) >= 2:
+            result["test_class"] = blocks[1].strip()
+    return result
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def generate_apex(
+    target: dict,
+    comprehensions: dict,
+    dependency_sigs,
+    *,
+    offline: bool = False,
+    schema: dict | None = None,
+    mappings: dict | None = None,
+    grounding: str = "",
+) -> dict:
+    """
+    Generate the Apex class + test class for one target artifact.
+
+    Args:
+        target: plan dict from plan_targets().
+        comprehensions: class_name -> comprehension result.
+        dependency_sigs: scoped list[str] of upstream signatures, OR a legacy
+            dict {target_name: [sigs]} (flattened for backward compatibility).
+        schema: SObject schema (from schema.build_schema).
+        mappings: pre-loaded mapping rules (avoids re-reading the yaml per call).
+    """
+    config = _load_config()
+    max_tokens = config.get("max_tokens", {}).get("generate", 4000)
+    effort = config.get("effort", {}).get("generate", "high")
+    mappings = mappings or _load_mappings()
+
+    target_name = target["target_name"]
+    layer = target["layer"]
+    apex_kind, layer_rules = _get_layer_rules(mappings, layer)
+
+    if isinstance(dependency_sigs, dict):
+        flat = []
+        for sigs in dependency_sigs.values():
+            flat.extend(sigs)
+        dependency_sigs = flat
+
+    combined_source, combined_comp = _build_source_summary(target["source_classes"], comprehensions)
+
+    system_prompt = build_system_prompt(mappings, schema)
+    template = _load_prompt_template()
+    user_prompt = template.format(
+        comprehension_json=combined_comp,
+        java_source=combined_source,
+        apex_kind=apex_kind,
+        layer_rules=layer_rules,
+        dependency_signatures=_format_dependency_sigs(dependency_sigs),
+        target_class_name=target_name,
+    )
+    if grounding:
+        user_prompt += "\n\n" + grounding
+
+    result = call_llm(
+        stage=f"generate_{target_name}",
+        prompt=user_prompt,
+        max_tokens=max_tokens,
+        offline=offline,
+        system_prompt=system_prompt,
+        json_schema=GENERATION_SCHEMA,
+        effort=effort,
+    )
+
+    parsed = result.get("parsed")
+    if not parsed:  # defensive fallback for legacy/marker responses
+        parsed = _parse_generation_response(result.get("content", ""))
+
+    return {
+        "target_name": target_name,
+        "main_class": clean_java_artifacts(_as_str(parsed.get("main_class"))),
+        "test_class": clean_java_artifacts(_as_str(parsed.get("test_class"))),
+        "mapping_notes": _as_str(parsed.get("mapping_notes")),
+        "sobject_refs": parsed.get("sobject_refs") if isinstance(parsed.get("sobject_refs"), list) else [],
+        "provider": result.get("provider", ""),
+    }
+
+
+_STRENGTHEN_SCHEMA = {
+    "type": "object",
+    "properties": {"test_class": {"type": "string",
+                                  "description": "The complete, expanded @isTest class."}},
+    "required": ["test_class"],
+    "additionalProperties": False,
+}
+
+
+def strengthen_tests(main_code: str, test_code: str, target_name: str,
+                     current_coverage, *, schema: dict | None = None,
+                     offline: bool = False) -> str:
+    """
+    Expand a generated test class to raise its Apex code coverage above the 75%
+    Salesforce deploy threshold — the coverage-heal counterpart to repair().
+
+    Adds test methods for untested branches, error paths, and bulk (200-record)
+    scenarios, keeping the existing tests and asserting real outcomes. Grounded
+    in the SObject schema so it only references fields that exist.
+    """
+    config = _load_config()
+    max_tokens = config.get("max_tokens", {}).get("generate", 4000)
+    effort = config.get("effort", {}).get("generate", "high")
+    cov_str = f"~{current_coverage}%" if current_coverage is not None else "below 75%"
+
+    prompt = (
+        f"The Apex class `{target_name}` has {cov_str} test coverage — below the 75% "
+        "Salesforce requires to deploy. Expand its @isTest class with additional test "
+        "methods covering untested branches, null/empty and error paths, and a bulk "
+        "(200-record) scenario. Keep all existing test methods. Use "
+        "Test.startTest()/Test.stopTest(), assert real outcomes (not just that code ran), "
+        "and reference only fields present in the schema. Output pure Apex.\n\n"
+        f"== Class under test ==\n{main_code}\n\n"
+        f"== Current test class ==\n{test_code}\n\n"
+        f"== SObject schema (use only these fields) ==\n{schema_prompt_block(schema or {})}\n\n"
+        "Return the COMPLETE expanded @isTest class."
+    )
+
+    result = call_llm(
+        stage=f"strengthen_{target_name}",
+        prompt=prompt,
+        max_tokens=max_tokens,
+        offline=offline,
+        json_schema=_STRENGTHEN_SCHEMA,
+        effort=effort,
+    )
+
+    parsed = result.get("parsed")
+    if parsed and parsed.get("test_class"):
+        content = parsed["test_class"]
+    else:
+        content = _extract_field(result.get("content", ""), "test_class")
+    return clean_java_artifacts(content)
+
+
+def strengthen_parity(main_code: str, test_code: str, target_name: str,
+                      uncovered_rules: list, *, schema: dict | None = None,
+                      offline: bool = False) -> str:
+    """
+    Add test assertions for the specific business rules a generated test class
+    does NOT yet assert — the parity-driven counterpart to strengthen_tests().
+
+    Where strengthen_tests() chases line coverage, this chases *behavioral*
+    coverage: each named rule (comprehended from the Hybris source) gets an
+    explicit assertion, turning "tests that run" into "tests that check the
+    original logic still holds".
+    """
+    config = _load_config()
+    max_tokens = config.get("max_tokens", {}).get("generate", 4000)
+    effort = config.get("effort", {}).get("generate", "high")
+    rules_block = "\n".join(f"- {r}" for r in uncovered_rules) or "- (none)"
+
+    prompt = (
+        f"The @isTest class for `{target_name}` does not yet assert these business "
+        "rules carried over from the original Hybris logic:\n\n"
+        f"{rules_block}\n\n"
+        "Add focused test methods that build the scenario and ASSERT each rule "
+        "explicitly — include the negative/error case where the rule implies one "
+        "(e.g. a rule about rejecting bad input should assert the exception). Keep "
+        "every existing test method. Use Test.startTest()/Test.stopTest(), assert "
+        "real outcomes, and reference only fields present in the schema.\n\n"
+        f"== Class under test ==\n{main_code}\n\n"
+        f"== Current test class ==\n{test_code}\n\n"
+        f"== SObject schema (use only these fields) ==\n{schema_prompt_block(schema or {})}\n\n"
+        "Return the COMPLETE expanded @isTest class."
+    )
+
+    result = call_llm(
+        stage=f"parity_{target_name}",
+        prompt=prompt,
+        max_tokens=max_tokens,
+        offline=offline,
+        json_schema=_STRENGTHEN_SCHEMA,
+        effort=effort,
+    )
+
+    parsed = result.get("parsed")
+    if parsed and parsed.get("test_class"):
+        content = parsed["test_class"]
+    else:
+        content = _extract_field(result.get("content", ""), "test_class")
+    return clean_java_artifacts(content)
+
+
+def extract_method_signatures(apex_code: str, class_name: str) -> list[str]:
+    """Extract public/global method signatures for downstream dependency injection."""
+    sigs = []
+    pattern = r"(?:public|global)\s+(?:static\s+)?(\S+)\s+(\w+)\s*\(([^)]*)\)"
+    for match in re.finditer(pattern, apex_code):
+        return_type, method_name, params = match.group(1), match.group(2), match.group(3).strip()
+        sigs.append(f"{class_name}.{method_name}({params}) : {return_type}")
+    return sigs
+
+
+# ── Output writer (SFDX layout) ───────────────────────────────────────────────
+
+def write_outputs(output_dir: str, generated: list[dict], item_types: list[dict],
+                  mappings: dict) -> list[str]:
+    """Write generated Apex + SFDX config + MAPPING.md in standard SFDX layout."""
+    out = Path(output_dir)
+    classes_dir = out / "force-app" / "main" / "default" / "classes"
+    config_dir = out / "config"
+    classes_dir.mkdir(parents=True, exist_ok=True)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    created = []
+
+    sfdx_project = {
+        "packageDirectories": [{"path": "force-app", "default": True}],
+        "name": "salesforce-h2a-project",
+        "namespace": "",
+        "sfdxclientversion": "2.0.0",
+        "sourceApiVersion": "60.0",
+    }
+    p = out / "sfdx-project.json"
+    p.write_text(json.dumps(sfdx_project, indent=2), encoding="utf-8")
+    created.append(str(p))
+
+    scratch_def = {
+        "orgName": "H2A Migration Scratch Org",
+        "edition": "Developer",
+        "features": ["EnableSetPasswordInApi"],
+        "settings": {"lightningExperienceSettings": {"enableS1DesktopEnabled": True}},
+    }
+    p = config_dir / "project-scratch-def.json"
+    p.write_text(json.dumps(scratch_def, indent=2), encoding="utf-8")
+    created.append(str(p))
+
+    cls_meta = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">\n'
+        "    <apiVersion>60.0</apiVersion>\n    <status>Active</status>\n</ApexClass>\n"
+    )
+    for gen in generated:
+        name = gen["target_name"]
+        for suffix, field in ((".cls", "main_class"), ("Test.cls", "test_class")):
+            cls_path = classes_dir / f"{name}{suffix}"
+            cls_path.write_text(gen.get(field, ""), encoding="utf-8")
+            created.append(str(cls_path))
+            meta_path = classes_dir / f"{name}{suffix}-meta.xml"
+            meta_path.write_text(cls_meta, encoding="utf-8")
+            created.append(str(meta_path))
+
+    mapping_md = _build_mapping_md(generated, item_types, mappings)
+    p = out / "MAPPING.md"
+    p.write_text(mapping_md, encoding="utf-8")
+    created.append(str(p))
+    return created
+
+
+def _build_mapping_md(generated: list[dict], item_types: list[dict], mappings: dict) -> str:
+    lines = ["# Hybris-to-Apex Mapping Report", "", "## SObject Mapping", ""]
+    type_map = mappings.get("types", {})
+    for item in item_types:
+        lines.append(f"### {item['name']} -> {item['name']}__c")
+        lines.append("")
+        lines.append("| Hybris Field | Java Type | Apex Field | Apex Type |")
+        lines.append("|---|---|---|---|")
+        for field in item.get("fields", []):
+            apex_type = type_map.get(field["type"], "Text(255)")
+            lines.append(f"| {field['name']} | {field['type']} | {field['name']}__c | {apex_type} |")
+        lines.append("")
+
+    lines += ["## Layer Mapping", "", "| Hybris Layer | Hybris Class | Apex Class | Apex Kind |", "|---|---|---|---|"]
+    layer_info = mappings.get("layers", {})
+    for gen in generated:
+        source_names = ", ".join(c["class_name"] for c in gen.get("source_classes", []))
+        layer = gen.get("layer", "Unknown")
+        apex_kind = layer_info.get(layer, {}).get("apex_kind", "Unknown")
+        lines.append(f"| {layer} | {source_names} | {gen['target_name']} | {apex_kind} |")
+    lines.append("")
+
+    lines += ["## Detailed Mapping Notes", ""]
+    for gen in generated:
+        lines.append(f"### {gen['target_name']}")
+        lines.append("")
+        lines.append(gen.get("mapping_notes") or "(No additional notes)")
+        lines.append("")
+
+    lines += ["## Constraints Applied", ""]
+    for constraint in mappings.get("constraints", []):
+        lines.append(f"- {constraint}")
+    lines.append("")
+    return "\n".join(lines)
