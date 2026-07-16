@@ -1,7 +1,7 @@
 # Technical Design Document (TDD)
 
 **Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.7.0
+**Version:** 0.8.0
 **Audience:** Engineers who need to understand, extend, or debug the system
 
 This document explains the **architecture** — how the pieces fit together and why they're built this way. For plain-English "what does it do," see [HOW_IT_WORKS.md](HOW_IT_WORKS.md). For requirements, see [PRD.md](PRD.md) / [TRD.md](TRD.md).

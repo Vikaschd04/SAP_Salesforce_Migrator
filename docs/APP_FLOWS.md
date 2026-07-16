@@ -1,7 +1,7 @@
 # Application Flows
 
 **Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.7.0
+**Version:** 0.8.0
 **Audience:** Anyone who wants to see exactly what happens, step by step
 
 This document walks through every flow a user or the system goes through — from clicking a button to getting deployable Salesforce code. For the *why* behind these flows, see [TDD.md](TDD.md).

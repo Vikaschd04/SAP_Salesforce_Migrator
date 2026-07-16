@@ -1,6 +1,6 @@
 # How to Use It
 
-**Version:** 0.7.0
+**Version:** 0.8.0
 **Audience:** Anyone setting up and running a migration, extension or CLI
 
 ---
@@ -9,7 +9,7 @@
 
 ### 1. Install
 ```bash
-code --install-extension h2a-vscode-extension-0.7.0.vsix
+code --install-extension h2a-vscode-extension-0.8.0.vsix
 ```
 Or: VS Code → Extensions → **···** menu → **Install from VSIX...**
 

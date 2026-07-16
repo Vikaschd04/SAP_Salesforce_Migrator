@@ -1,7 +1,7 @@
 # Stakeholder Demo Script
 
 **Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.7.0
+**Version:** 0.8.0
 **Duration:** ~20–25 minutes (15 min demo + 5–10 min Q&A)
 **Audience:** This is the document to run *from* when presenting to stakeholders.
 

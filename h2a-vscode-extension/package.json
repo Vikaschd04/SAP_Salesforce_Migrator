@@ -2,7 +2,7 @@
   "name": "h2a-vscode-extension",
   "displayName": "SAP Hybris to Salesforce Apex Migrator",
   "description": "Automated migration pipeline for translating Hybris slices to governor-limit-aware Salesforce Apex.",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "iamvikaas",
   "author": "Vikas",
   "license": "MIT",
@@ -88,6 +88,11 @@
           "type": "string",
           "default": "",
           "description": "Override the model for the active provider (e.g. claude-sonnet-5 for Anthropic, or meta-llama/llama-3.3-70b-instruct:free for OpenRouter)."
+        },
+        "h2aMigrator.verifyDeploy": {
+          "type": "boolean",
+          "default": false,
+          "description": "Verify by deploying to Salesforce. After generating, run a validate-only (check-only) deploy against your default Salesforce org and self-heal real compiler/coverage errors. Requires the Salesforce CLI (sf) installed and a default org set: 'sf org login web' then 'sf config set target-org <alias>'. Nothing is written to the org."
         }
       }
     }

@@ -17,7 +17,7 @@ Everything — product requirements, architecture, app flows, a plain-English gu
 | I want to... | Read this |
 |---|---|
 | Understand it in plain English | [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) |
-| Present it to stakeholders | [docs/DEMO_DECK_SCRIPT.md](docs/DEMO_DECK_SCRIPT.md) + `docs/DEMO_DECK.pdf` |
+| Present it to stakeholders | [docs/DEMO_DECK_SCRIPT.md](docs/DEMO_DECK_SCRIPT.md) + `docs/DEMO_DECK.pptx` |
 | Run a live demo | [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) |
 | Install and use it | [docs/HOW_TO_USE.md](docs/HOW_TO_USE.md) |
 | See the architecture | [docs/TDD.md](docs/TDD.md) |
@@ -47,4 +47,4 @@ This exercises the entire pipeline — planning, code generation, schema derivat
 
 ## Status
 
-**v0.7.0** — Phase 0 (verifiable correctness) and Phase 1 (agentic core) delivered; Phase 2 (full-surface coverage: data, schema, scheduled jobs) in progress. Full detail in [docs/ROADMAP.md](docs/ROADMAP.md).
+**v0.8.0** — Phase 0 (verifiable correctness) and Phase 1 (agentic core) delivered; Phase 2 (full-surface coverage: data, schema, scheduled jobs) in progress. Deploy verification is now a one-click toggle in the VS Code extension (validate-only, self-healing, against your default org). Full detail in [docs/ROADMAP.md](docs/ROADMAP.md).

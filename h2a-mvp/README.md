@@ -4,7 +4,7 @@ An LLM-powered pipeline that translates complete SAP Hybris (Java/Spring) monoli
 repositories into governor-limit-safe Salesforce Apex classes, `@isTest` suites,
 SObject schema metadata, and a deployment-ready SFDX workspace.
 
-**Engine version**: 0.7.0 | **License**: MIT
+**Engine version**: 0.8.0 | **License**: MIT
 
 > Full documentation (PRD, TRD, architecture, app flows, plain-English guide,
 > usage guide, demo script, roadmap) lives in [`../docs/`](../docs/README.md).

@@ -7,7 +7,7 @@
 
 ---
 
-## Status snapshot (v0.7.0)
+## Status snapshot (v0.8.0)
 
 | Phase | Status |
 |---|---|

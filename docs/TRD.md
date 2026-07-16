@@ -1,7 +1,7 @@
 # Technical Requirements Document (TRD)
 
 **Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.7.0
+**Version:** 0.8.0
 **Audience:** Engineers implementing, extending, or operating the system
 
 This document lists *what the system must do and support* (requirements). For *how* it does it, see [TDD.md](TDD.md).

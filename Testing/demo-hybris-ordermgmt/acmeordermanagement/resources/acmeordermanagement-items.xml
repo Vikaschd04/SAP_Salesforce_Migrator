@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<items xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:noNamespaceSchemaLocation="items.xsd">
+
+    <!-- ============================================================= -->
+    <!-- Enumerations  (become Salesforce picklists)                    -->
+    <!-- ============================================================= -->
+    <enumtypes>
+
+        <enumtype code="OrderStatus" autocreate="true" generate="true">
+            <value code="NEW"/>
+            <value code="PROCESSING"/>
+            <value code="SHIPPED"/>
+            <value code="DELIVERED"/>
+            <value code="CANCELLED"/>
+        </enumtype>
+
+        <enumtype code="ProductType" autocreate="true" generate="true">
+            <value code="PHYSICAL"/>
+            <value code="DIGITAL"/>
+        </enumtype>
+
+        <enumtype code="LoyaltyTier" autocreate="true" generate="true">
+            <value code="BRONZE"/>
+            <value code="SILVER"/>
+            <value code="GOLD"/>
+        </enumtype>
+
+    </enumtypes>
+
+    <!-- ============================================================= -->
+    <!-- Item types  (become Salesforce custom objects)                 -->
+    <!-- ============================================================= -->
+    <itemtypes>
+
+        <!-- Customer -->
+        <itemtype code="Customer" autocreate="true" generate="true"
+                  jaloclass="com.acme.commerce.order.jalo.Customer">
+            <deployment table="Customers" typecode="10501"/>
+            <attributes>
+                <attribute qualifier="uid" type="java.lang.String">
+                    <modifiers unique="true" optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="name" type="java.lang.String">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="email" type="java.lang.String">
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="phone" type="java.lang.String">
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="loyaltyTier" type="LoyaltyTier">
+                    <defaultvalue>em().getEnumerationValue("LoyaltyTier", "BRONZE")</defaultvalue>
+                    <persistence type="property"/>
+                </attribute>
+            </attributes>
+        </itemtype>
+
+        <!-- Product -->
+        <itemtype code="Product" autocreate="true" generate="true"
+                  jaloclass="com.acme.commerce.order.jalo.Product">
+            <deployment table="Products" typecode="10502"/>
+            <attributes>
+                <attribute qualifier="code" type="java.lang.String">
+                    <modifiers unique="true" optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="name" type="java.lang.String">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="price" type="java.math.BigDecimal">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="stockLevel" type="java.lang.Integer">
+                    <defaultvalue>Integer.valueOf(0)</defaultvalue>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="productType" type="ProductType">
+                    <defaultvalue>em().getEnumerationValue("ProductType", "PHYSICAL")</defaultvalue>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="active" type="java.lang.Boolean">
+                    <defaultvalue>Boolean.TRUE</defaultvalue>
+                    <persistence type="property"/>
+                </attribute>
+            </attributes>
+        </itemtype>
+
+        <!-- Order -->
+        <!-- NOTE: the "priority" attribute used by the Java layer is deliberately NOT declared
+             here, so the migrator's reconciler must discover it from code evidence and add it. -->
+        <itemtype code="Order" autocreate="true" generate="true"
+                  jaloclass="com.acme.commerce.order.jalo.Order">
+            <deployment table="Orders" typecode="10503"/>
+            <attributes>
+                <attribute qualifier="code" type="java.lang.String">
+                    <modifiers unique="true" optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="totalAmount" type="java.math.BigDecimal">
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="status" type="OrderStatus">
+                    <defaultvalue>em().getEnumerationValue("OrderStatus", "NEW")</defaultvalue>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="orderDate" type="java.util.Date">
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="paid" type="java.lang.Boolean">
+                    <defaultvalue>Boolean.FALSE</defaultvalue>
+                    <persistence type="property"/>
+                </attribute>
+            </attributes>
+        </itemtype>
+
+        <!-- OrderEntry -->
+        <itemtype code="OrderEntry" autocreate="true" generate="true"
+                  jaloclass="com.acme.commerce.order.jalo.OrderEntry">
+            <deployment table="OrderEntries" typecode="10504"/>
+            <attributes>
+                <attribute qualifier="entryNumber" type="java.lang.Integer">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="quantity" type="java.lang.Integer">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="unitPrice" type="java.math.BigDecimal">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+            </attributes>
+        </itemtype>
+
+    </itemtypes>
+
+    <!-- ============================================================= -->
+    <!-- Relations  (become Salesforce lookup / master-detail fields)   -->
+    <!-- ============================================================= -->
+    <relations>
+
+        <!-- A customer has many orders -->
+        <relation code="Customer2Orders" autocreate="true" generate="true" localized="false">
+            <sourceElement type="Customer" qualifier="customer" cardinality="one">
+                <modifiers optional="false"/>
+            </sourceElement>
+            <targetElement type="Order" qualifier="orders" cardinality="many"/>
+        </relation>
+
+        <!-- An order has many entries -->
+        <relation code="Order2Entries" autocreate="true" generate="true" localized="false">
+            <sourceElement type="Order" qualifier="order" cardinality="one">
+                <modifiers optional="false"/>
+            </sourceElement>
+            <targetElement type="OrderEntry" qualifier="entries" cardinality="many"/>
+        </relation>
+
+        <!-- A product appears on many order entries -->
+        <relation code="Product2Entries" autocreate="true" generate="true" localized="false">
+            <sourceElement type="Product" qualifier="product" cardinality="one">
+                <modifiers optional="false"/>
+            </sourceElement>
+            <targetElement type="OrderEntry" qualifier="productEntries" cardinality="many"/>
+        </relation>
+
+    </relations>
+
+</items>

@@ -1,6 +1,6 @@
 # SAP Hybris → Salesforce Apex Migrator — VS Code Extension
 
-[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg)](https://marketplace.visualstudio.com/items?itemName=iamvikaas.h2a-vscode-extension)
+[![Version](https://img.shields.io/badge/version-0.8.0-blue.svg)](https://marketplace.visualstudio.com/items?itemName=iamvikaas.h2a-vscode-extension)
 [![Publisher](https://img.shields.io/badge/publisher-iamvikaas-green.svg)](https://marketplace.visualstudio.com/publishers/iamvikaas)
 
 Migrate a complete SAP Hybris (Java/Spring) codebase into deployment-ready
@@ -75,6 +75,7 @@ reviewed, and checked against Salesforce governor limits.
 | `h2aMigrator.openrouterApiKey` | `""` | OpenRouter key (`sk-or-...`), used when provider = openrouter. |
 | `h2aMigrator.customModel` | `""` | Override the model for the active provider. |
 | `h2aMigrator.incrementalMode` | `true` | Skip unchanged domains on re-runs. |
+| `h2aMigrator.verifyDeploy` | `false` | Verify by deploying to Salesforce: after generating, run a **validate-only** (check-only) deploy against your default org and self-heal real compiler/coverage errors. Requires the Salesforce CLI (`sf`) and a default org (`sf org login web` → `sf config set target-org <alias>`). Nothing is written to the org. |
 | `h2aMigrator.pythonPath` | `""` | Custom Python executable (else a bundled `.venv` is used). |
 | `h2aMigrator.pipelinePath` | `""` | Custom path to the h2a-mvp pipeline directory. |
 
@@ -114,7 +115,8 @@ Deploy with `sf project deploy start --source-dir force-app`.
 
 | Version | Key changes |
 |---|---|
-| **0.7.0** | **Cronjobs → Scheduled Apex (Phase 2): Hybris jobs (`extends AbstractJobPerformable`) are detected as a new "Job" layer and translated to `Schedulable` Apex through the same agentic pipeline; their Spring XML / ImpEx cron triggers are resolved and translated (Hybris and Salesforce both use Quartz cron, so it's a validated pass-through) into a `CRON_JOBS.md` runbook + ready-to-run `schedule.apex`. Default model confirmed at the latest/most capable — `claude-opus-4-8`.** |
+| **0.8.0** | **Deploy verification from the extension: a new `verifyDeploy` setting runs a validate-only (check-only) deploy of the generated project against your default Salesforce org and self-heals real compiler/coverage errors before you review — the org is never modified. Requires the Salesforce CLI (`sf`) with a default org set. Adds a bundled, demo-ready Hybris "Order Management" sample (in the repo's `Testing/` folder) covering DAO/service/controller/job, `items.xml`, ImpEx and a cron trigger.** |
+| 0.7.0 | **Cronjobs → Scheduled Apex (Phase 2): Hybris jobs (`extends AbstractJobPerformable`) are detected as a new "Job" layer and translated to `Schedulable` Apex through the same agentic pipeline; their Spring XML / ImpEx cron triggers are resolved and translated (Hybris and Salesforce both use Quartz cron, so it's a validated pass-through) into a `CRON_JOBS.md` runbook + ready-to-run `schedule.apex`. Default model confirmed at the latest/most capable — `claude-opus-4-8`.** |
 | 0.6.3 | Codegen hardening (from a real end-to-end Claude run): fixed a double-prefix bug that produced `System.System.assertEquals`, and stopped truncated/JSON responses from ever being written to a `.cls`; raised the generation token budget so large fflib test classes aren't cut off.** |
 | 0.6.2 | The right-click migration now runs the full **agentic** engine by default (Planner + Builder + Critic + Verifier + RAG grounding + ImpEx data + picklist metadata). New **Engine** setting (`agentic` / `linear`) to switch.** |
 | 0.6.1 | Deeper `items.xml` metadata: Hybris enum types become Salesforce **picklist** fields (with the value set + default), and attribute modifiers map to real field constraints — `optional="false"` → **required**, `unique="true"` → **unique**, plus default values. Richer, deploy-ready SObject metadata.** |

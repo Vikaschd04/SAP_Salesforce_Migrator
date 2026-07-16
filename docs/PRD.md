@@ -1,7 +1,7 @@
 # Product Requirements Document (PRD)
 
 **Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.7.0 · **Status:** Active development, Phase 2 in progress
+**Version:** 0.8.0 · **Status:** Active development, Phase 2 in progress
 **Audience:** Product owners, engineering leadership, stakeholders evaluating the product
 
 ---

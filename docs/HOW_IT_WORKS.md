@@ -1,6 +1,6 @@
 # How It All Works — A Plain-English Guide
 
-**Version:** 0.7.0 · No technical background required
+**Version:** 0.8.0 · No technical background required
 
 This explains the whole project simply, as if you've never seen the code.
 

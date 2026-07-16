@@ -1,6 +1,6 @@
 # SAP Hybris → Salesforce Apex Migrator — Documentation
 
-**Version:** 0.7.0
+**Version:** 0.8.0
 
 An AI-powered platform that translates a SAP Hybris (Java/Spring) codebase into deployment-ready Salesforce Apex — code, data model, data, and scheduled jobs — with every output reviewed and verified before it reaches a human. Ships as a VS Code extension and a command-line engine.
 

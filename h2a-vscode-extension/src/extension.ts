@@ -85,6 +85,7 @@ export function activate(context: vscode.ExtensionContext) {
         let incrementalMode: boolean = extConfig.get<boolean>('incrementalMode') ?? true;
         let customModel: string = extConfig.get<string>('customModel') || '';
         let engine: string = extConfig.get<string>('engine') || 'agentic';
+        let verifyDeploy: boolean = extConfig.get<boolean>('verifyDeploy') ?? false;
 
         if (!h2aMvpPath) {
             // Check if there is a bundled h2a-mvp folder in the extension
@@ -144,7 +145,12 @@ export function activate(context: vscode.ExtensionContext) {
                 //   linear  → repo-migrate  (the deterministic pipeline)
                 const command = engine === 'linear' ? 'repo-migrate' : 'agent-migrate';
                 const argsRun = ['-m', 'src.main', command, '--input', inputPath, '--output', outputPath];
-                
+                if (verifyDeploy) {
+                    // Validate-only deploy to the default Salesforce org + self-heal (see README).
+                    argsRun.push('--verify');
+                    progress.report({ message: "Verification enabled — will deploy to your default org (check-only)..." });
+                }
+
                 const envObj: any = { ...process.env, PYTHONIOENCODING: 'utf-8' };
                 if (anthropicApiKey) {
                     envObj['ANTHROPIC_API_KEY'] = anthropicApiKey;
