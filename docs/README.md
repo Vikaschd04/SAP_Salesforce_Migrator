@@ -11,7 +11,7 @@ This folder is the single home for every project document. Start with whichever 
 | I want to... | Read this |
 |---|---|
 | **Understand it in plain English, no jargon** | [HOW_IT_WORKS.md](HOW_IT_WORKS.md) |
-| **Present the slide deck to management** | `DEMO_DECK.pptx` (editable) / `DEMO_DECK.pdf` (A4 landscape) + [DEMO_DECK_SCRIPT.md](DEMO_DECK_SCRIPT.md) (what to say per slide) |
+| **Present the slide deck to management** | `DEMO_DECK.pptx` (10 slides, 10–12 min) + [DEMO_DECK_SCRIPT.md](DEMO_DECK_SCRIPT.md) (what to say per slide, with time budgets) |
 | **Run the software live during a demo** | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) |
 | **Install and run it myself** | [HOW_TO_USE.md](HOW_TO_USE.md) |
 
@@ -25,9 +25,8 @@ This folder is the single home for every project document. Start with whichever 
 | [APP_FLOWS.md](APP_FLOWS.md) | **Application Flows** — step-by-step diagrams for every user and system flow, including failure/degradation paths |
 | [HOW_IT_WORKS.md](HOW_IT_WORKS.md) | **Plain-English guide** — the whole system explained with no technical background required |
 | [HOW_TO_USE.md](HOW_TO_USE.md) | **Setup & usage guide** — installing, configuring, running, and reading the output, for both the extension and the CLI |
-| `DEMO_DECK.pptx` | The 20-slide executive deck — **editable PowerPoint** (A4 landscape) |
-| `DEMO_DECK.pdf` | The same deck as a print-ready **A4-landscape PDF** |
-| [DEMO_DECK_SCRIPT.md](DEMO_DECK_SCRIPT.md) | **Deck speaker script** — what to say, slide by slide, in plain spoken language |
+| `DEMO_DECK.pptx` | The 10-slide executive accelerator deck — **editable PowerPoint** (A4 landscape), built for a 10–12 minute presentation |
+| [DEMO_DECK_SCRIPT.md](DEMO_DECK_SCRIPT.md) | **Deck speaker script** — what to say per slide, with per-slide time budgets and Q&A quick answers |
 | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) | **Live product demo script** — how to run the software live on the sample project, with talking points and Q&A |
 | `build_deck.py` | Regenerates `DEMO_DECK.pptx` from code |
 | [ROADMAP.md](ROADMAP.md) | **Future scope** — what's shipped, what's in progress, what's next, and the hardest open bets |
