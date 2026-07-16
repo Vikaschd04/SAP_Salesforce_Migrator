@@ -14,35 +14,29 @@ Critic, Verifier) with **Anthropic Claude**.
 
 ---
 
-## Install the packaged extension (.vsix)
+## Build & publish the extension (.vsix)
 
-The repository holds the extension **source**; the installable `.vsix` is a build
-artifact and is not committed (build output never is). GitHub builds it for you:
+The repository holds the extension **source** only; the installable `.vsix` is a
+build artifact and is intentionally not committed. Build it locally:
 
-- **Latest build** — open the repo's **Actions → "Build VSIX"** run and download the
-  `h2a-vscode-extension-vsix` artifact.
-- **Tagged release** — push a version tag and the `.vsix` is attached to the matching
-  [GitHub Release](https://github.com/Vikaschd04/SAP_Salesforce_Migrator/releases):
-  ```bash
-  git tag v0.8.0 && git push origin v0.8.0
-  ```
+```bash
+cd h2a-vscode-extension
+npm install
+npx @vscode/vsce package        # → h2a-vscode-extension-0.8.0.vsix
+```
 
-Then install it:
+Install the built package:
 
 ```bash
 code --install-extension h2a-vscode-extension-0.8.0.vsix
 # …or in VS Code: Extensions view → “…” menu → Install from VSIX…
 ```
 
-**Build it locally instead** (produces the same `.vsix`):
+Publish the update to the Marketplace (requires your publisher access token):
 
 ```bash
-cd h2a-vscode-extension
-npm install
-npx @vscode/vsce package      # → h2a-vscode-extension-0.8.0.vsix
+npx @vscode/vsce publish
 ```
-
-To publish to the Marketplace, run your own `npx @vscode/vsce publish`.
 
 ---
 
