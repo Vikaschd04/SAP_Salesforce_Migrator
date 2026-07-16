@@ -1,277 +1,282 @@
-# Speaker Script — Executive Demo Deck
+# Speaker Script — Executive Reference Deck
 
-**Companion to:** `DEMO_DECK.pdf` (the 13-slide deck) · **Version:** 0.7.0
-**Total talk time:** ~13–15 minutes, then live demo + Q&A
+**Companion to:** `DEMO_DECK.pdf` (20 slides) · **Version:** 0.7.0
+**Full talk:** ~20–25 minutes · **Short version:** ~8 minutes (see cheat-sheet at the end)
 
-This is the **talk track** — what to *say* over each slide, in plain, human language.
-Read it aloud or paraphrase; it's written the way you'd actually speak to a room of
-executives who've never seen the product. Each slide has:
+This is the talk track — what to *say* over each slide, in plain, human language. Each slide has:
+**SAY** (speak it or paraphrase it — the bold first sentence is the must-say line),
+**POINT TO** (what to gesture at), and **THEN** (the bridge to the next slide).
 
-- **SAY** — natural narration you can speak directly.
-- **POINT TO** — what to gesture at on the slide.
-- **THEN** — the one-line bridge into the next slide.
-
-> **How to use it:** don't read it word-for-word — glance at the **SAY** block, then
-> talk to the room. The bold first sentence of each is the one line that matters most
-> if you're short on time.
+Every technical slide in the deck carries a green **"In plain words"** strip at the bottom —
+if a slide ever feels too technical for the room, just read that strip aloud and move on.
 
 ---
 
-## Before you start (10 seconds)
+## Before slide 1 (10 seconds)
 
-**SAY:** "I'm going to show you a tool we've built that takes an old SAP Hybris system
-and turns it into working Salesforce code — mostly automatically. It'll take about
-fifteen minutes, and then I'll show you a live run. Feel free to stop me with questions
-at any point."
-
----
-
-## Slide 1 — Cover · "From SAP Hybris to Salesforce. Automatically. Verifiably."
-
-**SAY:** "The headline is right there. We take a company running on **SAP Hybris** — an
-older e-commerce platform built in Java — and move it to **Salesforce**. The two words
-that matter are at the bottom: *automatically*, and *verifiably*. Automatically, because
-an AI does the heavy lifting instead of a team of engineers. And verifiably — this is the
-part that makes it different — because the tool **proves its own work actually runs**
-before any human sees it."
-
-**POINT TO:** the flow — "SAP Hybris → AI Agent Team → Salesforce."
-
-**THEN:** "So let me start with why anyone would want this."
+**SAY:** "I'm going to walk you through a platform we've built that migrates an old SAP Hybris
+system to Salesforce — mostly automatically, and with proof that the result actually works.
+Twenty minutes, then a live run. Stop me anytime."
 
 ---
 
-## Slide 2 — The Problem
+## Slide 1 — Cover
 
-**SAY:** "Today, moving from Hybris to Salesforce means rewriting everything by hand, and
-that's painful for three reasons. **First, it's slow** — a normal-sized system has
-hundreds of pieces of code, plus data and scheduled jobs. That's not weeks, it's quarters,
-sometimes years. **Second, it needs rare people** — engineers who are experts in *both*
-platforms, which is one of the most expensive, hardest-to-find skill sets out there.
-**And third — the dangerous one — things get quietly lost.** When someone rewrites code by
-hand, a business rule like 'never accept an order for zero dollars' can just… disappear.
-Nobody notices, until it breaks in production months later."
+**SAY:** "**The headline is the whole story: migrated by AI, and proven to run.** Lots of tools
+can generate code with AI now. The difference here is the second half — this platform deploys
+its own output to a real Salesforce environment and fixes what breaks, before any human reviews
+it. That's the theme you'll see on every slide."
 
-**POINT TO:** the three red cards, especially "Silent logic loss."
+**POINT TO:** the flow strip — Hybris → AI Agent Team → Salesforce.
+**THEN:** "Here's the map of what we'll cover — you can also use this deck as a reference afterwards; everything is in it."
 
-**THEN:** "So here's what we built to fix that."
+## Slide 2 — Agenda
+
+**SAY:** "Quick map: the problem, what the platform does and how, a look inside the architecture
+and the AI team for those who want it, the proof and security story, and then business case,
+questions, and the ask. If you only remember three slides, make it 8, 11 and 14 — the team,
+the self-healing, and the real evidence."
+
+**THEN:** "Let's start with why this is worth anyone's time."
+
+## Slide 3 — The Problem
+
+**SAY:** "Moving off Hybris by hand hurts in three ways. **It's slow** — hundreds of code files,
+a custom data model, live data, scheduled jobs; that's quarters or years. **It needs rare
+people** — engineers senior in *both* platforms. **And the dangerous one: things get quietly
+lost.** A rule like 'never accept a zero-value order' just disappears during a rewrite, and
+nobody notices until production."
+
+**POINT TO:** the three red cards; land on "Silent logic loss."
+**READ the green strip if useful:** "It's like retyping a thousand-page contract from memory —
+slow, and the fine print is what gets lost."
+**THEN:** "So here's what we built."
+
+## Slide 4 — What It Does
+
+**SAY:** "**You point it at the old code; it hands back a working Salesforce project.** Left side:
+what goes in — the Java logic, the data model, the actual data, the scheduled jobs. Right side:
+what comes out — Salesforce code written the proper way, a test for every piece, the data and
+schedules migrated, and a report that says what to trust and what to double-check. And the thing
+in the middle isn't one AI — it's a team of them. That's coming up."
+
+**POINT TO:** left box → black circle → right box.
+**THEN:** "First, the sixty-second version of how."
+
+## Slide 5 — How It Works (Four Moves)
+
+**SAY:** "Four moves, same as a good engineering team. **One — understand:** read everything, map
+the dependencies, write down the business rules found — before writing any code. **Two — plan:**
+decide what each piece becomes, including what should *not* be custom code at all. **Three —
+build and review:** write the code and tests, with a second AI reviewing every piece skeptically.
+**Four — prove:** deploy to a real Salesforce environment and fix real errors, in a loop, until
+it's green. And everything gets written down — no black box."
+
+**POINT TO:** the four circles, left to right; note the green fourth circle — "prove" is the differentiator.
+**THEN:** "Now one level deeper — the architecture. Don't worry, one slide."
+
+## Slide 6 — Architecture
+
+**SAY:** "Four layers. **Top: the interfaces** — a VS Code extension for people, a command line
+for automation; both drive the same engine. **Second: orchestration** — two driving modes: the
+smart 'agent team' mode, and a simpler assembly-line mode for cheaper runs. **Third — and this is
+the important engineering decision — a single shared toolbox** of stage functions: parsing,
+schema-building, code generation, verification. Both modes use the same tools, so every fix or
+new feature lands in both automatically. **Bottom: the AI brain is swappable** — production-grade
+Claude, cheaper models for iteration, or a free offline mode where nothing leaves the machine."
+
+**POINT TO:** each layer top-to-bottom; tap the green-highlighted agentic row and the green "Mock" node.
+**READ the green strip if the room is non-technical.**
+**THEN:** "Here's what actually happens inside a run, stage by stage."
+
+## Slide 7 — The Pipeline (10 Stages)
+
+**SAY:** "Ten stages, and I'll give you the pattern instead of reading them all: **the black 'AI'
+badge marks where the language model is used — only four of the ten.** Understanding code,
+writing code, fixing code, and final verification — the places that need judgement. Everything
+else — parsing files, building the data catalog, packaging the output — is ordinary, tested,
+deterministic software: fast, free, and the same result every time. That split is deliberate:
+we use AI only where it earns its keep."
+
+**POINT TO:** the AI badges on stages 5, 6, 7, 10; then sweep the un-badged ones.
+**THEN:** "Now the part everyone asks about — the agent team."
+
+## Slide 8 — The Agentic Core (Blackboard)
+
+**SAY:** "Think of it as **a manager, a whiteboard, and four specialists.** The Orchestrator at the
+top routes the work. The dashed green box is the shared whiteboard — the schema, the plan, every
+generated file, every decision, and every open question live there. The four specialists below
+read from it and write to it. The reason this shape matters: **work can go backwards.** When the
+reviewer finds a problem, it goes back to the builder — like a real team, not a one-way conveyor
+belt. And the whiteboard is exported as a readable document after every run."
+
+**POINT TO:** Orchestrator → whiteboard → the four agent tiles; emphasize the ▲▼ arrows.
+**THEN:** "Let me introduce the four of them properly."
+
+## Slide 9 — The Four Agents
+
+**SAY:** "**The Planner** sets strategy — for every piece: build it as Salesforce code, or
+recommend a ready-made Salesforce product instead, or skip it. Look at its quote: 'pricing rules?
+That's Salesforce CPQ — don't hand-build it.' **The Builder** writes the code and tests, grounded
+in the real data model and a built-in best-practice library. **The Critic** is the skeptical
+senior reviewer — it checks the original behavior survived and that the code is secure, and it
+can block work. **The Verifier** deploys to a real org and heals real failures. And note the small
+grey boxes — what each agent *replaces*: blind translation, months of manual rewriting, hoping a
+human catches everything, and 'trust me, it compiles.'"
+
+**POINT TO:** each card's quote, then the grey "REPLACES" boxes.
+**THEN:** "So what does using it actually feel like? Five steps."
+
+## Slide 10 — The User Journey
+
+**SAY:** "**For the user, the entire platform is one right-click.** Configure once — pick your AI
+provider, paste a key, or choose the free offline mode. Right-click the Hybris folder, click
+'Migrate to Apex.' Watch the dashboard stream progress. A `salesforce_` folder appears — a
+complete, deployable project. Then review the report and ship. And the same run is scriptable
+from a terminal for CI/CD, for the engineers in the room."
+
+**POINT TO:** the five steps; the "behind the scenes" strip for the CI/CD point.
+**THEN:** "Now the slide that I think is the reason to buy — the proof loop."
+
+## Slide 11 — Self-Healing Verification
+
+**SAY:** "**Most AI tools stop at 'the AI wrote code.' This platform proves the code runs.** It
+deploys — a validation-only deploy, nothing destructive — to an actual Salesforce environment.
+It reads the *real* compiler errors, not guesses. Then it heals, three different ways: a missing
+data field, if it's genuinely used in the original Java, gets *added* — with evidence, never
+guessed. Broken code goes back to the AI *with the real error message* and gets rewritten. And if
+test coverage is below Salesforce's own 75% deploy requirement, the tool writes more tests until
+it clears the bar. It loops until green — and anything it can't resolve is flagged for a human,
+never silently shipped."
+
+**POINT TO:** the four loop nodes left to right, then the three healing cards below.
+**THEN:** "One more trust slide — how we stop the AI from inventing things in the first place."
+
+## Slide 12 — Grounding & Safety
+
+**SAY:** "Three mechanisms. **One — schema grounding:** before writing a single query, the AI is
+shown the exact catalog of objects and fields that really exist; everything it writes is checked
+against that catalog afterwards. **Two — evidence-based reconciliation:** if generated code
+mentions a field the data model never declared, we check the original Java source. Genuinely used
+there? Added, properly typed. No evidence? Flagged as a likely hallucination for a human — never
+silently guessed. **Three — a built-in knowledge base:** Salesforce's limits, security rules, and
+patterns are bundled as a reference library the agents look up and cite while working. The AI
+works open-book."
+
+**POINT TO:** cards 1 → 2 → 3; the green strip line "open book" is the sound bite.
+**THEN:** "Here's everything that lands in the output folder."
+
+## Slide 13 — The Deliverable
+
+**SAY:** "Six things in every output. The **code and its tests**. The **data model** — objects,
+fields, dropdowns, relationships. The **data itself**, as load-ready files with a safe re-runnable
+import guide. The **schedules**, translated with identical timing and a ready-to-run script. The
+**decision document** — every call the Planner made and every finding the Critic raised. And the
+**scorecard** — a High-Medium-Low confidence rating on every class, deploy status, and what the
+run cost. Not just code: the system, its data, its schedules, and the paper trail."
+
+**POINT TO:** sweep the six tiles; linger on MIGRATION_PLAN and FEASIBILITY_REPORT.
+**THEN:** "And I don't want you to take my word for it. Two things that happened in a real run."
+
+## Slide 14 — Evidence (Real Run)
+
+**SAY:** "Both unscripted. **Left — the Planner refused to write unnecessary code.** Handed a
+custom discount engine, it recommended Salesforce CPQ — the native product for pricing — and
+generated no custom code. Its own words are on the slide: 'a textbook fit for Salesforce CPQ.'
+That's an architect's call, and it means less code to own forever. **Right — the Critic caught a
+silently-lost business rule.** A class compiled perfectly but had dropped the 'reject zero-value
+orders' check on one path. The Critic blocked it. That's precisely the bug that slips through
+manual migrations and detonates in production — caught here before a human ever looked."
+
+**POINT TO:** the quoted verdict boxes on both cards.
+**THEN:** "So what's real today versus roadmap? Here's the honest inventory."
+
+## Slide 15 — Current Implementation
+
+**SAY:** "**Everything marked 'shipped' works right now** — code migration, the data model, the
+data records, the scheduled jobs, and the full agent team with self-healing verification. The
+grey row — Hybris workflow processes and storefront APIs — is next on the roadmap, and we say so
+plainly. Concrete maturity markers at the bottom: sixty-three automated tests all passing, three
+AI providers including the free offline mode, and every run reports its own cost."
+
+**POINT TO:** the green pills, the one grey pill, the three chips.
+**THEN:** "The next question every room asks is security. Let me get ahead of it."
+
+## Slide 16 — Security & Data Handling
+
+**SAY:** "Four commitments. **One — you control where code goes:** only to the AI vendor you
+configure; keys live in your settings, never in the product, audited every release. **Two —
+a zero-exposure mode:** the whole pipeline can run with nothing leaving the machine — that's also
+the free trial path. **Three — the generated code is secure by default:** Salesforce's own
+field-level security and sharing rules are the house standard. **Four — nothing destructive:**
+deployments are validation-only, a human holds the go-live button, and every AI decision is
+logged. And on the roadmap: private hosting for regulated environments."
+
+**POINT TO:** the numbered cards 1–4.
+**THEN:** "Bringing it back to the business."
+
+## Slide 17 — The Business Case
+
+**SAY:** "The practical before-and-after. Months of rewriting → a working first draft in minutes
+to hours. Silently lost rules → an AI reviewer plus a score that proves preservation. 'Trust me,
+it compiles' → deployed and self-corrected until verifiably green. Everything-becomes-custom-code
+→ native products recommended where they fit, which means less debt. Black box → a decision log
+and a confidence score on every class. And the honest line at the bottom, which I'll say out
+loud: **this makes your expert reviewers dramatically faster — it does not remove them, and we're
+not pretending it does.**"
+
+**POINT TO:** the red column, the green column, then the green honesty strip.
+**THEN:** "Let me pre-empt the usual questions."
+
+## Slide 18 — FAQ
+
+**SAY:** "Six we always get — pick the ones your room cares about: **Does it replace developers?**
+No; it replaces the grind — they review a scored draft. **What if the AI invents something?**
+Three nets: only provably-existing fields, a second AI review, and it must actually compile
+against a real org. **Is our code safe?** It goes only where you send it — or nowhere, in mock
+mode. **Cost?** Every report itemizes its own usage. **What can't it do yet?** Workflows and
+storefront APIs — and it tells you what it skipped. **Can we try it?** Today. Right-click. Free
+mode first."
+
+**POINT TO:** two or three the audience cares about; say "the rest are here for you to read."
+**THEN:** "A minute on where this is going."
+
+## Slide 19 — Roadmap
+
+**SAY:** "Built in phases, each de-risking the next. **Phase zero — proving correctness — done.
+Phase one — the agent team — done.** Phase two — covering the whole platform — data, schema, and
+jobs are done; workflows and storefront APIs are in flight. Phase three is enterprise-grade:
+review workspace, audit trail, private models. Phase four is where it starts to learn — every
+migration makes the next one better and cheaper. And the through-line, at the bottom: everything
+moves along one axis — **from output you have to trust, to output you can verify.**"
+
+**POINT TO:** the two green-topped phases, the amber one, then the green strip.
+**THEN:** "Which brings me to the ask."
+
+## Slide 20 — The Ask
+
+**SAY:** "**Give us one real slice of a Hybris codebase — not production, just a real piece —
+and we'll hand back verified Salesforce code plus the full receipts on how we got there.** A
+pilot is days, not months: free mock mode first, so nothing sensitive leaves your side; a real
+scored run second; your team's verdict third. That's the whole ask. Now let me show it running."
+
+**THEN:** switch to the live demo — [DEMO_SCRIPT.md](DEMO_SCRIPT.md) has the step-by-step run.
 
 ---
 
-## Slide 3 — What It Does
-
-**SAY:** "In the simplest possible terms: you point it at the old code, and it hands you
-back a working Salesforce project. **On the left is what goes in** — the Java business
-logic, the data model, the actual data, the scheduled jobs. **On the right is what comes
-out** — Salesforce code written the proper way, a test for every piece, all the data and
-schedules migrated, and — importantly — a report that tells you exactly what to trust and
-what to double-check. And the thing in the middle doing the work isn't one AI — it's a
-small *team* of them, which is the interesting part."
-
-**POINT TO:** left box → the gear in the middle → right box.
-
-**THEN:** "Before I introduce the team, here's the four-step journey your code takes."
-
----
-
-## Slide 4 — How It Works
-
-**SAY:** "It works the same way a really good engineering team would. **Step one, it
-understands** — it reads every file, works out which parts depend on which, and writes
-down the business rules it finds, *before* writing a single line of new code. **Step two,
-it plans** — it decides what each piece should become, including what should *not* be
-custom code at all. **Step three, it builds and reviews** — it writes the code and tests,
-and then a *second* AI reviews that work critically. **And step four, it proves it** — it
-deploys the code to a real Salesforce environment and fixes any real errors itself, in a
-loop, until it works. Every decision it makes gets written down in plain English, so it's
-never a black box."
-
-**POINT TO:** the four numbered circles, left to right.
-
-**THEN:** "Let me introduce that team, because this is really the heart of it."
-
----
-
-## Slide 5 — The AI Team
-
-**SAY:** "Instead of asking one AI to do everything and hoping for the best, we split the
-job across four specialists that check each other — just like a real team. **The Planner**
-reads the whole codebase and sets the strategy. **The Builder** writes the actual code and
-tests. **The Critic** — think of it as the skeptical senior reviewer — reads the Builder's
-work and tries to poke holes in it. **And the Verifier** actually deploys it and confirms
-it runs. Look at the little quotes on each card — that's the personality of each one. My
-favourite is the Planner saying 'this shouldn't be custom code — Salesforce already has a
-product for that.' That's a judgement call, and the AI makes it."
-
-**POINT TO:** each card in turn; then the "shared whiteboard" strip at the bottom.
-
-**SAY (on the whiteboard):** "And they all work off a shared whiteboard — a running record
-of every decision and every question — which comes out as a plain document you can read
-after every run."
-
-**THEN:** "Now, the natural question is: can you actually *trust* what a bunch of AIs
-produce? Here's the answer."
-
----
-
-## Slide 6 — Why You Can Trust the Output
-
-**SAY:** "This is the slide I'd put money on being the reason to buy. Most AI tools stop at
-'the AI wrote some code.' We don't. **We take the code and actually deploy it to a real
-Salesforce environment.** If it doesn't work, we read the *real* error message — not a
-guess — and fix it automatically. If the code references a field that's missing, we add it.
-If the code is broken, we repair it. And if Salesforce's own rule says you need 75% test
-coverage to go live and we're below it, the tool writes more tests until it clears the bar.
-It loops until everything is green. And anything it *isn't* confident about, it flags for a
-human — it never quietly ships something it's unsure of."
-
-**POINT TO:** the four-step loop, then the three cards — Grounded, Reviewed, Scored.
-
-**SAY (on the three cards):** "Three safety nets underneath all of it: it can only use data
-fields that provably exist, so it can't invent things; a second AI independently challenges
-the first one's work; and every single class gets a confidence score, so your reviewers
-know exactly where to spend their time."
-
-**THEN:** "And I don't want you to take my word for any of this — so here are two things
-that happened in a *real* run, that we didn't script."
-
----
-
-## Slide 7 — Seen In A Real Run
-
-**SAY:** "Two real moments. **On the left — the Planner's judgement.** We handed it a custom
-discounts-and-promotions engine. A naive tool would just translate it. Instead, the Planner
-*refused* to write custom code, and recommended we use **Salesforce CPQ** — the ready-made
-Salesforce product built exactly for pricing rules. Its own words: 'discount and promo-code
-pricing rules are a textbook fit for CPQ.' That's an architect's decision — it means less
-code to maintain forever. **On the right — the Critic's catch.** The first version of a
-class *compiled perfectly* — looked completely fine — but it had quietly dropped that
-'reject zero-dollar orders' rule on one path. The Critic caught it and blocked it. That is
-*exactly* the kind of bug that slips through a manual migration and blows up in production —
-and here it was caught before a human even looked at the code."
-
-**POINT TO:** left card, then right card, then the highlighted "verdict" boxes.
-
-**THEN:** "So that's how it works. Here's what's actually built and working today — no
-vapourware."
-
----
-
-## Slide 8 — Current Implementation
-
-**SAY:** "Everything with a green 'shipped' label is working right now. **The code
-migration** is done. **The data model** — objects, fields, dropdowns, relationships — done.
-**The actual data records** — done, turned into load-ready files with a safe re-runnable
-import guide. **The scheduled jobs** — done, same timing preserved. And **the whole AI team
-plus the self-verification loop** — done. The one on the roadmap, in grey, is Hybris's
-workflow engine and storefront APIs, which are next. And to be concrete about maturity:
-sixty-three automated tests, all passing; three AI providers including a completely free
-offline mode for safe evaluation; and every run reports its own cost."
-
-**POINT TO:** the green rows, then the three chips at the bottom.
-
-**THEN:** "Now, the question a room like this always asks next is about security. Let me get
-ahead of it."
-
----
-
-## Slide 9 — Security & Data Handling
-
-**SAY:** "Four things. **One — you control where your code goes.** It's only ever sent to the
-AI provider *you* choose, and your keys live in your settings, never bundled into the product
-or committed anywhere. **Two — there's a zero-exposure mode.** You can run the entire thing in
-'mock' mode where *nothing* leaves your machine — perfect for sensitive code or a free trial.
-**Three — the code it writes is secure by default** — it enforces Salesforce's own field-level
-security and record-sharing rules as a house standard. **And four — nothing destructive
-happens.** Every deployment is a validation-only dry run; a human always holds the final
-'go live' button; and every AI decision is logged and auditable."
-
-**POINT TO:** each of the four security cards.
-
-**THEN:** "So let me bring it back to the business."
-
----
-
-## Slide 10 — The Business Case
-
-**SAY:** "Same story, the practical version. **Months of manual rewriting** becomes a working
-first draft in minutes to hours. **Business rules getting silently lost** becomes a dedicated
-AI reviewer that checks they survived, with a score to prove it. **'Trust me, it compiles'**
-becomes 'it deployed to a real environment and self-corrected until it was verifiably green.'
-And instead of *everything* becoming custom code you own forever, the tool actively points you
-to native Salesforce products where they fit — which means less long-term debt. I want to be
-honest about the positioning, though" — **point to the line at the bottom** — "this gives you a
-strong, *verified* first draft plus a prioritized review list. It makes your expert reviewers
-dramatically faster. It doesn't remove them — and we're not pretending it does."
-
-**POINT TO:** the before/after rows; land on the honesty line at the bottom.
-
-**THEN:** "Let me pre-empt the questions I know you're all thinking."
-
----
-
-## Slide 11 — Common Questions
-
-**SAY:** "The six we always get. **'Does this replace our developers?'** No — it replaces the
-*grind*; they review a scored draft instead of rewriting from scratch. **'What if the AI makes
-something up?'** Three nets — it can only use fields that exist, a second AI reviews everything,
-and it has to actually compile against a real org. **'Is our code safe?'** It goes only where
-you send it, or nowhere at all in mock mode. **'What does it cost?'** Every run itemizes its own
-usage, and it uses cheaper models for the simple steps automatically. **'What can't it do yet?'**
-Workflows and storefront APIs — and it tells you honestly what it skipped. **'Can we try it on
-our code?'** Yes — today, with a right-click, for free in mock mode first."
-
-**POINT TO:** whichever question the room actually cares about — you don't have to read all six;
-pick two or three and say "the rest are here for you to read."
-
-**THEN:** "A quick word on where this is heading, then I'll show you a live run."
-
----
-
-## Slide 12 — Where This Is Going
-
-**SAY:** "We built this in phases, and each one de-risks the next. **Phase zero was proving
-correctness** — the self-healing, the confidence scoring — done. **Phase one was building the
-AI team** — done. **Phase two is covering the whole platform** — data, schema, and scheduled
-jobs are done; workflows and storefront APIs are what we're on now. **Phase three is
-enterprise-grade** — a review workspace, audit trails, and private model hosting for regulated
-environments. **And phase four is where it starts to learn** — every migration makes the next
-one better and cheaper. The single thread through all of it is at the bottom: moving from output
-you have to *trust*, to output you can *verify*."
-
-**POINT TO:** the five phase cards; land on the "trust → verify" line.
-
-**THEN:** "So here's the ask."
-
----
-
-## Slide 13 — The Ask
-
-**SAY:** "Give us one real slice of a Hybris codebase — not production, just a real piece — and
-we'll hand back verified Salesforce code, plus the full receipts on how we got there. A pilot is
-days, not months. We'd start in the free mock mode so nothing sensitive leaves your side, then
-do a real scored run, and then your team gives the verdict. That's it. Now — let me actually show
-it to you running."
-
-**POINT TO:** the three chips — "live demo today," "full docs," "pilot-ready."
-
-**THEN:** transition to the **live product demo** — see [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for the
-step-by-step run on the sample project (right-click → migrate → walk through the output).
-
----
-
-## Presenter cheat-sheet (keep this visible)
+## Presenter cheat-sheet
 
 | If you have… | Do this |
 |---|---|
-| **5 minutes** | Slides 1, 3, 6, 7, 13. (Problem → what it does → why trust it → real proof → the ask.) |
-| **15 minutes** | All 13 slides as scripted above. |
-| **15 min + live demo** | All slides, then the run in [DEMO_SCRIPT.md](DEMO_SCRIPT.md). |
-| **A skeptical technical person in the room** | Lean into Slides 6 and 7 — the self-healing loop and the real Critic catch. Offer them [TDD.md](TDD.md) afterward. |
-| **A security-focused stakeholder** | Slow down on Slide 9; offer [TRD.md](TRD.md) §3 afterward. |
+| **8 minutes** | Slides 1, 3, 4, 8, 11, 14, 20. (Story → problem → in/out → the team → the proof loop → evidence → ask.) |
+| **20–25 minutes** | All 20 slides as scripted. |
+| **+ live demo** | All slides, then [DEMO_SCRIPT.md](DEMO_SCRIPT.md). |
+| **A technical skeptic in the room** | Slow down on 6, 7, 11, 12 (architecture, pipeline, healing, grounding). Offer [TDD.md](TDD.md) after. |
+| **A security stakeholder** | Slow down on 16; offer [TRD.md](TRD.md) §3 after. |
+| **A slide feels too technical mid-flight** | Read its green **"In plain words"** strip aloud and move on. That's what it's for. |
 
 ## The three lines to never forget
 
-1. **"It doesn't just write code — it proves the code runs."** (Slide 6)
-2. **"It caught a business rule that was silently lost — before a human ever looked."** (Slide 7)
-3. **"A strong verified first draft that makes your experts faster — not a replacement for them."** (Slide 10)
+1. **"It doesn't just write code — it proves the code runs."** (Slide 11)
+2. **"It caught a silently-lost business rule before a human ever looked."** (Slide 14)
+3. **"It makes your expert reviewers dramatically faster — it doesn't remove them."** (Slide 17)
