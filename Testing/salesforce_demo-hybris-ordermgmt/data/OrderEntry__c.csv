@@ -1,0 +1,8 @@
+Order__r.Code__c,EntryNumber__c,Product__r.Code__c,Quantity__c,UnitPrice__c
+ORD-9001,1,prod-2003,1,199.00
+ORD-9001,2,prod-2006,1,89.00
+ORD-9001,3,prod-2005,1,19.00
+ORD-9002,1,prod-2002,1,79.50
+ORD-9003,1,prod-2004,1,24.99
+ORD-9004,1,prod-2001,2,129.00
+ORD-9004,2,prod-2004,1,24.99
