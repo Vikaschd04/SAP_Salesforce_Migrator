@@ -9,7 +9,49 @@ those locally (they're `.gitignore`d). Nothing sensitive is in the repo.
 - **Node.js 18+ and npm**  (`node --version`) — needed to build the web cockpit
 - **git**
 
-## One-time setup
+---
+
+## Windows (VS Code + PowerShell)
+
+Open the folder in VS Code (**File → Open Folder**), then open the integrated terminal
+(**Terminal → New Terminal** — defaults to PowerShell) and run:
+
+```powershell
+# 0. get the code (skip if already cloned)
+git clone https://github.com/Vikaschd04/SAP_Salesforce_Migrator.git
+cd SAP_Salesforce_Migrator
+
+# 1. Python venv + deps (engine + web backend). On Windows the venv python is
+#    .venv\Scripts\python.exe (not bin/python). Use `py -3` if `python` isn't found.
+python -m venv h2a-mvp\.venv
+h2a-mvp\.venv\Scripts\python.exe -m pip install --upgrade pip
+h2a-mvp\.venv\Scripts\python.exe -m pip install -r h2a-mvp\requirements.txt
+h2a-mvp\.venv\Scripts\python.exe -m pip install -r h2a-web\backend\requirements.txt
+
+# 2. build the React cockpit (produces h2a-web\web\dist)
+cd h2a-web\web
+npm install
+npm run build
+cd ..\..
+
+# 3. run the server
+cd h2a-web\backend
+..\..\h2a-mvp\.venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8733
+```
+
+Then open **http://127.0.0.1:8733** (Ctrl+click the link in the terminal). Keep **Provider = Mock**
+for a free, keyless run.
+
+**Windows notes**
+- Optional: **Ctrl+Shift+P → “Python: Select Interpreter” → `h2a-mvp\.venv`** so VS Code uses it.
+- Free a stuck port: `netstat -ano | findstr :8733` then `taskkill /PID <pid> /F`.
+- Real AI: create `h2a-mvp\.env` with your key (see “Using real AI” below) — same file, Windows path.
+- You don't need to `activate` the venv — the commands call `…\Scripts\python.exe` directly, which
+  avoids PowerShell execution-policy prompts.
+
+---
+
+## One-time setup (macOS / Linux)
 
 ```bash
 # 0. get the code
@@ -29,7 +71,7 @@ npm run build
 cd ../..
 ```
 
-## Run it
+## Run it (macOS / Linux)
 
 ```bash
 cd h2a-web/backend
