@@ -1,0 +1,5 @@
+# H2A web dashboard backend — reuses the h2a-mvp engine (installed separately).
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+markdown>=3.5          # render reports (.md) → HTML for the visual dashboard preview

@@ -17,7 +17,7 @@ openrouter:
   base_url: https://openrouter.ai/api/v1
   # Free tiers change often & rate-limit; if one 404s/429s, pick another from
   # https://openrouter.ai/models?max_price=0 (code-capable ones work best).
-  model: qwen/qwen3-coder:free
+  model: anthropic/claude-sonnet-5
 
 cache_dir: cache/
 mappings_file: mappings/hybris_to_apex.yaml
@@ -60,6 +60,11 @@ agentic:
       critic: frontier
       strengthen: frontier
       parity: frontier
+
+# Frontend migration: discover SAP Spartacus / Angular components (*.component.ts)
+# and convert each into a Lightning Web Component (LWC) bundle + @AuraEnabled Apex.
+frontend:
+  enabled: true            # set false to ignore frontend files (backend-only runs)
 
 # Optional real compile/deploy verification via the Salesforce CLI, with a
 # self-healing loop: real compiler errors are fed back into the LLM repair loop

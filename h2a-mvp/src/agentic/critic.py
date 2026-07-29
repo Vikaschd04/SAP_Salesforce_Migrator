@@ -31,8 +31,10 @@ CRITIC_SCHEMA = {
                     "severity": {"type": "string", "enum": ["ERROR", "WARNING"]},
                     "category": {"type": "string"},
                     "message": {"type": "string"},
+                    # A concrete, actionable fix for this finding — what to change and how.
+                    "suggestion": {"type": "string"},
                 },
-                "required": ["severity", "category", "message"],
+                "required": ["severity", "category", "message", "suggestion"],
                 "additionalProperties": False,
             },
         },
@@ -47,6 +49,10 @@ class CriticAgent:
 
     def review(self, artifact, schema: dict, *, offline: bool = False, retriever=None) -> list:
         """Return findings [{severity, category, message}] for a generated artifact."""
+        # Frontend artifacts are reviewed as LWC bundles, not Apex.
+        if getattr(artifact, "layer", "") == "Component":
+            return self._review_lwc(artifact, offline, retriever)
+
         findings = []
 
         # 1. Objective floor — governor + schema grounding on the final code.
@@ -63,6 +69,55 @@ class CriticAgent:
 
         artifact.critic_findings = findings
         return findings
+
+    def _review_lwc(self, artifact, offline: bool, retriever=None) -> list:
+        """Objective LWC checks (always) + adversarial LWC review (real provider only)."""
+        from src.validate_lwc import validate_lwc
+        findings = [{"severity": i["severity"], "category": i["rule"], "message": i["message"]}
+                    for i in validate_lwc(artifact.lwc_bundle or {})]
+
+        provider = _get_provider(_load_config())
+        if provider != "mock" and not offline:
+            findings += self._llm_review_lwc(artifact, offline, retriever)
+
+        artifact.critic_findings = findings
+        return findings
+
+    def _llm_review_lwc(self, artifact, offline: bool, retriever=None) -> list:
+        config = _load_config()
+        src = "\n\n".join(f"// {c.get('class_name', '?')}\n{c.get('source', '')}"
+                          for c in artifact.source_classes)
+        b = artifact.lwc_bundle or {}
+        grounding = ""
+        if retriever is not None:
+            grounding = retriever.grounding_block(
+                "LWC template getter for:each if:true @api @wire CustomEvent accessibility review")
+        prompt = (
+            f"Adversarially review this generated LWC bundle `{artifact.target_name}` against the "
+            "original Angular component. Report only real problems, most severe first:\n"
+            "  1. BEHAVIOR — is every rule/computation from the Angular component preserved?\n"
+            "  2. TEMPLATE — no expressions in { } (must be property/getter); for:each has key; "
+            "if:true / lwc:if used correctly\n"
+            "  3. API — @api for inputs, CustomEvent for outputs, @wire/imperative Apex for data\n"
+            "  4. ACCESSIBILITY — labels/alt/roles preserved\n\n"
+            f"== Original Angular ==\n{src}\n\n"
+            f"== Generated LWC .js ==\n{b.get('js','')}\n\n"
+            f"== Generated LWC .html ==\n{b.get('html','')}\n\n"
+            + (grounding + "\n\n" if grounding else "")
+            + "For every finding include a concrete `suggestion` — the specific change to make "
+            "(e.g. 'move the `{a+b}` expression into a getter `get total()`'). Return verdict "
+            "'revise' with ERROR findings for anything that breaks behavior or violates LWC "
+            "template rules; otherwise 'pass'."
+        )
+        try:
+            result = call_structured(
+                f"critic_lwc_{artifact.target_name}", prompt, CRITIC_SCHEMA,
+                config.get("max_tokens", {}).get("generate", 4000),
+                offline=offline, effort=config.get("effort", {}).get("generate", "high"),
+                model=route_model(config, f"critic_{artifact.target_name}"))
+            return (result.get("parsed") or {}).get("findings", []) or []
+        except Exception:
+            return []
 
     def _llm_review(self, artifact, schema: dict, offline: bool, retriever=None) -> list:
         config = _load_config()
@@ -86,8 +141,10 @@ class CriticAgent:
             f"== Generated Apex ==\n{artifact.main_class}\n\n"
             f"== SObject schema ==\n{schema_prompt_block(schema or {})}\n\n"
             + (grounding + "\n\n" if grounding else "")
-            + "Return verdict 'revise' with ERROR findings for anything that breaks behavior, "
-            "security, or governor limits; otherwise 'pass'."
+            + "For every finding include a concrete `suggestion` — the specific change to make "
+            "(e.g. 'wrap the SOQL in a bulk collection outside the for-loop', 'add "
+            "Security.stripInaccessible on the query results'). Return verdict 'revise' with ERROR "
+            "findings for anything that breaks behavior, security, or governor limits; otherwise 'pass'."
         )
         try:
             result = call_structured(

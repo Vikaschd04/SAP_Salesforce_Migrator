@@ -15,6 +15,7 @@ _LAYER_PATTERNS = {
     "Controller": "REST Resource (@RestResource)",
     "Utility": "Apex Helper Class",
     "Job": "Scheduled Apex (Schedulable)",
+    "Component": "Lightning Web Component (LWC)",
 }
 
 
@@ -90,7 +91,8 @@ def generate_report(output_dir: str, validation_results: dict = None,
                     skipped_domains: list = None,
                     verify_result: dict = None,
                     reconciliation: dict = None,
-                    parity: dict = None) -> str:
+                    parity: dict = None,
+                    ledger: list = None) -> str:
     """
     Generate FEASIBILITY_REPORT.md in the output directory.
 
@@ -143,19 +145,53 @@ def generate_report(output_dir: str, validation_results: dict = None,
             target_name = gen.get("target_name", "Unknown")
             layer = gen.get("layer", "Utility")
             pattern = _LAYER_PATTERNS.get(layer, "Apex Helper Class")
+            is_lwc = layer == "Component"
+            ext = ".ts" if is_lwc else ".java"
             source_classes = gen.get("source_classes", [])
             source_names = ", ".join(
-                f"`{c['class_name']}.java`" for c in source_classes
-            ) if source_classes else f"`{target_name}.java`"
+                f"`{c['class_name']}{ext}`" for c in source_classes
+            ) if source_classes else f"`{target_name}{ext}`"
+            target_cell = f"`lwc/{target_name}`" if is_lwc else f"`{target_name}.cls`"
             conf = confidence.get(target_name, {})
             conf_cell = f"{conf.get('label', 'Medium')} ({conf.get('score', '—')})" if conf else "—"
             sections.append(
-                f"| {source_names} | {layer} | `{target_name}.cls` | {pattern} | {conf_cell} |"
+                f"| {source_names} | {layer} | {target_cell} | {pattern} | {conf_cell} |"
             )
     else:
         sections.append("| _(No classes were translated in this run)_ | — | — | — | — |")
 
     sections.append("")
+
+    # ── Section 1b: Completeness Ledger ──
+    if ledger:
+        counts = {}
+        for r in ledger:
+            counts[r["outcome"]] = counts.get(r["outcome"], 0) + 1
+        summary = ", ".join(f"**{v}** {k}" for k, v in counts.items())
+        sections.extend([
+            "## 1b. Completeness Ledger",
+            "",
+            "Every ingested source class is accounted for below — the guarantee that no "
+            "business logic was silently dropped. `flagged` items are converted in full "
+            "**and** carry a native-product review suggestion; `skipped` items had no "
+            "business logic to preserve (with a reason).",
+            "",
+            f"> {summary}.",
+            "",
+        ])
+        if any(r["outcome"] == "unaccounted" for r in ledger):
+            sections.extend([
+                "> ⚠️ **Some inputs are unaccounted for — investigate before relying on this run.**",
+                "",
+            ])
+        sections.extend([
+            "| Source Class | Layer | Outcome | Target | Note |",
+            "|---|---|---|---|---|",
+        ])
+        for r in ledger:
+            sections.append(
+                f"| `{r['source']}` | {r['layer']} | {r['outcome']} | {r['target']} | {r['note'] or '—'} |")
+        sections.append("")
 
     # ── Section 2: Validation Results ──
     sections.extend([

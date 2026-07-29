@@ -743,9 +743,11 @@ def test_coverage_self_healing(monkeypatch, tmp_path):
 def test_blackboard_and_plan():
     from src.agentic.blackboard import Blackboard, PlanItem, Artifact
     bb = Blackboard(input_dir="i", output_dir="o")
-    bb.plan = [PlanItem("A", "DAO", "D", target_kind="Apex", apex_pattern="Selector"),
-               PlanItem("B", "Service", "D", target_kind="Native", native_recommendation="CPQ")]
-    assert [p.target_name for p in bb.code_plan()] == ["A"]      # Native excluded from build
+    bb.plan = [PlanItem("A", "DAO", "D", target_kind="Convert", apex_pattern="Selector"),
+               PlanItem("B", "Service", "D", target_kind="Convert", native_recommendation="CPQ"),
+               PlanItem("C", "Utility", "D", target_kind="Skip", rationale="pure DTO")]
+    # Everything Convert is built (incl. the CPQ-flagged one); only Skip is excluded.
+    assert [p.target_name for p in bb.code_plan()] == ["A", "B"]
     bb.record("Planner", "planned", "x")
     assert bb.decisions[0]["agent"] == "Planner"
     bb.artifacts.append(Artifact("A", "DAO", main_class="m", test_class="t"))
@@ -766,7 +768,7 @@ def test_router_tiers():
 
 
 def test_planner_deterministic_fallback(monkeypatch):
-    """Under mock, the Planner marks every structural target as Apex."""
+    """Under mock, the Planner marks every structural target as Convert (all built)."""
     monkeypatch.setenv("H2A_PROVIDER", "mock")
     from src.agentic.blackboard import Blackboard
     from src.agentic.planner import PlannerAgent
@@ -776,16 +778,17 @@ def test_planner_deterministic_fallback(monkeypatch):
     bb.all_classes = [{"class_name": "DefaultOrderService", "layer": "Service",
                        "source": "class DefaultOrderService {}", "methods": []}]
     PlannerAgent().run(bb)
-    assert bb.plan and all(p.target_kind == "Apex" for p in bb.plan)
+    assert bb.plan and all(p.target_kind == "Convert" for p in bb.plan)
     assert any(d["agent"] == "Planner" for d in bb.decisions)
 
 
-def test_planner_llm_native_recommendation(monkeypatch):
-    """With a real provider (stubbed), the Planner can route logic to a native product."""
+def test_planner_llm_converts_and_flags_native(monkeypatch):
+    """With a real provider (stubbed), pricing logic is CONVERTED to Apex and flagged
+    for a native product (CPQ) — never skipped."""
     import src.agentic.planner as planner
     monkeypatch.setattr(planner, "_get_provider", lambda cfg: "anthropic")
     monkeypatch.setattr(planner, "call_structured", lambda *a, **k: {"parsed": {"decisions": [
-        {"target_name": "OrderService", "target_kind": "Native",
+        {"target_name": "OrderService", "target_kind": "Convert",
          "rationale": "pricing logic", "native_recommendation": "Salesforce CPQ"}]}})
 
     from src.agentic.blackboard import Blackboard
@@ -797,9 +800,9 @@ def test_planner_llm_native_recommendation(monkeypatch):
     planner.PlannerAgent().run(bb)
 
     item = next(p for p in bb.plan if p.target_name == "OrderService")
-    assert item.target_kind == "Native"
+    assert item.target_kind == "Convert"
     assert item.native_recommendation == "Salesforce CPQ"
-    assert bb.code_plan() == []                                 # Native isn't built as Apex
+    assert [p.target_name for p in bb.code_plan()] == ["OrderService"]   # converted, not skipped
     assert any("CPQ" in q for q in bb.open_questions)
 
 

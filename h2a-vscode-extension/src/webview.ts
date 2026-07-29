@@ -8,15 +8,47 @@ export class WebviewPanelProvider {
     private readonly _extensionUri: vscode.Uri;
     private _disposables: vscode.Disposable[] = [];
 
-    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, logContent: string, callGraphJson: string) {
+    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, logContent: string, callGraphJson: string, resultsJson: string) {
         this._panel = panel;
         this._extensionUri = extensionUri;
 
         // Set the webview's initial html content
-        this._update(logContent, callGraphJson);
+        this._update(logContent, callGraphJson, resultsJson);
 
         // Listen for when the panel is disposed
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    }
+
+    // Read the generated Salesforce project + reports so the webview can render the
+    // migration RESULT (ledger, reports, Apex + LWC files) — not just the console log.
+    private static _collectResults(outputPath: string): string {
+        const reportFiles = ['MIGRATION_PLAN.md', 'FEASIBILITY_REPORT.md', 'PARITY.md',
+                             'DATA_MIGRATION.md', 'CRON_JOBS.md', 'MAPPING.md'];
+        const reports: { name: string, text: string }[] = [];
+        for (const r of reportFiles) {
+            const p = path.join(outputPath, r);
+            if (fs.existsSync(p)) {
+                try { reports.push({ name: r, text: fs.readFileSync(p, 'utf8') }); } catch (e) { /* skip */ }
+            }
+        }
+        const apex: string[] = [], lwc: string[] = [], data: string[] = [];
+        const classesDir = path.join(outputPath, 'force-app', 'main', 'default', 'classes');
+        if (fs.existsSync(classesDir)) {
+            try { for (const f of fs.readdirSync(classesDir)) { if (f.endsWith('.cls')) apex.push(f); } } catch (e) { /* skip */ }
+        }
+        const lwcDir = path.join(outputPath, 'force-app', 'main', 'default', 'lwc');
+        if (fs.existsSync(lwcDir)) {
+            try {
+                for (const d of fs.readdirSync(lwcDir)) {
+                    if (fs.statSync(path.join(lwcDir, d)).isDirectory()) { lwc.push(d); }
+                }
+            } catch (e) { /* skip */ }
+        }
+        const dataDir = path.join(outputPath, 'data');
+        if (fs.existsSync(dataDir)) {
+            try { for (const f of fs.readdirSync(dataDir)) { if (f.endsWith('.csv')) data.push(f); } } catch (e) { /* skip */ }
+        }
+        return JSON.stringify({ reports, files: { apex, lwc, data } });
     }
 
     public static createOrShow(extensionUri: vscode.Uri, logContent: string, outputPath: string) {
@@ -34,9 +66,11 @@ export class WebviewPanelProvider {
             }
         }
 
+        const resultsJson = WebviewPanelProvider._collectResults(outputPath);
+
         if (WebviewPanelProvider.currentPanel) {
             WebviewPanelProvider.currentPanel._panel.reveal(column);
-            WebviewPanelProvider.currentPanel._update(logContent, callGraphJson);
+            WebviewPanelProvider.currentPanel._update(logContent, callGraphJson, resultsJson);
             return;
         }
 
@@ -50,16 +84,18 @@ export class WebviewPanelProvider {
             }
         );
 
-        WebviewPanelProvider.currentPanel = new WebviewPanelProvider(panel, extensionUri, logContent, callGraphJson);
+        WebviewPanelProvider.currentPanel = new WebviewPanelProvider(panel, extensionUri, logContent, callGraphJson, resultsJson);
     }
 
-    private _update(logContent: string, callGraphJson: string) {
+    private _update(logContent: string, callGraphJson: string, resultsJson: string) {
         this._panel.title = 'H2A Translation Status';
-        this._panel.webview.html = this._getHtmlForWebview(logContent, callGraphJson);
+        this._panel.webview.html = this._getHtmlForWebview(logContent, callGraphJson, resultsJson);
     }
 
-    private _getHtmlForWebview(logContent: string, callGraphJson: string): string {
+    private _getHtmlForWebview(logContent: string, callGraphJson: string, resultsJson: string): string {
         // Parse logs to extract metrics for the dashboard
+        const completenessMatch = logContent.match(/Completeness:\s*(.+)/);
+        const completeness = completenessMatch ? completenessMatch[1].trim() : "";
         const requestsMatch = logContent.match(/requests=(\d+)/);
         const promptTokensMatch = logContent.match(/prompt_tokens=(\d+)/);
         const completionTokensMatch = logContent.match(/completion_tokens=(\d+)/);
@@ -379,6 +415,35 @@ export class WebviewPanelProvider {
                     ::-webkit-scrollbar-thumb:hover {
                         background: rgba(255, 255, 255, 0.2);
                     }
+                    /* Migration result / reports / files */
+                    .ledger-chips { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+                    .chip { padding: 5px 14px; border-radius: 30px; font-size: 13px; font-weight: 600;
+                        border: 1px solid var(--glass-border); background: var(--glass-bg); }
+                    .chip.converted { color: var(--color-success); border-color: rgba(78,201,176,0.35); }
+                    .chip.flagged { color: var(--color-warning); border-color: rgba(255,179,71,0.35); }
+                    .chip.skipped { color: var(--text-secondary); }
+                    .chip.unaccounted { color: var(--color-failed); border-color: rgba(255,107,107,0.35); }
+                    .file-summary { display: flex; gap: 18px; flex-wrap: wrap; color: var(--text-secondary); font-size: 13px; }
+                    .file-summary b { color: var(--text-primary); }
+                    .files-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px; }
+                    .file-item { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-secondary);
+                        padding: 4px 8px; background: rgba(255,255,255,0.03); border-radius: 5px; }
+                    .file-item.lwc { color: var(--color-info); }
+                    .report-view { background: rgba(0,0,0,0.25); border: 1px solid var(--glass-border);
+                        border-radius: 10px; padding: 18px 22px; max-height: 520px; overflow: auto;
+                        font-size: 13.5px; line-height: 1.6; }
+                    .report-view h1 { font-size: 20px; border-bottom: 2px solid rgba(78,201,176,0.4); padding-bottom: 6px; }
+                    .report-view h2 { font-size: 16px; margin-top: 22px; border-bottom: 1px solid var(--glass-border); padding-bottom: 5px; }
+                    .report-view h3 { font-size: 14px; margin-top: 16px; color: var(--color-info); }
+                    .report-view table { width: 100%; border-collapse: collapse; margin: 8px 0 14px; font-size: 12.5px; }
+                    .report-view th, .report-view td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--glass-border); vertical-align: top; }
+                    .report-view th { color: var(--text-secondary); text-transform: uppercase; font-size: 11px; }
+                    .report-view code { font-family: 'JetBrains Mono', monospace; font-size: 12px;
+                        background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; }
+                    .report-view ul { padding-left: 20px; }
+                    .report-view blockquote { border-left: 3px solid var(--color-warning); margin: 8px 0;
+                        padding: 4px 12px; color: var(--color-warning); background: rgba(255,179,71,0.08); }
+                    .report-view hr { border: none; border-top: 1px solid var(--glass-border); margin: 16px 0; }
                 </style>
             </head>
             <body>
@@ -429,6 +494,23 @@ export class WebviewPanelProvider {
                 </div>
                 ` : ''}
 
+                <div class="pipeline-section">
+                    <div class="section-title">Migration Result</div>
+                    <div id="ledgerChips" class="ledger-chips"></div>
+                    <div id="fileSummary" class="file-summary"></div>
+                </div>
+
+                <div class="pipeline-section">
+                    <div class="section-title">Reports</div>
+                    <div id="reportTabs" class="visualizer-tabs"></div>
+                    <div id="reportView" class="report-view">No reports were generated.</div>
+                </div>
+
+                <div class="pipeline-section">
+                    <div class="section-title">Generated Files</div>
+                    <div id="filesList" class="files-list"></div>
+                </div>
+
                 <div class="console-section">
                     <div class="section-title">Execution Console Output</div>
                     <div class="console-viewport">
@@ -438,7 +520,105 @@ export class WebviewPanelProvider {
 
                 <script>
                     const callGraphData = ${callGraphJson};
+                    const resultsData = ${resultsJson};
+                    const completenessStr = ${JSON.stringify(completeness)};
                     let activeTab = 'hybris';
+
+                    // ── Migration result: completeness ledger chips + file counts ──
+                    (function renderResult() {
+                        const chips = document.getElementById('ledgerChips');
+                        if (completenessStr) {
+                            chips.innerHTML = completenessStr.split(',').map(function (part) {
+                                const t = part.trim();
+                                const kind = (t.split(' ')[1] || '').toLowerCase();
+                                return '<span class="chip ' + kind + '">' + t + '</span>';
+                            }).join('');
+                        } else {
+                            chips.innerHTML = '<span class="chip">run complete</span>';
+                        }
+                        const f = (resultsData.files) || { apex: [], lwc: [], data: [] };
+                        document.getElementById('fileSummary').innerHTML =
+                            '<span><b>' + f.apex.length + '</b> Apex classes</span>' +
+                            '<span><b>' + f.lwc.length + '</b> LWC bundles</span>' +
+                            '<span><b>' + f.data.length + '</b> data CSVs</span>';
+                        const filesList = document.getElementById('filesList');
+                        const items = f.apex.map(function (n) { return '<div class="file-item">' + n + '</div>'; })
+                            .concat(f.lwc.map(function (n) { return '<div class="file-item lwc">lwc/' + n + '</div>'; }))
+                            .concat(f.data.map(function (n) { return '<div class="file-item">data/' + n + '</div>'; }));
+                        filesList.innerHTML = items.length ? items.join('') : '<div class="file-item">No files generated.</div>';
+                    })();
+
+                    // ── Reports: compact Markdown → HTML renderer (headings, tables, lists, code) ──
+                    function mdEscape(s) {
+                        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    }
+                    function mdInline(s) {
+                        s = mdEscape(s);
+                        s = s.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
+                        s = s.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+                        s = s.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '$1');
+                        return s;
+                    }
+                    function renderMarkdown(md) {
+                        const lines = md.split('\\n');
+                        let html = '', i = 0, inList = false, inCode = false;
+                        function closeList() { if (inList) { html += '</ul>'; inList = false; } }
+                        while (i < lines.length) {
+                            let line = lines[i];
+                            if (line.indexOf('\`\`\`') === 0) {
+                                if (!inCode) { closeList(); html += '<pre><code>'; inCode = true; }
+                                else { html += '</code></pre>'; inCode = false; }
+                                i++; continue;
+                            }
+                            if (inCode) { html += mdEscape(line) + '\\n'; i++; continue; }
+                            // GFM table: header row followed by a |---| separator
+                            if (line.indexOf('|') === 0 && i + 1 < lines.length && /^\\|[\\s:|-]+\\|/.test(lines[i + 1])) {
+                                closeList();
+                                const header = line.split('|').slice(1, -1).map(function (c) { return '<th>' + mdInline(c.trim()) + '</th>'; }).join('');
+                                html += '<table><thead><tr>' + header + '</tr></thead><tbody>';
+                                i += 2;
+                                while (i < lines.length && lines[i].indexOf('|') === 0) {
+                                    const cells = lines[i].split('|').slice(1, -1).map(function (c) { return '<td>' + mdInline(c.trim()) + '</td>'; }).join('');
+                                    html += '<tr>' + cells + '</tr>';
+                                    i++;
+                                }
+                                html += '</tbody></table>';
+                                continue;
+                            }
+                            const h = line.match(/^(#{1,4})\\s+(.*)$/);
+                            if (h) { closeList(); html += '<h' + h[1].length + '>' + mdInline(h[2]) + '</h' + h[1].length + '>'; i++; continue; }
+                            if (line.indexOf('> ') === 0) { closeList(); html += '<blockquote>' + mdInline(line.slice(2)) + '</blockquote>'; i++; continue; }
+                            if (/^[-*]\\s+/.test(line.trim()) || /^\\s+[-*]\\s+/.test(line)) {
+                                if (!inList) { html += '<ul>'; inList = true; }
+                                html += '<li>' + mdInline(line.replace(/^\\s*[-*]\\s+/, '')) + '</li>'; i++; continue;
+                            }
+                            if (line.trim() === '---') { closeList(); html += '<hr>'; i++; continue; }
+                            if (line.trim() === '') { closeList(); i++; continue; }
+                            closeList(); html += '<p>' + mdInline(line) + '</p>'; i++;
+                        }
+                        closeList();
+                        return html;
+                    }
+                    (function renderReports() {
+                        const reports = (resultsData.reports) || [];
+                        const tabs = document.getElementById('reportTabs');
+                        const view = document.getElementById('reportView');
+                        if (!reports.length) { tabs.style.display = 'none'; return; }
+                        function show(idx) {
+                            view.innerHTML = renderMarkdown(reports[idx].text);
+                            Array.prototype.forEach.call(tabs.children, function (b, i) { b.classList.toggle('active', i === idx); });
+                        }
+                        reports.forEach(function (r, idx) {
+                            const b = document.createElement('button');
+                            b.className = 'tab-btn' + (idx === 0 ? ' active' : '');
+                            b.textContent = r.name.replace('.md', '').replace(/_/g, ' ');
+                            b.onclick = function () { show(idx); };
+                            tabs.appendChild(b);
+                        });
+                        // Prefer the migration plan (has the ledger) first if present
+                        const planIdx = reports.findIndex(function (r) { return r.name === 'MIGRATION_PLAN.md'; });
+                        show(planIdx >= 0 ? planIdx : 0);
+                    })();
 
                     const canvas = document.getElementById('graphCanvas');
                     const ctx = canvas.getContext('2d');

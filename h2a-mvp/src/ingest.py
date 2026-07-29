@@ -381,6 +381,20 @@ def ingest(input_dir: str) -> dict:
         relations.extend(_parse_relations(str(xml_file)))
         enum_types.extend(_parse_enum_types(str(xml_file)))
 
+    # Frontend (Spartacus / Angular → LWC): components are appended as first-class
+    # source classes (layer "Component"); framework glue / type-only files are
+    # recorded so the completeness ledger can account for them.
+    frontend_skipped = []
+    try:
+        from src.llm import _load_config
+        if (_load_config().get("frontend") or {}).get("enabled", True):
+            from src.frontend_ingest import ingest_frontend
+            fe = ingest_frontend(input_dir)
+            classes.extend(fe.get("components", []))
+            frontend_skipped = fe.get("skipped", [])
+    except Exception as fe_err:  # frontend parsing must never break a backend run
+        print(f"  ⚠ frontend ingest skipped: {fe_err}")
+
     # Build dependency order list
     dependency_order = [c["class_name"] for c in classes]
 
@@ -390,5 +404,6 @@ def ingest(input_dir: str) -> dict:
         "relations": relations,
         "enum_types": enum_types,
         "dependency_order": dependency_order,
+        "frontend_skipped": frontend_skipped,
         "api_requests": 0,
     }

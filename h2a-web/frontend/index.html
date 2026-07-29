@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>H2A Migration Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <div>
+        <h1>H2A Migration Dashboard</h1>
+        <p class="sub">SAP Hybris &amp; Spartacus → Salesforce Apex + LWC · watch the AI agents work</p>
+      </div>
+    </div>
+    <div class="brand-right"><span class="mono" id="health">connecting…</span></div>
+  </header>
+
+  <!-- Start bar -->
+  <section class="startbar">
+    <div class="field grow">
+      <label>Codebase path <span class="hint">(server path, or relative to repo — e.g. Testing/demo-commerce-suite)</span></label>
+      <input id="inputPath" type="text" value="Testing/demo-commerce-suite" spellcheck="false" />
+    </div>
+    <div class="field">
+      <label>Or upload .zip</label>
+      <input id="uploadZip" type="file" accept=".zip" />
+    </div>
+    <div class="field">
+      <label>Provider</label>
+      <select id="provider">
+        <option value="mock">Mock (free, keyless)</option>
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="openrouter">OpenRouter</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Engine</label>
+      <select id="engine">
+        <option value="agentic">Agentic (agents)</option>
+        <option value="linear">Linear</option>
+      </select>
+    </div>
+    <div class="field checkbox">
+      <label><input id="supervised" type="checkbox" checked /> Supervised (review gates)</label>
+    </div>
+    <div class="field checkbox">
+      <label><input id="verify" type="checkbox" /> Verify vs org</label>
+    </div>
+    <button id="startBtn" class="primary">▶ Start migration</button>
+  </section>
+
+  <!-- Human-in-the-loop review gate overlay -->
+  <div class="gate-overlay" id="gateOverlay" hidden>
+    <div class="gate-card">
+      <div class="gate-head">
+        <div><span class="pill">⏸ Review gate</span><h2 id="gateTitle"></h2></div>
+        <span class="mono" id="gateSub"></span>
+      </div>
+      <div class="gate-body" id="gateBody"></div>
+      <div class="gate-actions" id="gateActions"></div>
+    </div>
+  </div>
+
+  <!-- Pipeline stepper -->
+  <section class="stepper" id="stepper"></section>
+
+  <!-- Body -->
+  <main class="body">
+    <!-- Left: live agent activity -->
+    <section class="panel feed">
+      <div class="panel-head"><h2>Agent activity</h2><span class="mono" id="elapsed"></span></div>
+      <div class="feed-list" id="feed"><p class="empty">Start a migration to watch the agents work.</p></div>
+    </section>
+
+    <!-- Right: tabbed detail -->
+    <section class="panel detail">
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-tab="plan">Plan</button>
+        <button class="tab" data-tab="understanding">Understanding</button>
+        <button class="tab" data-tab="artifacts">Artifacts</button>
+        <button class="tab" data-tab="files">Files</button>
+        <button class="tab" data-tab="reports">Reports</button>
+        <button class="tab" data-tab="audit">Audit</button>
+      </div>
+
+      <div class="tabpanel active" id="tab-plan">
+        <p class="empty">The Planner will list every file it migrates here — what's converted, skipped, or flagged for review, and why.</p>
+      </div>
+
+      <div class="tabpanel" id="tab-understanding">
+        <p class="empty">As the Comprehender reads each class, what the AI understood — purpose, business rules it must preserve, and the data it queries — appears here.</p>
+      </div>
+
+      <div class="tabpanel" id="tab-artifacts">
+        <p class="empty">Generated Apex classes and LWC bundles appear here as the Builder + Critic finish each one. Click a row to see what was mapped and every Critic finding.</p>
+      </div>
+
+      <div class="tabpanel" id="tab-files">
+        <div class="files-layout">
+          <ul class="filelist" id="filelist"><li class="empty">Generated files appear after the run.</li></ul>
+          <pre class="code" id="code"><span class="empty">Select a file to view it.</span></pre>
+        </div>
+      </div>
+
+      <div class="tabpanel" id="tab-reports">
+        <div id="ledgerBox"></div>
+        <div class="report-actions" id="reportActions"></div>
+        <article class="md-preview" id="reportView"><p class="empty">Reports appear when the run completes.</p></article>
+      </div>
+
+      <div class="tabpanel" id="tab-audit">
+        <p class="empty">Every decision each agent makes streams here in order — the live audit trail of the whole migration.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

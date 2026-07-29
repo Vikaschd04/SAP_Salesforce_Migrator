@@ -13,8 +13,9 @@
 |---|---|
 | **Phase 0 — Prove correctness** | ✅ Core delivered (self-healing deploy loop, confidence scoring, schema reconciliation, parity harness + strengthening) |
 | **Phase 1 — Agentic core** | ✅ Core delivered (Blackboard, Planner, Builder+Critic, Verifier, model routing, RAG scaffold) |
-| **Phase 2 — Full-surface coverage** | 🔶 In progress — done: ImpEx data migration, deeper `items.xml` metadata, cronjobs → Scheduled Apex. Open: business processes, OCC REST, promotions → CPQ |
-| **Phase 3 — Enterprise platform** | ⏳ Not started |
+| **Phase 2 — Full-surface coverage** | 🔶 In progress — done: ImpEx data migration, deeper `items.xml` metadata, cronjobs → Scheduled Apex. Open: business processes, OCC REST |
+| **Phase 3 — Frontend + complete-conversion intelligence** | 🔶 In progress — done: **Spartacus (Angular) → LWC** engine (frontend ingest, LWC generator + `@AuraEnabled` Apex wiring, LWC validator, LWC RAG docs, Critic LWC review); **"convert everything" policy** (native-fit logic like pricing is converted **and** flagged for review, never skipped) + a **completeness ledger** proving no source is silently dropped |
+| **Phase 4 — Enterprise platform** | ⏳ Not started |
 | **Phase 4 — Learning system & GTM** | ⏳ Not started |
 
 ---

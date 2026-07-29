@@ -64,6 +64,12 @@ def _get_domain(class_name: str) -> str:
     return name
 
 
+def lwc_name(class_name: str) -> str:
+    """LWC bundle name: camelCase, no 'Component' suffix. ProductListComponent → productList."""
+    base = class_name[:-len("Component")] if class_name.endswith("Component") else class_name
+    return (base[0].lower() + base[1:]) if base else base
+
+
 def plan_targets(classes: list[dict]) -> list[dict]:
     """Plan which target Apex artifacts to generate from ingested classes."""
     targets = []
@@ -83,6 +89,8 @@ def plan_targets(classes: list[dict]) -> list[dict]:
             target_name = cls["class_name"]
         elif cls["layer"] == "Job":
             target_name = f"{domain}Scheduler"
+        elif cls["layer"] == "Component":
+            target_name = lwc_name(cls["class_name"])   # frontend → LWC bundle
         else:
             continue
 
@@ -96,6 +104,24 @@ def plan_targets(classes: list[dict]) -> list[dict]:
             "source_classes": source_classes,
         })
     return targets
+
+
+def prepend_review_flag(code: str, native_alt: str, rationale: str = "") -> str:
+    """Prepend a MANUAL REVIEW banner to a fully-converted artifact whose logic may
+    have a better native Salesforce home. The logic is always converted in full;
+    this only marks it for a human to evaluate against `native_alt`."""
+    if not native_alt or not code:
+        return code
+    note = (rationale or "").strip()
+    banner = (
+        "/*\n"
+        f" * MANUAL REVIEW: {native_alt} may be a better long-term home for this logic.\n"
+        " * It has been converted to Apex IN FULL for completeness — verify behavioral\n"
+        f" * parity against {native_alt} before go-live"
+        + (f".\n * Planner rationale: {note}\n" if note else ".\n")
+        + " */\n"
+    )
+    return banner + code
 
 
 # ── Prompt building ───────────────────────────────────────────────────────────
@@ -163,11 +189,16 @@ def build_system_prompt(mappings: dict, schema: dict | None) -> str:
 
 
 def _build_source_summary(source_classes: list[dict], comprehensions: dict) -> tuple[str, str]:
+    # Defensive: real-world ingest can yield class dicts missing a field (odd syntax,
+    # inner classes, non-Java files). A missing key must never crash generation.
     sources, comp_summaries = [], []
-    for cls in source_classes:
-        sources.append(f"// --- {cls['class_name']} ({cls['layer']}) ---\n{cls['source']}")
-        comp = comprehensions.get(cls["class_name"], {})
-        comp_summaries.append({"class": cls["class_name"], "layer": cls["layer"], **comp})
+    for cls in (source_classes or []):
+        name = cls.get("class_name", "UnknownClass")
+        layer = cls.get("layer", "")
+        source = cls.get("source", "")
+        sources.append(f"// --- {name} ({layer}) ---\n{source}")
+        comp = comprehensions.get(name, {})
+        comp_summaries.append({"class": name, "layer": layer, **comp})
     return "\n\n".join(sources), json.dumps(comp_summaries, indent=2)
 
 
@@ -468,6 +499,50 @@ def extract_method_signatures(apex_code: str, class_name: str) -> list[str]:
 
 # ── Output writer (SFDX layout) ───────────────────────────────────────────────
 
+_APEX_CLS_META = (
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+    '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">\n'
+    "    <apiVersion>60.0</apiVersion>\n    <status>Active</status>\n</ApexClass>\n"
+)
+
+
+def _write_apex_class(classes_dir, name: str, main_class: str, test_class: str,
+                      cls_meta: str) -> list[str]:
+    """Write an Apex class (+ its test) with metadata. Returns the paths written."""
+    created = []
+    for suffix, body in ((".cls", main_class), ("Test.cls", test_class)):
+        if suffix == "Test.cls" and not (body and body.strip()):
+            continue
+        cls_path = classes_dir / f"{name}{suffix}"
+        cls_path.write_text(body or "", encoding="utf-8")
+        (classes_dir / f"{name}{suffix}-meta.xml").write_text(cls_meta, encoding="utf-8")
+        created += [str(cls_path), str(classes_dir / f"{name}{suffix}-meta.xml")]
+    return created
+
+
+def _write_lwc_bundle(lwc_dir, name: str, bundle: dict) -> list[str]:
+    """Write an LWC bundle folder: <name>.js/.html/.css/.js-meta.xml + __tests__/<name>.test.js."""
+    if not bundle:
+        return []
+    folder = lwc_dir / name
+    folder.mkdir(parents=True, exist_ok=True)
+    created = []
+    files = [(f"{name}.js", bundle.get("js", "")),
+             (f"{name}.html", bundle.get("html", "")),
+             (f"{name}.js-meta.xml", bundle.get("meta", ""))]
+    if bundle.get("css", "").strip():
+        files.append((f"{name}.css", bundle["css"]))
+    for fname, body in files:
+        (folder / fname).write_text(body, encoding="utf-8")
+        created.append(str(folder / fname))
+    if bundle.get("test", "").strip():
+        tests = folder / "__tests__"
+        tests.mkdir(exist_ok=True)
+        (tests / f"{name}.test.js").write_text(bundle["test"], encoding="utf-8")
+        created.append(str(tests / f"{name}.test.js"))
+    return created
+
+
 def write_outputs(output_dir: str, generated: list[dict], item_types: list[dict],
                   mappings: dict) -> list[str]:
     """Write generated Apex + SFDX config + MAPPING.md in standard SFDX layout."""
@@ -504,8 +579,18 @@ def write_outputs(output_dir: str, generated: list[dict], item_types: list[dict]
         '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">\n'
         "    <apiVersion>60.0</apiVersion>\n    <status>Active</status>\n</ApexClass>\n"
     )
+    lwc_dir = out / "force-app" / "main" / "default" / "lwc"
     for gen in generated:
         name = gen["target_name"]
+        # Frontend target → LWC bundle (+ its @AuraEnabled Apex controller), not a .cls.
+        if gen.get("layer") == "Component":
+            created += _write_lwc_bundle(lwc_dir, name, gen.get("lwc_bundle", {}))
+            ctrl = gen.get("apex_controller") or {}
+            if ctrl.get("main_class"):
+                created += _write_apex_class(classes_dir, ctrl.get("name") or f"{name}Controller",
+                                             ctrl.get("main_class", ""), ctrl.get("test_class", ""),
+                                             cls_meta)
+            continue
         for suffix, field in ((".cls", "main_class"), ("Test.cls", "test_class")):
             cls_path = classes_dir / f"{name}{suffix}"
             cls_path.write_text(gen.get(field, ""), encoding="utf-8")

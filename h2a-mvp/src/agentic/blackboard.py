@@ -21,16 +21,18 @@ class PlanItem:
     layer: str
     domain: str
     source_classes: list = field(default_factory=list)   # [{class_name, layer, source}]
-    # Where it should land. Code kinds are built here; Native/Skip are recorded
-    # as recommendations and produce no Apex.
-    target_kind: str = "Apex"          # Apex | Native | Skip
-    apex_pattern: str = ""             # Selector | Service | Controller | Utility
+    # Policy: every real target is Convert — its logic is ALWAYS built. `Skip` is
+    # reserved for provably dead code / framework glue / pure DTOs and must carry a
+    # reason. A native-product fit never suppresses conversion; it is recorded as a
+    # review suggestion (`native_recommendation`) on a Convert item instead.
+    target_kind: str = "Convert"       # Convert | Skip
+    apex_pattern: str = ""             # Selector | Service | Controller | Utility | Component
     rationale: str = ""
-    native_recommendation: str = ""    # e.g. "Salesforce CPQ", "Flow / Approval Process"
+    native_recommendation: str = ""    # review suggestion only, e.g. "Salesforce CPQ"
 
     @property
     def is_code(self) -> bool:
-        return self.target_kind == "Apex"
+        return self.target_kind != "Skip"
 
 
 @dataclass
@@ -46,8 +48,19 @@ class Artifact:
     business_rules: list = field(default_factory=list)
     source_classes: list = field(default_factory=list)
     critic_findings: list = field(default_factory=list)
+    # Human-review suggestions carried alongside a fully-converted artifact, e.g.
+    # "consider Salesforce CPQ for this pricing logic". Never a reason to skip.
+    review_flags: list = field(default_factory=list)
+    # Frontend targets: the LWC bundle {js, html, css, meta, test} and, when the
+    # component reads data, a generated @AuraEnabled Apex controller {name, main_class, test_class}.
+    lwc_bundle: dict = field(default_factory=dict)
+    apex_controller: dict = field(default_factory=dict)
     # planned -> generated -> reviewed -> accepted | needs_review
     status: str = "planned"
+
+    @property
+    def is_lwc(self) -> bool:
+        return self.layer == "Component"
 
     def to_generated_dict(self) -> dict:
         """Shape the rest of the pipeline (report, parity, write_outputs) expects."""
@@ -60,6 +73,9 @@ class Artifact:
             "sobject_refs": self.sobject_refs,
             "business_rules": self.business_rules,
             "source_classes": self.source_classes,
+            "review_flags": self.review_flags,
+            "lwc_bundle": self.lwc_bundle,
+            "apex_controller": self.apex_controller,
         }
 
 
@@ -80,6 +96,9 @@ class Blackboard:
     enum_types: list = field(default_factory=list)
     schema: dict = field(default_factory=dict)
     source_corpus: str = ""
+    # Frontend framework glue / type-only files recorded (not converted) so the
+    # completeness ledger can account for them with a reason.
+    frontend_skipped: list = field(default_factory=list)
 
     # Agent products
     comprehensions: dict = field(default_factory=dict)     # class_name -> understanding
@@ -95,17 +114,68 @@ class Blackboard:
     # Traceability
     decisions: list = field(default_factory=list)          # [{t, agent, action, detail}]
     open_questions: list = field(default_factory=list)     # ["...", ...]
+    # Optional live listener: called with each decision as it's recorded, so a UI can
+    # show the audit trail building in real time. None (CLI/extension) → no-op.
+    on_decision: object = None
 
     def record(self, agent: str, action: str, detail: str = "") -> None:
         """Append an auditable decision. Every meaningful agent choice lands here."""
-        self.decisions.append({"t": round(time.time(), 3), "agent": agent,
-                               "action": action, "detail": detail})
+        entry = {"t": round(time.time(), 3), "agent": agent, "action": action, "detail": detail}
+        self.decisions.append(entry)
+        if self.on_decision is not None:
+            try:
+                self.on_decision(entry)
+            except Exception:      # a UI hiccup must never break a migration
+                pass
 
     def ask(self, agent: str, question: str) -> None:
         self.open_questions.append(f"[{agent}] {question}")
 
     def code_plan(self) -> list:
         return [p for p in self.plan if p.is_code]
+
+    def completeness_ledger(self) -> list:
+        """Account for every ingested source class — the proof that nothing was
+        silently dropped. Each row: {source, layer, outcome, target, note} where
+        outcome is converted | flagged | skipped | unaccounted."""
+        by_source = {}
+        for a in self.artifacts:
+            for c in a.source_classes:
+                by_source[c.get("class_name")] = a
+        skipped = {}
+        for p in self.plan:
+            if p.target_kind == "Skip":
+                for c in p.source_classes:
+                    skipped[c.get("class_name")] = p.rationale or "no reason recorded"
+
+        rows = []
+        for cls in self.all_classes:
+            name = cls.get("class_name")
+            layer = cls.get("layer", "")
+            if layer == "Model":
+                rows.append({"source": name, "layer": layer, "outcome": "converted",
+                             "target": "SObject metadata", "note": "data model → custom object"})
+                continue
+            art = by_source.get(name)
+            if art is not None:
+                flagged = bool(art.review_flags)
+                target = f"lwc/{art.target_name}" if art.layer == "Component" else f"{art.target_name}.cls"
+                rows.append({"source": name, "layer": layer,
+                             "outcome": "flagged" if flagged else "converted",
+                             "target": target,
+                             "note": "; ".join(art.review_flags) if flagged else ""})
+            elif name in skipped:
+                rows.append({"source": name, "layer": layer, "outcome": "skipped",
+                             "target": "—", "note": skipped[name]})
+            else:
+                rows.append({"source": name, "layer": layer, "outcome": "unaccounted",
+                             "target": "—", "note": "NOT represented in output — investigate"})
+
+        # Frontend framework glue / type-only files: no business logic to convert.
+        for sk in self.frontend_skipped:
+            rows.append({"source": sk.get("class_name", "?"), "layer": sk.get("layer", ""),
+                         "outcome": "skipped", "target": "—", "note": sk.get("reason", "")})
+        return rows
 
     def generated_dicts(self) -> list:
         """Artifacts in the dict shape the Phase-0 writer/report/parity consume."""

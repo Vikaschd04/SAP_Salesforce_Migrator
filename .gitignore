@@ -35,3 +35,9 @@ cache/
 *~
 .DS_Store
 Thumbs.db
+
+# ── Generated migration OUTPUTS under Testing/ (regenerated per run) ──────────
+Testing/salesforce_*/
+Testing/out-*/
+Testing/out_*/
+Testing/*.zip

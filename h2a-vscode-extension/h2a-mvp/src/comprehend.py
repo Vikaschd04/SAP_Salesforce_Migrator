@@ -20,8 +20,14 @@ COMPREHENSION_SCHEMA = {
         "side_effects": {"type": "array", "items": {"type": "string"}},
         "queries": {"type": "array", "items": {"type": "string"}},
         "business_rules": {"type": "array", "items": {"type": "string"}},
+        # Deeper analysis that makes downstream planning/building/review smarter:
+        # what this class depends on, what could go wrong in the port, and how hard it is.
+        "dependencies": {"type": "array", "items": {"type": "string"}},
+        "migration_risks": {"type": "array", "items": {"type": "string"}},
+        "complexity": {"type": "string", "enum": ["Low", "Medium", "High"]},
     },
-    "required": ["purpose", "inputs", "outputs", "side_effects", "queries", "business_rules"],
+    "required": ["purpose", "inputs", "outputs", "side_effects", "queries",
+                 "business_rules", "dependencies", "migration_risks", "complexity"],
     "additionalProperties": False,
 }
 
@@ -31,50 +37,70 @@ def _load_prompt_template() -> str:
 
 
 def _format_methods(methods: list) -> str:
+    # Defensive: real-world classes have constructors (no return_type), varargs,
+    # generics, etc. — a missing key must never crash comprehension.
     lines = []
-    for m in methods:
-        params = ", ".join(f"{p['type']} {p['name']}" for p in m.get("parameters", []))
-        lines.append(f"  {m['return_type']} {m['name']}({params})")
+    for m in (methods or []):
+        params = ", ".join(f"{p.get('type', '')} {p.get('name', '')}".strip()
+                           for p in (m.get("parameters", []) or []))
+        sig = f"  {m.get('return_type', '')} {m.get('name', '')}({params})"
+        lines.append(" ".join(sig.split()) or "  (method)")
     return "\n".join(lines) if lines else "  (none)"
 
 
 def comprehend_class(class_info: dict, *, offline: bool = False,
                      model: str | None = None) -> dict:
-    """Produce a structured JSON understanding of one Java class."""
+    """Produce a structured JSON understanding of one Java class.
+
+    Never raises: a class that can't be analyzed (odd shape, malformed methods, a
+    provider error) falls back to a deterministic understanding, so a single class
+    can never abort the whole migration."""
     config = _load_config()
     max_tokens = config.get("max_tokens", {}).get("comprehend", 800)
     effort = config.get("effort", {}).get("comprehend", "low")
+    name = class_info.get("class_name", "UnknownClass")
+    layer = class_info.get("layer", "")
 
-    prompt = _load_prompt_template().format(
-        java_source=class_info["source"],
-        class_name=class_info["class_name"],
-        layer=class_info["layer"],
-        methods=_format_methods(class_info["methods"]),
-        referenced_types=", ".join(class_info.get("referenced_types", [])) or "(none)",
-    )
+    try:
+        prompt = _load_prompt_template().format(
+            java_source=class_info.get("source", ""),
+            class_name=name,
+            layer=layer,
+            methods=_format_methods(class_info.get("methods", [])),
+            referenced_types=", ".join(class_info.get("referenced_types", []) or []) or "(none)",
+        )
+        result = call_structured(
+            f"comprehend_{name}", prompt, COMPREHENSION_SCHEMA, max_tokens,
+            offline=offline, effort=effort, model=model,
+        )
+        understanding = result.get("parsed") or _fallback_understanding(class_info)
+    except Exception:
+        understanding = _fallback_understanding(class_info)
 
-    result = call_structured(
-        f"comprehend_{class_info['class_name']}",
-        prompt,
-        COMPREHENSION_SCHEMA,
-        max_tokens,
-        offline=offline,
-        effort=effort,
-        model=model,
-    )
-
-    understanding = result.get("parsed") or _fallback_understanding(class_info)
-    for key in ["purpose", "inputs", "outputs", "side_effects", "queries", "business_rules"]:
-        understanding.setdefault(key, [] if key != "purpose" else f"{class_info['layer']} class")
+    if not isinstance(understanding, dict):
+        understanding = _fallback_understanding(class_info)
+    for key in ["inputs", "outputs", "side_effects", "queries", "business_rules",
+                "dependencies", "migration_risks"]:
+        understanding.setdefault(key, [])
+    understanding.setdefault("purpose", f"{layer} class" if layer else str(name))
+    understanding.setdefault("complexity", "Medium")
     return understanding
 
 
 def _fallback_understanding(class_info: dict) -> dict:
+    # Also fully defensive — this is the safety net, so it must not raise either.
+    methods = class_info.get("methods", []) or []
+    refs = class_info.get("referenced_types", []) or []
+    name = class_info.get("class_name", "UnknownClass")
+    layer = class_info.get("layer", "")
     return {
-        "purpose": f"{class_info['layer']} class: {class_info['class_name']}",
-        "inputs": [m["name"] for m in class_info.get("methods", [])],
-        "outputs": [m["return_type"] for m in class_info.get("methods", [])],
+        "purpose": f"{layer} class: {name}" if layer else str(name),
+        "inputs": [m.get("name", "") for m in methods if m.get("name")],
+        "outputs": [m.get("return_type", "") for m in methods if m.get("return_type")],
         "side_effects": [],
         "queries": [],
         "business_rules": [],
+        "dependencies": list(refs),
+        "migration_risks": [],
+        "complexity": "High" if len(methods) > 8 else "Medium",
     }

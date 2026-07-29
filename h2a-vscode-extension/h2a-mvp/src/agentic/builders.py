@@ -10,7 +10,8 @@ reimplementing codegen. The agentic value is in coordination and review
 from __future__ import annotations
 
 from src.agentic.blackboard import Artifact
-from src.generate import generate_apex, extract_method_signatures, clean_java_artifacts
+from src.generate import (generate_apex, extract_method_signatures, clean_java_artifacts,
+                          prepend_review_flag)
 from src.validate import validate_all, repair
 
 
@@ -20,13 +21,15 @@ class BuilderAgent:
 
     def build(self, plan_item, bb, scoped_sigs: list, mappings: dict,
               max_repair: int, log=print, retriever=None) -> Artifact:
+        if plan_item.layer == "Component":
+            return self._build_lwc(plan_item, bb, retriever)
         target = {"target_name": plan_item.target_name, "layer": plan_item.layer,
                   "source_classes": plan_item.source_classes}
         grounding = ""
         if retriever is not None:
             rules = []
             for c in plan_item.source_classes:
-                rules += bb.comprehensions.get(c["class_name"], {}).get("business_rules", []) or []
+                rules += bb.comprehensions.get(c.get("class_name", ""), {}).get("business_rules", []) or []
             grounding = retriever.grounding_block(
                 f"{plan_item.apex_pattern} apex fflib governor limits SOQL DML security "
                 f"bulkification testing {' '.join(rules)}")
@@ -36,7 +39,7 @@ class BuilderAgent:
 
         rules = []
         for c in plan_item.source_classes:
-            rules += bb.comprehensions.get(c["class_name"], {}).get("business_rules", []) or []
+            rules += bb.comprehensions.get(c.get("class_name", ""), {}).get("business_rules", []) or []
 
         art = Artifact(
             target_name=plan_item.target_name, layer=plan_item.layer,
@@ -44,12 +47,45 @@ class BuilderAgent:
             main_class=gen.get("main_class", ""), test_class=gen.get("test_class", ""),
             mapping_notes=gen.get("mapping_notes", ""), sobject_refs=gen.get("sobject_refs", []),
             business_rules=rules,
-            source_classes=[{"class_name": c["class_name"], "layer": c.get("layer", ""),
+            source_classes=[{"class_name": c.get("class_name", ""), "layer": c.get("layer", ""),
                              "source": c.get("source", "")} for c in plan_item.source_classes],
             status="generated",
         )
         self._repair_objective(art, bb.schema, max_repair, scoped_sigs, bb.offline, log)
+
+        # Completeness policy: a native-product fit never suppresses conversion — the
+        # logic is fully built above; here we only flag it for human review.
+        native_alt = getattr(plan_item, "native_recommendation", "")
+        if native_alt:
+            art.review_flags.append(
+                f"Consider {native_alt} as a better long-term home for this logic "
+                f"(converted in full for completeness).")
+            art.main_class = prepend_review_flag(art.main_class, native_alt, plan_item.rationale)
         return art
+
+    def _build_lwc(self, plan_item, bb, retriever=None) -> Artifact:
+        """Frontend target: translate an Angular component into an LWC bundle
+        (+ optional @AuraEnabled Apex controller)."""
+        from src.generate_lwc import generate_lwc
+        component = plan_item.source_classes[0] if plan_item.source_classes else {}
+        grounding = ""
+        if retriever is not None:
+            grounding = retriever.grounding_block(
+                "LWC lightning web component api wire apex CustomEvent for:each if:true "
+                "getter template data binding accessibility")
+        gen = generate_lwc(
+            {"target_name": plan_item.target_name, "component": component},
+            bb.comprehensions, bb.schema, offline=bb.offline, grounding=grounding)
+        return Artifact(
+            target_name=plan_item.target_name, layer="Component", apex_pattern="Component",
+            lwc_bundle=gen.get("lwc_bundle", {}),
+            apex_controller=gen.get("apex_controller", {}),
+            mapping_notes=gen.get("mapping_notes", ""),
+            sobject_refs=gen.get("sobject_refs", []),
+            source_classes=[{"class_name": component.get("class_name", ""), "layer": "Component",
+                             "source": component.get("source", "")}],
+            status="generated",
+        )
 
     def _repair_objective(self, art, schema, max_repair, sigs, offline, log) -> None:
         for field_name in ("main_class", "test_class"):
@@ -81,6 +117,29 @@ class BuilderAgent:
             return True
         return False
 
+    def rework(self, art, feedback: str, bb, scoped_sigs: list, log=print):
+        """Human-in-the-loop: re-generate an artifact to address a reviewer's feedback.
+        For Apex the feedback goes through the repair loop; for LWC the bundle is
+        regenerated with the feedback as grounding. (Mock exercises the flow; a real
+        provider actually changes the output based on the note.)"""
+        if art.is_lwc:
+            from src.generate_lwc import generate_lwc
+            component = art.source_classes[0] if art.source_classes else {}
+            gen = generate_lwc({"target_name": art.target_name, "component": component},
+                               bb.comprehensions, bb.schema, offline=bb.offline,
+                               grounding="Reviewer feedback (must address): " + feedback)
+            if gen.get("lwc_bundle"):
+                art.lwc_bundle = gen["lwc_bundle"]
+                art.apex_controller = gen.get("apex_controller", art.apex_controller)
+        else:
+            issues = [{"rule": "reviewer_feedback", "message": feedback, "severity": "ERROR"}]
+            repaired = repair(art.main_class, issues, attempt=1, offline=bb.offline,
+                              signatures=scoped_sigs, schema=bb.schema)
+            if repaired and repaired.strip():
+                art.main_class = clean_java_artifacts(repaired)
+        art.status = "reworked"
+        return art
+
     @staticmethod
     def signatures(art) -> list:
         return extract_method_signatures(art.main_class, art.target_name)
@@ -96,7 +155,9 @@ class VerifierAgent:
         all_sigs = []
         for a in bb.artifacts:
             all_sigs += extract_method_signatures(a.main_class, a.target_name)
-        generated = bb.generated_dicts()
+        # LWC bundles are already on disk and deploy as-is; only Apex feeds the
+        # code-healing loop (which rewrites .cls files from these dicts).
+        generated = [g for g in bb.generated_dicts() if g.get("layer") != "Component"]
         result = deploy_and_heal(
             bb.output_dir, generated,
             schema=bb.schema, signatures=all_sigs, offline=bb.offline,

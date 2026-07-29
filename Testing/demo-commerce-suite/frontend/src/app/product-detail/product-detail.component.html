@@ -1,0 +1,24 @@
+<p *ngIf="loading" class="pdp__loading">Loading…</p>
+
+<article class="pdp" *ngIf="!loading && product">
+  <img class="pdp__image" [src]="product.imageUrl" [alt]="product.name" />
+
+  <div class="pdp__info">
+    <h1 class="pdp__name">{{ product.name }}</h1>
+    <p class="pdp__price">{{ product.price | currency: product.currency }}</p>
+    <p class="pdp__desc">{{ product.description }}</p>
+
+    <p class="pdp__stock" *ngIf="product.stockLevel > 0">In stock: {{ product.stockLevel }}</p>
+    <p class="pdp__stock pdp__stock--out" *ngIf="product.stockLevel === 0">Out of stock</p>
+
+    <div class="pdp__qty">
+      <button (click)="decreaseQuantity()" [disabled]="quantity <= 1">−</button>
+      <span>{{ quantity }}</span>
+      <button (click)="increaseQuantity()" [disabled]="quantity >= product.stockLevel">+</button>
+    </div>
+
+    <button class="pdp__add" [disabled]="!canAddToCart" (click)="addToCart()">
+      Add {{ quantity }} to cart
+    </button>
+  </div>
+</article>

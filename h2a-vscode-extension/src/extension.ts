@@ -85,7 +85,10 @@ export function activate(context: vscode.ExtensionContext) {
         let incrementalMode: boolean = extConfig.get<boolean>('incrementalMode') ?? true;
         let customModel: string = extConfig.get<string>('customModel') || '';
         let engine: string = extConfig.get<string>('engine') || 'agentic';
-        let verifyDeploy: boolean = extConfig.get<boolean>('verifyDeploy') ?? false;
+        // Strict: only an explicit boolean true enables org verification. Any other
+        // stored value (undefined, a stray string like "false", null) means OFF, so an
+        // unchecked box can never accidentally deploy to the org.
+        let verifyDeploy: boolean = extConfig.get<boolean>('verifyDeploy') === true;
 
         if (!h2aMvpPath) {
             // Check if there is a bundled h2a-mvp folder in the extension

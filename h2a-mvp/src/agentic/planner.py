@@ -3,17 +3,19 @@ planner.py — the Planner / Architect agent.
 
 Replaces the hard-coded `plan_targets()` mapping with a decision-maker. It still
 derives the *structural* targets deterministically (so target names stay stable
-and testable), then — with a real LLM — annotates each one with the judgment that
-a fixed function can't make:
+and testable), then — with a real LLM — annotates each one:
 
-    Apex   → build it as custom Apex (Selector / Service / Controller / Utility)
-    Native → recommend a Salesforce product instead (CPQ, Flow, Approval Process…)
-    Skip   → don't migrate (dead code, framework glue, etc.)
+    Convert → translate its logic fully to Apex (the default for almost everything).
+              If a native Salesforce product (CPQ, Flow, Approval Process…) might be
+              a better long-term home, the logic is STILL converted and the product
+              is recorded in `native_recommendation` as a review suggestion.
+    Skip    → only for code with no business logic to preserve (pure DTOs, framework
+              glue, provably dead code), always with a justification.
 
-The "Native / Skip" calls are the single most valuable output — knowing what
-*not* to hand-translate is what separates a migration platform from a code
-translator. With `mock`/offline it falls back to "everything is Apex", so the
-pipeline stays deterministic and keyless.
+The guiding principle is COMPLETENESS: never drop business logic just because a
+native product overlaps with it — convert it and flag the suggestion instead.
+With `mock`/offline it falls back to "convert everything as Apex", so the pipeline
+stays deterministic and keyless.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from src.llm import call_structured, _load_config, _get_provider
 
 _LAYER_TO_PATTERN = {
     "DAO": "Selector", "Service": "Service", "Controller": "Controller",
-    "Utility": "Utility",
+    "Utility": "Utility", "Component": "Component",
 }
 
 PLANNER_SCHEMA = {
@@ -37,7 +39,7 @@ PLANNER_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "target_name": {"type": "string"},
-                    "target_kind": {"type": "string", "enum": ["Apex", "Native", "Skip"]},
+                    "target_kind": {"type": "string", "enum": ["Convert", "Skip"]},
                     "rationale": {"type": "string"},
                     "native_recommendation": {"type": "string"},
                 },
@@ -73,20 +75,21 @@ class PlannerAgent:
             self._annotate_with_llm(bb, base)
         else:
             for p in base:
-                p.rationale = "deterministic default (mock/offline: all targets built as Apex)"
+                p.rationale = "deterministic default (mock/offline): converted as Apex"
 
         bb.plan = base
-        n_apex = sum(1 for p in base if p.target_kind == "Apex")
-        n_native = sum(1 for p in base if p.target_kind == "Native")
+        n_convert = sum(1 for p in base if p.target_kind == "Convert")
+        n_flagged = sum(1 for p in base if p.target_kind == "Convert" and p.native_recommendation)
         n_skip = sum(1 for p in base if p.target_kind == "Skip")
         bb.record(self.name, "planned",
-                  f"{len(base)} targets → {n_apex} Apex, {n_native} native-recommended, {n_skip} skipped")
+                  f"{len(base)} targets → {n_convert} converted "
+                  f"({n_flagged} with a native-product review flag), {n_skip} skipped")
         for p in base:
-            if p.target_kind == "Native":
-                bb.ask(self.name, f"{p.target_name}: consider {p.native_recommendation or 'a native Salesforce feature'} "
-                                   f"instead of custom Apex — {p.rationale}")
+            if p.target_kind == "Convert" and p.native_recommendation:
+                bb.ask(self.name, f"{p.target_name}: converted in full; consider "
+                                   f"{p.native_recommendation} as a better long-term home — {p.rationale}")
             elif p.target_kind == "Skip":
-                bb.ask(self.name, f"{p.target_name}: recommended skip — {p.rationale}")
+                bb.ask(self.name, f"{p.target_name}: skipped (no business logic to preserve) — {p.rationale}")
 
     def _annotate_with_llm(self, bb, base: list) -> None:
         config = _load_config()
@@ -99,14 +102,21 @@ class PlannerAgent:
             catalog.append(f"- {p.target_name} (from {snippet}, layer={p.layer}); "
                            f"rules: {', '.join(rules) or 'n/a'}")
         prompt = (
-            "You are the migration architect. For each proposed Salesforce target below, "
-            "decide the BEST home for its logic:\n"
-            "  Apex   = build as custom Apex (default for genuine data-access / service / REST logic)\n"
-            "  Native = a standard Salesforce product fits far better (pricing/promotions → CPQ; "
-            "approvals/workflow → Flow or Approval Process; simple field automation → Flow)\n"
-            "  Skip   = don't migrate (framework glue, dead code, pure DTOs)\n\n"
-            "Prefer Apex unless there is a clear, specific native fit. Give a one-line rationale, "
-            "and for Native, name the product.\n\n"
+            "You are the migration architect. Your PRIMARY DUTY is COMPLETENESS: every piece "
+            "of business logic must be CONVERTED to Apex. Never drop logic just because "
+            "Salesforce ships a product that overlaps with it.\n\n"
+            "For each proposed Salesforce target below, choose:\n"
+            "  Convert = translate its logic fully to Apex. This is the default and applies to "
+            "almost everything — including pricing, promotions, discounts, approvals, tax, "
+            "inventory rules, etc. If a standard Salesforce product (CPQ, Flow, Approval "
+            "Process, OmniStudio…) might be a better long-term home, STILL choose Convert AND "
+            "set native_recommendation to that product's name. We convert the logic now and "
+            "flag that suggestion for the team to evaluate later — we do NOT skip it.\n"
+            "  Skip = ONLY for code that carries no business logic to preserve: pure "
+            "DTOs / getters-setters, framework glue / boilerplate, or provably dead code. "
+            "Every Skip MUST be justified in the rationale.\n\n"
+            "When in doubt, choose Convert. Give a one-line rationale for each; for a "
+            "native_recommendation, name the specific product.\n\n"
             "Targets:\n" + "\n".join(catalog)
         )
         try:
@@ -124,9 +134,9 @@ class PlannerAgent:
         for p in base:
             d = decisions.get(p.target_name)
             if not d:
-                p.rationale = "default: built as Apex (no explicit planner decision)"
+                p.rationale = "default: converted as Apex (no explicit planner decision)"
                 continue
-            kind = d.get("target_kind", "Apex")
-            p.target_kind = kind if kind in ("Apex", "Native", "Skip") else "Apex"
+            kind = d.get("target_kind", "Convert")
+            p.target_kind = kind if kind in ("Convert", "Skip") else "Convert"
             p.rationale = d.get("rationale", "")
             p.native_recommendation = d.get("native_recommendation", "")

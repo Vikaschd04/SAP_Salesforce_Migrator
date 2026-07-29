@@ -1,0 +1,157 @@
+"""
+run_manager.py — drives the existing H2A engine for the web dashboard.
+
+Each migration runs in a background thread. The engine's `on_event` hook feeds
+structured progress events into a per-run event log; the API streams them to the
+browser (SSE) and exposes the resulting Salesforce project for browsing/download.
+
+The engine itself is imported and reused unchanged — this is a thin driver, not a
+second implementation.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import threading
+import time
+import uuid
+import traceback
+from pathlib import Path
+
+# Make the existing engine importable and run with its own root as cwd (so config.yaml
+# / mappings resolve exactly as they do for the CLI and the extension).
+ENGINE_ROOT = Path(__file__).resolve().parents[2] / "h2a-mvp"
+if str(ENGINE_ROOT) not in sys.path:
+    sys.path.insert(0, str(ENGINE_ROOT))
+
+_RUN_LOCK = threading.Lock()   # engine uses process-global cwd + H2A_PROVIDER env → one at a time
+
+
+class Run:
+    def __init__(self, run_id: str, input_dir: str, output_dir: str, provider: str,
+                 engine: str, verify: bool):
+        self.id = run_id
+        self.input_dir = input_dir
+        self.output_dir = output_dir
+        self.provider = provider
+        self.engine = engine
+        self.verify = verify
+        self.status = "queued"          # queued | running | complete | error
+        self.error: str | None = None
+        self.bb = None                  # captured Blackboard (for source↔generated diff)
+        self.started = time.time()
+        self.finished: float | None = None
+        self.events: list[dict] = []
+        self.result: dict = {}          # payload of the run_complete event
+        self._cond = threading.Condition()
+        # Human-in-the-loop gate state
+        self.supervised = False
+        self.awaiting_gate: str | None = None   # name of the open gate, or None
+        self._gate_event = threading.Event()
+        self._gate_decision: dict | None = None
+
+    # ── event log (thread-safe, supports multiple live readers) ──
+    def emit(self, ev: dict) -> None:
+        with self._cond:
+            ev = {**ev, "seq": len(self.events), "ts": round(time.time() - self.started, 2)}
+            self.events.append(ev)
+            if ev.get("type") == "run_complete":
+                self.result = ev
+            self._cond.notify_all()
+
+    def stream(self):
+        """Yield events from the start, then block for new ones until the run ends."""
+        idx = 0
+        while True:
+            with self._cond:
+                while idx >= len(self.events) and self.status in ("queued", "running"):
+                    self._cond.wait(timeout=1.0)
+                new = self.events[idx:]
+                idx = len(self.events)
+                done = self.status not in ("queued", "running")
+            for ev in new:
+                yield ev
+            if done and idx >= len(self.events):
+                break
+
+    def summary(self) -> dict:
+        return {
+            "id": self.id, "status": self.status, "provider": self.provider,
+            "engine": self.engine, "verify": self.verify, "error": self.error,
+            "input_dir": self.input_dir, "output_dir": self.output_dir,
+            "elapsed": round((self.finished or time.time()) - self.started, 2),
+            "result": self.result, "event_count": len(self.events),
+            "supervised": self.supervised, "awaiting_gate": self.awaiting_gate,
+        }
+
+    # ── human-in-the-loop gate (blocks the engine thread until a decision arrives) ──
+    def gate_cb(self, name: str, payload: dict) -> dict:
+        self._gate_event.clear()
+        self._gate_decision = None
+        self.awaiting_gate = name
+        with self._cond:
+            self._cond.notify_all()          # wake summary/stream watchers
+        self._gate_event.wait()              # ← engine pauses here until submit_gate()
+        self.awaiting_gate = None
+        return self._gate_decision or {"action": "approve"}
+
+    def submit_gate(self, decision: dict) -> bool:
+        if self.awaiting_gate is None:
+            return False
+        self._gate_decision = decision or {"action": "approve"}
+        self._gate_event.set()
+        return True
+
+
+_runs: dict[str, Run] = {}
+
+
+def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
+              engine: str = "agentic", verify: bool = False, supervised: bool = False) -> Run:
+    run_id = uuid.uuid4().hex[:12]
+    run = Run(run_id, input_dir, output_dir, provider, engine, verify)
+    run.supervised = supervised
+    _runs[run_id] = run
+
+    def worker():
+        with _RUN_LOCK:
+            run.status = "running"
+            prev_provider = os.environ.get("H2A_PROVIDER")
+            os.environ["H2A_PROVIDER"] = provider
+            try:
+                os.chdir(ENGINE_ROOT)
+                if engine == "linear":
+                    from src.pipeline_driver import run_repo_migration
+                    run.emit({"type": "run_started", "input": input_dir, "note": "linear engine"})
+                    run_repo_migration(input_dir, output_dir, verify=verify or None)
+                    run.emit({"type": "run_complete", "note": "linear run finished"})
+                else:
+                    from src.agentic.orchestrator import run_agentic_migration
+                    run.bb = run_agentic_migration(input_dir, output_dir, verify=verify or None,
+                                                   on_event=run.emit,
+                                                   gate=(run.gate_cb if run.supervised else None))
+                run.status = "complete"
+            except Exception as e:
+                run.error = f"{e}\n{traceback.format_exc()}"
+                run.status = "error"
+                run.emit({"type": "error", "message": str(e)})
+            finally:
+                run.finished = time.time()
+                if prev_provider is None:
+                    os.environ.pop("H2A_PROVIDER", None)
+                else:
+                    os.environ["H2A_PROVIDER"] = prev_provider
+                with run._cond:
+                    run._cond.notify_all()
+
+    threading.Thread(target=worker, daemon=True).start()
+    return run
+
+
+def get_run(run_id: str) -> Run | None:
+    return _runs.get(run_id)
+
+
+def list_runs() -> list[dict]:
+    return [r.summary() for r in sorted(_runs.values(), key=lambda r: r.started, reverse=True)]

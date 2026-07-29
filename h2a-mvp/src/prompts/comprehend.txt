@@ -11,8 +11,16 @@ Layer: {layer}
 Public Methods: {methods}
 Referenced Types: {referenced_types}
 
-Capture: the class purpose (one sentence), its inputs, outputs, side effects
-(mutations, DB writes, external calls), database queries (FlexibleSearch/SQL, as
-short strings), and any encoded business rules (discounts, validations, status
-transitions). Be concise; do not include code snippets. Return the required
-structured JSON.
+Capture:
+- purpose: the class purpose in one sentence.
+- inputs / outputs: what it consumes and produces.
+- side_effects: mutations, DB writes, external/service calls.
+- queries: database queries (FlexibleSearch/SQL) as short strings.
+- business_rules: encoded rules (discounts, validations, status transitions) — one per rule.
+- dependencies: other classes/services/types this class relies on (by name).
+- migration_risks: concrete things that could break or need care when porting to Apex
+  (e.g. "SOQL-in-loop if ported naively", "relies on Spring transaction boundaries",
+  "external HTTP call needs Named Credential", "governor-limit risk on bulk"). Empty if none.
+- complexity: overall porting difficulty — "Low", "Medium", or "High".
+
+Be concise; do not include code snippets. Return the required structured JSON with ALL fields.

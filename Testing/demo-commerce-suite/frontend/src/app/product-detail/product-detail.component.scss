@@ -1,0 +1,37 @@
+.pdp {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  padding: 1.5rem;
+
+  &__image {
+    width: 100%;
+    object-fit: contain;
+  }
+
+  &__price {
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  &__stock--out {
+    color: #b3282d;
+  }
+
+  &__qty {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1rem 0;
+
+    button {
+      width: 2rem;
+      height: 2rem;
+    }
+  }
+
+  &__add:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
