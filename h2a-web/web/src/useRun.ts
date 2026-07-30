@@ -94,6 +94,8 @@ export function useRun() {
           return feed(s, 'Reviewer', `gate ${ev.gate} → ${ev.action}`, 'system');
         case 'run_complete':
           return { ...s, status: 'complete', ledger: ev.ledger || [], ledgerSummary: ev.ledger_summary || {}, decisions: ev.decisions || s.decisions };
+        case 'cancelled':
+          return feed({ ...s, status: 'idle' }, 'system', 'Run stopped', 'system');
         case 'error':
           return feed({ ...s, status: 'error' }, 'Error', ev.message || 'run failed', 'error');
         case 'stream_end':

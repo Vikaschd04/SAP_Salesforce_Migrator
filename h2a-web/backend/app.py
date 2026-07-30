@@ -77,6 +77,17 @@ async def api_gate(run_id: str, decision: dict):
     return {"ok": True}
 
 
+@app.post("/api/runs/{run_id}/cancel")
+async def api_cancel(run_id: str):
+    """Stop a run (including one abandoned at a review gate) so the engine releases the
+    single-run lock and new migrations can start."""
+    run = get_run(run_id)
+    if not run:
+        raise HTTPException(404, "run not found")
+    run.request_cancel()
+    return {"ok": True, "status": run.status}
+
+
 def _resolve_input_path(p: str) -> str:
     path = Path(p).expanduser()
     if not path.is_absolute():

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRun, STAGES } from './useRun';
-import { health, startRun } from './api';
+import { health, startRun, cancelRun } from './api';
 import Detail from './components/Detail';
 import Gate from './components/Gate';
 import Copilot from './components/Copilot';
 
 export default function App() {
-  const { state, begin, closeGate, injectEvents } = useRun();
+  const { state, begin, reset, closeGate, injectEvents } = useRun();
   const [engineUp, setEngineUp] = useState<boolean | null>(null);
   const [theme, setTheme] = useState(localStorage.getItem('h2a-theme') || 'dark');
   const [starting, setStarting] = useState(false);
@@ -40,6 +40,11 @@ export default function App() {
       begin(runId);
     } catch (e: any) { setError(e.message || 'failed to start'); }
     finally { setStarting(false); }
+  };
+
+  const stop = async () => {
+    if (state.runId) await cancelRun(state.runId);
+    reset();   // return the UI to idle so a new migration can be started immediately
   };
 
   const statusText = state.status === 'running' ? `running · ${state.elapsed}` : state.status === 'complete' ? 'complete' : state.status === 'error' ? 'error' : (engineUp === null ? 'connecting…' : engineUp ? 'engine ready' : 'backend offline');
@@ -90,6 +95,7 @@ export default function App() {
           <label className="toggle"><input type="checkbox" checked={verify} onChange={(e) => setVerify(e.target.checked)} /> Verify vs org</label>
         </div>
         <button className="btn primary" disabled={starting || running} onClick={start}>{running ? 'Running…' : '▶ Start migration'}</button>
+        {running && <button className="btn stop" onClick={stop}>■ Stop</button>}
         {error && <span style={{ color: 'var(--danger)', fontSize: 12 }}>{error}</span>}
       </section>
 

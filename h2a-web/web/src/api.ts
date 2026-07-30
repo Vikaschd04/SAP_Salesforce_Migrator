@@ -12,6 +12,10 @@ export function openStream(runId: string, onEvent: (ev: Ev) => void): EventSourc
   return es;
 }
 
+export async function cancelRun(runId: string): Promise<void> {
+  try { await fetch(`/api/runs/${runId}/cancel`, { method: 'POST' }); } catch { /* ignore */ }
+}
+
 export async function submitGate(runId: string, decision: unknown): Promise<void> {
   await fetch(`/api/runs/${runId}/gate`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(decision),

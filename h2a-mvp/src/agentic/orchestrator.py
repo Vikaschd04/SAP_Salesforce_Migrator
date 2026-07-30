@@ -196,12 +196,23 @@ def _build_payload(bb) -> dict:
     } for a in bb.artifacts]}
 
 
+class RunCancelled(Exception):
+    """Raised cooperatively when the caller asks to stop a run mid-flight."""
+
+
 def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = False,
-                          verify: bool | None = None, on_event=None, gate=None):
+                          verify: bool | None = None, on_event=None, gate=None,
+                          should_cancel=None):
     reset_accounting()
     config = _load_config()
     bb = Blackboard(input_dir=input_dir, output_dir=output_dir, offline=offline)
     emit = _make_emitter(on_event)
+
+    def _ck():
+        """Cooperative cancellation checkpoint — stop cleanly between units of work."""
+        if should_cancel is not None and should_cancel():
+            emit("cancelled")
+            raise RunCancelled()
     # Stream each recorded decision live so the dashboard's audit trail builds in real time.
     bb.on_decision = lambda d: emit("decision", agent=d["agent"], action=d["action"], detail=d["detail"])
     emit("run_started", input=input_dir, output=output_dir, offline=offline)
@@ -244,6 +255,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     for cls in bb.all_classes:
         if cls["layer"] == "Model":
             continue
+        _ck()
         model = route_model(config, f"comprehend_{cls['class_name']}")
         u = comprehend_class(cls, offline=offline, model=model)
         bb.comprehensions[cls["class_name"]] = u
@@ -307,6 +319,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     for domain in bb.schedule:
         dep_domains = _transitive_deps(bb.adjacency, domain)
         for item in [p for p in bb.code_plan() if p.domain == domain]:
+            _ck()
             scoped = registry.get_signatures_for_domains(dep_domains)
             # "building" carries the plan context so the reviewer sees WHAT is being
             # built and WHY (pattern, source classes, native-review flag) as it starts.

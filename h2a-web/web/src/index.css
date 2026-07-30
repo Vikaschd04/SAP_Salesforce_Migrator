@@ -140,6 +140,8 @@ a { color: var(--accent); text-decoration: none; }
 .btn.primary:hover { filter: brightness(1.06); }
 .btn.primary:disabled { opacity: 0.5; filter: none; cursor: default; }
 .btn.ghost { background: transparent; }
+.btn.stop { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
+.btn.stop:hover { background: var(--danger); color: #fff; }
 
 /* ---- Pipeline stepper ---- */
 .stepper { display: flex; gap: 10px; padding: 16px 22px; overflow-x: auto; }

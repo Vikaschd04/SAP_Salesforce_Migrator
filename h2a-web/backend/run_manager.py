@@ -37,8 +37,9 @@ class Run:
         self.provider = provider
         self.engine = engine
         self.verify = verify
-        self.status = "queued"          # queued | running | complete | error
+        self.status = "queued"          # queued | running | complete | error | cancelled
         self.error: str | None = None
+        self.cancelled = False          # cooperative-stop flag (checked by the engine)
         self.bb = None                  # captured Blackboard (for source↔generated diff)
         self.started = time.time()
         self.finished: float | None = None
@@ -103,12 +104,36 @@ class Run:
         self._gate_event.set()
         return True
 
+    def request_cancel(self) -> None:
+        """Stop this run cleanly. Sets the cooperative-cancel flag the engine checks,
+        and unblocks it if it's paused at a review gate — so the thread can exit and
+        release the global run lock (otherwise a run abandoned at a gate wedges the UI)."""
+        self.cancelled = True
+        if self.awaiting_gate is not None and not self._gate_event.is_set():
+            self._gate_decision = {"action": "approve"}   # unblock the wait; _ck() then aborts
+            self._gate_event.set()
+        with self._cond:
+            self._cond.notify_all()
+
 
 _runs: dict[str, Run] = {}
 
 
+def cancel_active_runs() -> int:
+    """Stop any run that's still queued/running (e.g. one abandoned at a gate) so the
+    global lock is released and a new migration can start."""
+    n = 0
+    for r in list(_runs.values()):
+        if r.status in ("queued", "running"):
+            r.request_cancel()
+            n += 1
+    return n
+
+
 def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
               engine: str = "agentic", verify: bool = False, supervised: bool = False) -> Run:
+    # Free any prior run still holding the single-run lock before starting a new one.
+    cancel_active_runs()
     run_id = uuid.uuid4().hex[:12]
     run = Run(run_id, input_dir, output_dir, provider, engine, verify)
     run.supervised = supervised
@@ -130,12 +155,17 @@ def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
                     from src.agentic.orchestrator import run_agentic_migration
                     run.bb = run_agentic_migration(input_dir, output_dir, verify=verify or None,
                                                    on_event=run.emit,
-                                                   gate=(run.gate_cb if run.supervised else None))
-                run.status = "complete"
+                                                   gate=(run.gate_cb if run.supervised else None),
+                                                   should_cancel=lambda: run.cancelled)
+                run.status = "cancelled" if run.cancelled else "complete"
             except Exception as e:
-                run.error = f"{e}\n{traceback.format_exc()}"
-                run.status = "error"
-                run.emit({"type": "error", "message": str(e)})
+                if run.cancelled:                 # RunCancelled (or any error after a cancel)
+                    run.status = "cancelled"
+                    run.emit({"type": "cancelled", "message": "run stopped"})
+                else:
+                    run.error = f"{e}\n{traceback.format_exc()}"
+                    run.status = "error"
+                    run.emit({"type": "error", "message": str(e)})
             finally:
                 run.finished = time.time()
                 if prev_provider is None:
