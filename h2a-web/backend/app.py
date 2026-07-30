@@ -88,12 +88,20 @@ async def api_cancel(run_id: str):
     return {"ok": True, "status": run.status}
 
 
+HOSTED = os.environ.get("H2A_HOSTED") == "1"   # set on public deploys (Render)
+
+
 def _resolve_input_path(p: str) -> str:
     path = Path(p).expanduser()
-    if not path.is_absolute():
-        path = (REPO_ROOT / p).resolve()      # allow paths relative to the repo (e.g. Testing/…)
+    path = (REPO_ROOT / p).resolve() if not path.is_absolute() else path.resolve()
     if not path.exists() or not path.is_dir():
         raise HTTPException(400, f"Input path not found or not a directory: {path}")
+    if HOSTED:
+        # On a public deployment, only allow the bundled samples or uploaded zips —
+        # never arbitrary server paths.
+        allowed = (str(REPO_ROOT.resolve()), str(UPLOAD_ROOT.resolve()))
+        if not any(str(path).startswith(a) for a in allowed):
+            raise HTTPException(403, "On the hosted demo, use the sample path or upload a .zip.")
     return str(path)
 
 

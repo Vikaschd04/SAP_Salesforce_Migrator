@@ -1,0 +1,27 @@
+# Keep the build context small + never ship secrets or local build junk.
+.git/
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/venv/
+**/node_modules/
+h2a-web/web/dist/
+h2a-mvp/cache/
+**/.env
+!**/.env.example
+*.vsix
+**/*.log
+.vscode/
+.idea/
+**/.DS_Store
+
+# Not needed in the web image
+h2a-vscode-extension/
+docs/
+*.pptx
+
+# Generated migration outputs (regenerated per run)
+Testing/salesforce_*/
+Testing/out_*/
+Testing/out-*/
+Testing/*.zip

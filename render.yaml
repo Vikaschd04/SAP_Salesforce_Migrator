@@ -1,0 +1,23 @@
+# Render Blueprint — one-click deploy of the H2A Migration Cockpit.
+# In Render: New + → Blueprint → connect this repo → Apply.
+services:
+  - type: web
+    name: h2a-cockpit
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free                 # free instances sleep after ~15 min idle (cold start on next hit)
+    region: oregon
+    healthCheckPath: /api/health
+    autoDeploy: true           # redeploys on every push to the connected branch
+    envVars:
+      - key: H2A_PROVIDER       # keyless, deterministic demo by default (no cost, no abuse)
+        value: mock
+      - key: H2A_HOSTED         # restrict input paths to bundled samples / uploads
+        value: "1"
+      # To enable real AI on the hosted app, add ONE of these in the Render dashboard
+      # (Environment tab) and set H2A_PROVIDER accordingly — note: anyone with the URL
+      # would then spend your credits, so prefer keeping it on mock or adding auth.
+      # - key: ANTHROPIC_API_KEY
+      #   sync: false
+      # - key: OPENROUTER_API_KEY
+      #   sync: false
