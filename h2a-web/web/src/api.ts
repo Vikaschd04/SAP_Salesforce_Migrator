@@ -42,4 +42,9 @@ export async function askCopilot(runId: string, message: string): Promise<{ answ
 export async function health(): Promise<boolean> {
   try { return (await (await fetch('/api/health')).json()).ok === true; } catch { return false; }
 }
+
+export interface ClientConfig { hosted: boolean; default_provider: string; }
+export async function getConfig(): Promise<ClientConfig> {
+  try { return await (await fetch('/api/config')).json(); } catch { return { hosted: false, default_provider: 'mock' }; }
+}
 export function packageUrl(runId: string): string { return `/api/runs/${runId}/package`; }

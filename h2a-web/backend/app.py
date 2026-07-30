@@ -465,6 +465,13 @@ async def health():
     return {"ok": True, "engine_root": str(ENGINE_ROOT)}
 
 
+@app.get("/api/config")
+async def client_config():
+    """UI-facing config: on a hosted deploy the frontend hides the server-path input and
+    offers upload-only, and defaults the provider to what the server is set to."""
+    return {"hosted": HOSTED, "default_provider": os.environ.get("H2A_PROVIDER", "mock")}
+
+
 # ── serve the dashboard ───────────────────────────────────────────────────────
 def _serve_dir() -> Path:
     """Resolved on EACH request (not once at startup) so building web/dist after the
