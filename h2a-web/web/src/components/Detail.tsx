@@ -2,19 +2,22 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import type { Artifact, Comprehension, Decision, LedgerRow, PlanItem } from '../types';
 import { fetchFile, fetchFiles, fetchReport, packageUrl } from '../api';
 import { cxBadge } from './Gate';
+import PipelineFlow from './PipelineFlow';
+import type { StageStatus } from '../types';
 
 const Diff = lazy(() => import('./Diff'));
 
-type Tab = 'plan' | 'understanding' | 'artifacts' | 'diff' | 'files' | 'reports' | 'audit';
+type Tab = 'flow' | 'plan' | 'understanding' | 'artifacts' | 'diff' | 'files' | 'reports' | 'audit';
 
 interface Props {
   runId: string | null; status: string;
+  stages: Record<string, { status: StageStatus; detail?: string }>;
   plan: PlanItem[]; comprehensions: Comprehension[]; artifacts: Artifact[];
   decisions: Decision[]; ledger: LedgerRow[]; ledgerSummary: Record<string, number>;
 }
 
 export default function Detail(p: Props) {
-  const [tab, setTab] = useState<Tab>('plan');
+  const [tab, setTab] = useState<Tab>('flow');
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [files, setFiles] = useState<string[]>([]);
   const [reports, setReports] = useState<string[]>([]);
@@ -40,7 +43,7 @@ export default function Detail(p: Props) {
   };
   const toggle = (name: string) => setOpen((s) => { const n = new Set(s); n.has(name) ? n.delete(name) : n.add(name); return n; });
 
-  const TABS: [Tab, string][] = [['plan', 'Plan'], ['understanding', 'Understanding'], ['artifacts', 'Artifacts'], ['diff', 'Diff'], ['files', 'Files'], ['reports', 'Reports'], ['audit', 'Audit']];
+  const TABS: [Tab, string][] = [['flow', 'Flow'], ['plan', 'Plan'], ['understanding', 'Understanding'], ['artifacts', 'Artifacts'], ['diff', 'Diff'], ['files', 'Files'], ['reports', 'Reports'], ['audit', 'Audit']];
 
   return (
     <section className="panel">
@@ -49,6 +52,8 @@ export default function Detail(p: Props) {
           <button key={id} className={`tab ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
+
+      {tab === 'flow' && <PipelineFlow stages={p.stages} artifacts={p.artifacts} status={p.status} />}
 
       {tab === 'plan' && (
         <div className="tabpanel">

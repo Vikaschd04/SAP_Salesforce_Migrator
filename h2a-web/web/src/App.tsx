@@ -6,7 +6,7 @@ import Gate from './components/Gate';
 import Copilot from './components/Copilot';
 
 export default function App() {
-  const { state, begin, closeGate } = useRun();
+  const { state, begin, closeGate, injectEvents } = useRun();
   const [engineUp, setEngineUp] = useState<boolean | null>(null);
   const [theme, setTheme] = useState(localStorage.getItem('h2a-theme') || 'dark');
   const [starting, setStarting] = useState(false);
@@ -121,12 +121,12 @@ export default function App() {
           </div>
         </section>
 
-        <Detail runId={state.runId} status={state.status} plan={state.plan} comprehensions={state.comprehensions}
+        <Detail runId={state.runId} status={state.status} stages={state.stages} plan={state.plan} comprehensions={state.comprehensions}
           artifacts={state.artifacts} decisions={state.decisions} ledger={state.ledger} ledgerSummary={state.ledgerSummary} />
       </main>
 
       {state.gate && state.runId && <Gate runId={state.runId} gate={state.gate} onClosed={closeGate} />}
-      <Copilot runId={state.runId} open={cpOpen} onClose={() => setCpOpen(false)} />
+      <Copilot runId={state.runId} open={cpOpen} onClose={() => setCpOpen(false)} onEvents={injectEvents} />
     </div>
   );
 }

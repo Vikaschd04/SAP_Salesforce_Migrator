@@ -60,7 +60,7 @@ export function useRun() {
         case 'analyzed':
           return feed(s, 'Analyzer', `${ev.backend_classes} backend classes · ${ev.frontend_components} components · ${ev.objects} objects · ${ev.domains?.length ?? 0} domains`, 'plan');
         case 'comprehend': {
-          const c = ev as Comprehension;
+          const c = ev as unknown as Comprehension;
           const n = c.business_rules?.length ?? 0;
           s = { ...s, comprehensions: [...s.comprehensions, c] };
           return feed(s, 'Comprehender', `${c.cls} (${c.layer})` + (c.purpose ? ' — ' + c.purpose : '') + (n ? ` · ${n} rule${n === 1 ? '' : 's'}` : ''), 'plan');
@@ -73,7 +73,7 @@ export function useRun() {
             const why = ev.native_recommendation ? ` · flag: consider ${ev.native_recommendation}` : '';
             return feed(s, 'Builder', `building ${ev.target_name} as ${ev.apex_pattern || 'Apex'}` + (ev.sources?.length ? ` from ${ev.sources.join(', ')}` : '') + why, 'build');
           }
-          const a = ev as Artifact;
+          const a = ev as unknown as Artifact;
           const others = s.artifacts.filter((x) => x.target_name !== a.target_name);
           s = { ...s, artifacts: [...others, a] };
           const flag = a.review_flags?.length ? ' · flagged' : '';
@@ -113,6 +113,9 @@ export function useRun() {
 
   const reset = useCallback(() => { esRef.current?.close(); setState(initial()); }, []);
   const closeGate = useCallback(() => setState((s) => ({ ...s, gate: null })), []);
+  // Let the Copilot inject events (e.g. a rework artifact) so the feed / Artifacts /
+  // Diff update exactly as they would from the live stream.
+  const injectEvents = useCallback((evs: Ev[]) => { evs.forEach(handle); }, [handle]);
 
-  return { state, begin, reset, closeGate };
+  return { state, begin, reset, closeGate, injectEvents };
 }

@@ -316,9 +316,75 @@ def _copilot_mock_answer(q: str, run) -> str:
             "(Keyless mock Copilot — switch Provider to Anthropic/OpenRouter for full conversational answers.)")
 
 
+_REWORK_KEYWORDS = ("redo", "rework", "regenerate", "rebuild", "re-do", "re-generate",
+                    "change ", "convert ", "make it", "turn it", "refactor", "fix ")
+
+
+def _artifact_done_payload(a) -> dict:
+    """Same shape the orchestrator emits for a finished artifact, so the frontend can
+    inject it and update the feed / Artifacts / Diff exactly as during a live run."""
+    return {
+        "type": "artifact", "target_name": a.target_name, "layer": a.layer,
+        "apex_pattern": a.apex_pattern, "status": a.status, "is_lwc": a.is_lwc,
+        "findings": len(a.critic_findings),
+        "findings_detail": [{"severity": f.get("severity"), "category": f.get("category"),
+                             "message": f.get("message"), "suggestion": f.get("suggestion", "")}
+                            for f in a.critic_findings],
+        "review_flags": list(a.review_flags), "mapping_notes": (a.mapping_notes or "")[:800],
+        "sobject_refs": list(a.sobject_refs or []), "business_rules": list(a.business_rules or [])[:10],
+        "sources": [c.get("class_name") for c in a.source_classes],
+        "lwc_parts": (sorted((a.lwc_bundle or {}).keys()) if a.is_lwc else []),
+        "has_controller": bool(a.apex_controller), "reworked": True,
+    }
+
+
+def _detect_rework(question: str, bb):
+    """If the message is an action ('redo/rework/convert X …'), return the target artifact
+    + the feedback text; else None (it's a question)."""
+    ql = question.lower()
+    if not any(k in ql for k in _REWORK_KEYWORDS):
+        return None
+    for a in bb.artifacts:
+        if a.target_name.lower() in ql:
+            return {"target": a, "feedback": question}
+    return None
+
+
+def _copilot_rework(run, art, feedback: str, provider: str) -> dict:
+    """Actually act: re-run the Builder on one target with the reviewer's instruction,
+    re-review with the Critic, rewrite the output, and return events for the UI."""
+    bb = run.bb
+    from src.agentic.builders import BuilderAgent
+    from src.agentic.critic import CriticAgent
+    from src.generate import _load_mappings, write_outputs
+    prev = os.environ.get("H2A_PROVIDER")
+    os.environ["H2A_PROVIDER"] = provider
+    try:
+        BuilderAgent().rework(art, feedback, bb, [])          # scoped sigs best-effort
+        findings = CriticAgent().review(art, bb.schema, offline=bb.offline)
+        art.status = "accepted" if not any(f.get("severity") == "ERROR" for f in findings) else "needs_review"
+        write_outputs(run.output_dir, bb.generated_dicts(), bb.item_types, _load_mappings())
+    except Exception as e:
+        return {"answer": f"⚠ I couldn't rework {art.target_name}: {e}", "events": []}
+    finally:
+        if prev is None:
+            os.environ.pop("H2A_PROVIDER", None)
+        else:
+            os.environ["H2A_PROVIDER"] = prev
+    bb.record("Copilot", "rework", f"{art.target_name}: {feedback[:80]}")
+    answer = (f"Done — I re-ran the Builder on **{art.target_name}** with your instruction and "
+              f"re-reviewed it with the Critic (status: {art.status}, {len(art.critic_findings)} finding(s)). "
+              "The Artifacts, Diff, and Files tabs now reflect the new version.")
+    events = [
+        {"type": "decision", "agent": "Copilot", "action": "rework", "detail": f"{art.target_name}: {feedback[:80]}"},
+        _artifact_done_payload(art),
+    ]
+    return {"answer": answer, "events": events, "provider": provider}
+
+
 @app.post("/api/runs/{run_id}/copilot")
 async def api_copilot(run_id: str, body: dict):
-    """Migration Copilot — ask questions about the run in natural language."""
+    """Migration Copilot — ask questions, or issue actions ('redo X as a Selector')."""
     run = get_run(run_id)
     if not run:
         raise HTTPException(404, "run not found")
@@ -328,6 +394,13 @@ async def api_copilot(run_id: str, body: dict):
     # Answer with the SAME provider the run used (not the global config default) —
     # after a run finishes H2A_PROVIDER is cleared, so we key off run.provider.
     provider = (run.provider or "mock").lower()
+    # 1. Action? Rework a specific target on command (works in mock + real).
+    bb = getattr(run, "bb", None)
+    if bb is not None:
+        action = _detect_rework(question, bb)
+        if action:
+            return _copilot_rework(run, action["target"], action["feedback"], provider)
+    # 2. Otherwise answer the question.
     if provider == "mock":
         return {"answer": _copilot_mock_answer(question, run), "provider": "mock"}
     from src.llm import call_llm   # engine on sys.path via run_manager

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { askCopilot } from '../api';
+import type { Ev } from '../types';
 
 interface Msg { role: 'user' | 'bot'; text: string; }
 
@@ -7,11 +8,11 @@ const SUGGESTIONS = [
   'Give me an overview',
   'What migration risks did you find?',
   'What was skipped and why?',
-  'Any Critic findings to review?',
-  'Which classes were flagged for CPQ?',
+  'Rework OrderService to use an fflib Selector',
 ];
 
-export default function Copilot({ runId, open, onClose }: { runId: string | null; open: boolean; onClose: () => void }) {
+export default function Copilot({ runId, open, onClose, onEvents }:
+  { runId: string | null; open: boolean; onClose: () => void; onEvents: (evs: Ev[]) => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -23,7 +24,11 @@ export default function Copilot({ runId, open, onClose }: { runId: string | null
     if (!text.trim() || !runId || busy) return;
     setMsgs((m) => [...m, { role: 'user', text }]);
     setInput(''); setBusy(true);
-    try { const a = await askCopilot(runId, text); setMsgs((m) => [...m, { role: 'bot', text: a }]); }
+    try {
+      const res = await askCopilot(runId, text);
+      setMsgs((m) => [...m, { role: 'bot', text: res.answer }]);
+      if (res.events?.length) onEvents(res.events);   // e.g. a rework updates Artifacts/Diff/feed
+    }
     catch (e: any) { setMsgs((m) => [...m, { role: 'bot', text: '⚠ ' + (e.message || 'error') }]); }
     finally { setBusy(false); }
   };

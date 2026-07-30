@@ -295,6 +295,28 @@ td code, .mono-cell { font-family: var(--mono); font-size: 11.5px; }
 textarea { width: 100%; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px; font-family: var(--sans); font-size: 12.5px; resize: vertical; }
 textarea:focus { outline: none; border-color: var(--accent); }
 
+/* ---- Pipeline flow tab ---- */
+.flow-ribbon { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-bottom: 18px; }
+.flow-stage { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-faint); font-weight: 600; }
+.flow-stage .fs-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); flex: 0 0 auto; }
+.flow-stage .fs-conn { width: 22px; height: 2px; background: var(--border); margin: 0 4px; }
+.flow-stage .fs-conn.done { background: var(--good); }
+.flow-stage.active { color: var(--accent); }
+.flow-stage.active .fs-dot { background: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); animation: pulse 1.5s infinite; }
+.flow-stage.done { color: var(--good); }
+.flow-stage.done .fs-dot { background: var(--good); }
+.flow-legend { display: flex; align-items: center; gap: 16px; font-size: 11.5px; color: var(--text-dim); margin-bottom: 8px; }
+.flow-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+.flow-graph { display: block; max-height: 56vh; }
+.flow-hub { fill: var(--panel-2); stroke: var(--accent-2); stroke-width: 1.5; }
+.flow-hub.live { animation: hubpulse 1.8s infinite; }
+@keyframes hubpulse { 0%,100% { stroke-opacity: .5; } 50% { stroke-opacity: 1; filter: drop-shadow(0 0 6px var(--accent-glow)); } }
+.flow-hub-t { fill: var(--text-dim); font-size: 9px; font-weight: 700; font-family: var(--sans); }
+.flow-node-t { fill: var(--text); font-size: 11px; font-family: var(--mono); }
+.flow-node-tag { fill: var(--text-faint); }
+.flow-edge.live { stroke-dasharray: 5 5; animation: dashflow 0.8s linear infinite; }
+@keyframes dashflow { to { stroke-dashoffset: -20; } }
+
 /* ---- Copilot drawer ---- */
 .copilot {
   position: fixed; top: 0; right: 0; bottom: 0; width: 380px; max-width: 92vw; z-index: 50;

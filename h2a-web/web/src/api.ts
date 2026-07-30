@@ -27,12 +27,12 @@ export async function fetchFile(runId: string, path: string): Promise<string> {
 export async function fetchReport(runId: string, name: string): Promise<{ html: string; raw: string }> {
   return (await fetch(`/api/runs/${runId}/report?name=${encodeURIComponent(name)}`)).json();
 }
-export async function askCopilot(runId: string, message: string): Promise<string> {
+export async function askCopilot(runId: string, message: string): Promise<{ answer: string; events?: Ev[] }> {
   const res = await fetch(`/api/runs/${runId}/copilot`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }),
   });
   if (!res.ok) throw new Error(await res.text());
-  return (await res.json()).answer as string;
+  return res.json();
 }
 
 export async function health(): Promise<boolean> {
