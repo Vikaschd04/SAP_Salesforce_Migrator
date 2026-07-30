@@ -457,6 +457,33 @@ async def health():
     return {"ok": True, "engine_root": str(ENGINE_ROOT)}
 
 
-# ── serve the dashboard (static, no build step) ───────────────────────────────
-if FRONTEND_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+# ── serve the dashboard ───────────────────────────────────────────────────────
+def _serve_dir() -> Path:
+    """Resolved on EACH request (not once at startup) so building web/dist after the
+    server is already running is picked up without a restart, and it never gets stuck
+    serving the old/legacy UI."""
+    return WEB_DIST if WEB_DIST.exists() else LEGACY_FRONTEND
+
+
+@app.get("/{full_path:path}")
+async def spa(full_path: str):
+    if full_path.startswith("api/") or full_path.startswith("api"):
+        raise HTTPException(404, "unknown api route")
+    root = _serve_dir().resolve()
+    if full_path:
+        target = (root / full_path).resolve()
+        if str(target).startswith(str(root)) and target.is_file():
+            # content-hashed assets can be cached hard; anything else must revalidate
+            cache = ("public, max-age=31536000, immutable"
+                     if full_path.startswith("assets/") else "no-cache")
+            return FileResponse(target, headers={"Cache-Control": cache})
+    index = root / "index.html"
+    if index.is_file():
+        # never cache index.html → a fresh `npm run build` shows up on the next reload
+        return FileResponse(index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    raise HTTPException(404, "frontend not built — run: cd h2a-web/web && npm run build")
+
+
+_boot = _serve_dir()
+print(f"[h2a-web] serving frontend from {_boot} "
+      f"({'React cockpit' if _boot == WEB_DIST else 'legacy fallback — web/dist missing, run npm run build'})")
