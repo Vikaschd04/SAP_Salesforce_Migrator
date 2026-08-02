@@ -61,6 +61,103 @@ def _augment_domains_and_schedule(bb) -> None:
             bb.schedule.append(dom)
 
 
+_TREE_SKIP = {".git", "node_modules", "target", "build", "dist", "__pycache__",
+              ".venv", "venv", ".idea", ".vscode", ".pytest_cache"}
+_TREE_MAX = 1200
+
+
+def _file_tree(root: str) -> list:
+    """Every source file the scan actually saw — the reviewer's map of the repository.
+    Bounded and filtered so a huge repo can't blow up the payload."""
+    out, rp = [], Path(root)
+    try:
+        paths = sorted(rp.rglob("*"))
+    except Exception:
+        return out
+    for p in paths:
+        if len(out) >= _TREE_MAX:
+            break
+        if any(part in _TREE_SKIP for part in p.parts):
+            continue
+        if p.is_file():
+            try:
+                out.append({"path": str(p.relative_to(rp)), "bytes": p.stat().st_size})
+            except Exception:
+                continue
+    return out
+
+
+def _discovery_payload(bb) -> dict:
+    """Everything the analysis stage learned, shaped for human review BEFORE any LLM
+    work happens: the file tree, every class with its methods/fields/dependencies, the
+    domain dependency graph, and the SObject schema derived from items.xml."""
+    dom_of = {}
+    for d, lst in (bb.domains or {}).items():
+        for c in lst:
+            dom_of[c.get("class_name")] = d
+
+    classes = []
+    for c in bb.all_classes:
+        src = c.get("source") or ""
+        raw_methods = c.get("methods") or []
+        classes.append({
+            "name": c.get("class_name", ""),
+            "layer": c.get("layer", ""),
+            "file": c.get("file", ""),
+            "domain": dom_of.get(c.get("class_name"), ""),
+            "loc": (src.count("\n") + 1) if src else 0,
+            "method_count": len(raw_methods),
+            "methods": [{
+                "name": m.get("name", ""),
+                "returns": m.get("return_type", ""),
+                "params": [f"{p.get('type', '')} {p.get('name', '')}".strip()
+                           for p in (m.get("parameters") or [])],
+            } for m in raw_methods[:25]],
+            "fields": [(f.get("name", "") if isinstance(f, dict) else str(f))
+                       for f in (c.get("fields") or [])][:25],
+            "refs": list(c.get("referenced_types") or [])[:20],
+        })
+
+    schema = []
+    for obj, meta in (bb.schema or {}).items():
+        meta = meta or {}
+        flds = meta.get("fields", {}) or {}
+        schema.append({
+            "object": obj,
+            "code": meta.get("code", ""),
+            "field_count": len(flds),
+            "fields": [{"name": k, "type": v} for k, v in list(flds.items())[:50]],
+            "required": sorted(meta.get("required", []) or [])[:25],
+            "picklists": {k: list(v)[:12] for k, v in list((meta.get("picklists") or {}).items())[:12]},
+        })
+
+    layers = {}
+    for c in classes:
+        layers[c["layer"]] = layers.get(c["layer"], 0) + 1
+
+    tree = _file_tree(bb.input_dir)
+    edges = [{"from": a, "to": b} for a, deps in (bb.adjacency or {}).items() for b in deps]
+
+    return {
+        "summary": {
+            "files_scanned": len(tree),
+            "classes": len([c for c in classes if c["layer"] != "Component"]),
+            "components": len([c for c in classes if c["layer"] == "Component"]),
+            "objects": len(schema),
+            "domains": len(bb.domains or {}),
+            "total_loc": sum(c["loc"] for c in classes),
+        },
+        "tree": tree,
+        "classes": classes,
+        "layers": layers,
+        "domains": {d: [c.get("class_name") for c in lst] for d, lst in (bb.domains or {}).items()},
+        "edges": edges,
+        "schedule": list(bb.schedule or []),
+        "schema": schema,
+        "skipped": list(bb.frontend_skipped or []),
+    }
+
+
 def _transitive_deps(adjacency: dict, domain: str) -> set:
     seen, stack = set(), list(adjacency.get(domain, []))
     while stack:
@@ -248,6 +345,15 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
          objects=len(bb.schema), backend_classes=len(bb.all_classes) - n_fe, frontend_components=n_fe,
          files=[{"class_name": c.get("class_name"), "layer": c.get("layer"), "file": c.get("file", "")}
                 for c in bb.all_classes])
+
+    # ── Discovery: publish the full understanding of the repository, then (supervised)
+    #    let the reviewer inspect and approve it BEFORE any LLM work / cost begins. ──
+    discovery = _discovery_payload(bb)
+    emit("discovery", **discovery)
+    if gate is not None:
+        _run_gate(gate, emit, "discovery", discovery)
+        bb.record("Reviewer", "discovery_gate", "repository analysis reviewed and accepted")
+        _ck()
 
     # ── Comprehend (routed to the cheap tier) ──
     print("  --- Comprehend ---")

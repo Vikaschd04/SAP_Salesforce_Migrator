@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { GateState } from '../useRun';
 import { submitGate } from '../api';
+import Discovery from './Discovery';
 
 export function cxBadge(cx?: string) {
   if (!cx) return null;
@@ -19,17 +20,25 @@ export default function Gate({ runId, gate, onClosed }: { runId: string; gate: G
 
   return (
     <div className="overlay">
-      <div className="gate-card">
+      <div className={`gate-card ${gate.gate === 'discovery' ? 'wide' : ''}`}>
         <div className="gate-head">
           <div>
             <span className="gate-pill">⏸ Review gate</span>
-            <h2>{gate.gate === 'plan' ? 'Approve the migration plan' : 'Review the generated code'}</h2>
+            <h2>{gate.gate === 'discovery' ? 'Review what the AI found in your codebase'
+              : gate.gate === 'plan' ? 'Approve the migration plan' : 'Review the generated code'}</h2>
           </div>
           <span className="mono faint">run {runId}</span>
         </div>
 
         <div className="gate-body">
-          {gate.gate === 'plan' ? (
+          {gate.gate === 'discovery' ? (
+            <>
+              <p className="gate-note">This is the AI's complete understanding of your repository — every file it
+                scanned, the architecture and dependencies it inferred, each class with its methods, and the data
+                model it derived. <b>Nothing has been sent to an LLM yet.</b> Review it, then approve to begin.</p>
+              <Discovery d={gate.discovery} />
+            </>
+          ) : gate.gate === 'plan' ? (
             <>
               <p className="gate-note">Review what each target does and its migration risk, then choose <b>Convert</b> or <b>Skip</b>. Flagged items (e.g. “consider CPQ”) are still converted — the flag is just a review note.</p>
               {(gate.items || []).map((p) => {
@@ -95,7 +104,11 @@ export default function Gate({ runId, gate, onClosed }: { runId: string; gate: G
         </div>
 
         <div className="gate-actions">
-          {gate.gate === 'plan' ? (
+          {gate.gate === 'discovery' ? (
+            <button className="btn primary" disabled={busy} onClick={() => send({ action: 'approve' })}>
+              Looks right — continue ▶
+            </button>
+          ) : gate.gate === 'plan' ? (
             <button className="btn primary" disabled={busy} onClick={() => {
               const ov: Record<string, { decision: string }> = {};
               (gate.items || []).forEach((p) => {

@@ -3,17 +3,19 @@ import type { Artifact, Comprehension, Decision, LedgerRow, PlanItem } from '../
 import { fetchFile, fetchFiles, fetchReport, packageUrl } from '../api';
 import { cxBadge } from './Gate';
 import PipelineFlow from './PipelineFlow';
+import Discovery from './Discovery';
 import type { StageStatus } from '../types';
 
 const Diff = lazy(() => import('./Diff'));
 
-type Tab = 'flow' | 'plan' | 'understanding' | 'artifacts' | 'diff' | 'files' | 'reports' | 'audit';
+type Tab = 'flow' | 'discovery' | 'plan' | 'understanding' | 'artifacts' | 'diff' | 'files' | 'reports' | 'audit';
 
 interface Props {
   runId: string | null; status: string;
   stages: Record<string, { status: StageStatus; detail?: string }>;
   plan: PlanItem[]; comprehensions: Comprehension[]; artifacts: Artifact[];
   decisions: Decision[]; ledger: LedgerRow[]; ledgerSummary: Record<string, number>;
+  discovery: any | null;
 }
 
 export default function Detail(p: Props) {
@@ -43,7 +45,7 @@ export default function Detail(p: Props) {
   };
   const toggle = (name: string) => setOpen((s) => { const n = new Set(s); n.has(name) ? n.delete(name) : n.add(name); return n; });
 
-  const TABS: [Tab, string][] = [['flow', 'Flow'], ['plan', 'Plan'], ['understanding', 'Understanding'], ['artifacts', 'Artifacts'], ['diff', 'Diff'], ['files', 'Files'], ['reports', 'Reports'], ['audit', 'Audit']];
+  const TABS: [Tab, string][] = [['flow', 'Flow'], ['discovery', 'Discovery'], ['plan', 'Plan'], ['understanding', 'Understanding'], ['artifacts', 'Artifacts'], ['diff', 'Diff'], ['files', 'Files'], ['reports', 'Reports'], ['audit', 'Audit']];
 
   return (
     <section className="panel">
@@ -54,6 +56,13 @@ export default function Detail(p: Props) {
       </div>
 
       {tab === 'flow' && <PipelineFlow stages={p.stages} artifacts={p.artifacts} status={p.status} />}
+
+      {tab === 'discovery' && (
+        <div className="tabpanel">
+          {p.discovery ? <Discovery d={p.discovery} />
+            : <p className="empty">The repository scan — file tree, architecture, every class and the data model — appears here as soon as analysis completes.</p>}
+        </div>
+      )}
 
       {tab === 'plan' && (
         <div className="tabpanel">

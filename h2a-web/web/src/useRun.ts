@@ -12,7 +12,7 @@ export const STAGES = [
 ] as const;
 
 export interface FeedItem { id: number; ts: string; agent: string; msg: string; kind: string; }
-export interface GateState { gate: 'plan' | 'build'; items?: PlanItem[]; artifacts?: any[]; }
+export interface GateState { gate: 'discovery' | 'plan' | 'build'; items?: PlanItem[]; artifacts?: any[]; discovery?: any; }
 
 export interface RunState {
   runId: string | null;
@@ -27,11 +27,13 @@ export interface RunState {
   ledger: LedgerRow[];
   ledgerSummary: Record<string, number>;
   gate: GateState | null;
+  discovery: any | null;
 }
 
 const initial = (): RunState => ({
   runId: null, status: 'idle', elapsed: '', stages: {}, feed: [], plan: [],
   comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, gate: null,
+  discovery: null,
 });
 
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -87,8 +89,14 @@ export function useRun() {
         }
         case 'decision':
           return { ...s, decisions: [...s.decisions, { agent: ev.agent, action: ev.action, detail: ev.detail }] };
+        case 'discovery': {
+          const sum = ev.summary || {};
+          s = { ...s, discovery: ev };
+          return feed(s, 'Scanner', `mapped ${sum.files_scanned ?? 0} files · ${sum.classes ?? 0} classes · `
+            + `${sum.components ?? 0} components · ${sum.objects ?? 0} data objects across ${sum.domains ?? 0} domains`, 'plan');
+        }
         case 'gate_open':
-          return { ...s, gate: { gate: ev.gate, items: ev.items, artifacts: ev.artifacts } };
+          return { ...s, gate: { gate: ev.gate, items: ev.items, artifacts: ev.artifacts, discovery: ev } };
         case 'gate_closed':
           s = { ...s, gate: null };
           return feed(s, 'Reviewer', `gate ${ev.gate} → ${ev.action}`, 'system');
