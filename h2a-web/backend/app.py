@@ -153,6 +153,13 @@ async def api_stream(run_id: str):
 
     def gen():
         for ev in run.stream():
+            if ev is None:
+                # SSE comment line: per spec, invisible to EventSource/onmessage — its
+                # only job is to put bytes on the wire so idle proxies/load balancers
+                # (common on corporate networks) don't kill the connection while a
+                # supervised run sits quiet at a review gate.
+                yield ": keep-alive\n\n"
+                continue
             yield f"data: {json.dumps(ev)}\n\n"
         yield f"data: {json.dumps({'type': 'stream_end', 'status': run.status})}\n\n"
 

@@ -61,18 +61,31 @@ class Run:
                 self.result = ev
             self._cond.notify_all()
 
+    _HEARTBEAT_SECONDS = 10   # < typical corporate-proxy/load-balancer idle timeout (~15-30s)
+
     def stream(self):
-        """Yield events from the start, then block for new ones until the run ends."""
+        """Yield events from the start, then block for new ones until the run ends.
+
+        Yields None during a heartbeat tick — a supervised run can sit silent at a
+        review gate for minutes with zero new events, and a fully idle SSE connection
+        gets killed by most corporate proxies/load balancers within ~15-30s (they
+        assume it's dead). The caller (api_stream) turns a None into an SSE comment
+        line so the connection keeps producing bytes and never looks idle, without
+        the frontend needing to know or care."""
         idx = 0
         while True:
             with self._cond:
                 while idx >= len(self.events) and self.status in ("queued", "running"):
-                    self._cond.wait(timeout=1.0)
+                    if not self._cond.wait(timeout=self._HEARTBEAT_SECONDS):
+                        break   # timed out with nothing new — heartbeat, then re-wait
                 new = self.events[idx:]
                 idx = len(self.events)
                 done = self.status not in ("queued", "running")
-            for ev in new:
-                yield ev
+            if new:
+                for ev in new:
+                    yield ev
+            elif not done:
+                yield None
             if done and idx >= len(self.events):
                 break
 
