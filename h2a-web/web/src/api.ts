@@ -6,10 +6,50 @@ export async function startRun(form: FormData): Promise<string> {
   return (await res.json()).run_id as string;
 }
 
-export function openStream(runId: string, onEvent: (ev: Ev) => void): EventSource {
-  const es = new EventSource(`/api/runs/${runId}/stream`);
-  es.onmessage = (m) => { try { onEvent(JSON.parse(m.data)); } catch { /* ignore */ } };
-  return es;
+/**
+ * Live run updates via short-poll — NOT EventSource/SSE.
+ *
+ * SSE needs one long-lived HTTP connection held open for the whole run. On a locked-
+ * down corporate network, proxies/security gateways routinely kill an idle OR simply
+ * long-running streaming connection outright (some cap total duration regardless of
+ * activity; some fully buffer text/event-stream and never flush mid-response) — and a
+ * supervised run can sit quiet at a review gate for minutes waiting on a human, which
+ * is exactly when this breaks. Polling only ever makes short, ordinary GET requests —
+ * indistinguishable from any other API call — so it keeps working on networks where a
+ * persistent stream doesn't survive. The cost (one small GET every ~1.2s) is a good
+ * trade for reliability on the enterprise networks this tool actually runs on.
+ *
+ * Returns a stop() function — call it to cancel polling (mirrors EventSource.close()).
+ */
+export function openStream(runId: string, onEvent: (ev: Ev) => void, intervalMs = 1200): () => void {
+  let stopped = false;
+  let seen = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const tick = async () => {
+    if (stopped) return;
+    try {
+      const res = await fetch(`/api/runs/${runId}`);
+      if (res.ok) {
+        const data = await res.json();
+        const events: Ev[] = data.events || [];
+        for (; seen < events.length; seen++) onEvent(events[seen]);
+        const status = data.status;
+        if (status && status !== 'queued' && status !== 'running') {
+          onEvent({ type: 'stream_end', status });
+          stopped = true;
+          return;
+        }
+      }
+      // non-OK response (e.g. a transient proxy hiccup) — just retry next tick
+    } catch {
+      // network hiccup — retry next tick rather than giving up
+    }
+    if (!stopped) timer = setTimeout(tick, intervalMs);
+  };
+  tick();
+
+  return () => { stopped = true; if (timer) clearTimeout(timer); };
 }
 
 export async function cancelRun(runId: string): Promise<void> {

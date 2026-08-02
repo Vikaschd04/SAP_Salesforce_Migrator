@@ -38,7 +38,7 @@ const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 export function useRun() {
   const [state, setState] = useState<RunState>(initial);
-  const esRef = useRef<EventSource | null>(null);
+  const stopRef = useRef<(() => void) | null>(null);   // cancels the poller (see openStream)
   const feedId = useRef(0);
   const tsRef = useRef('');
 
@@ -107,13 +107,13 @@ export function useRun() {
   }, []);
 
   const begin = useCallback((runId: string) => {
-    esRef.current?.close();
+    stopRef.current?.();
     feedId.current = 0; tsRef.current = '';
     setState({ ...initial(), runId, status: 'running' });
-    esRef.current = openStream(runId, handle);
+    stopRef.current = openStream(runId, handle);
   }, [handle]);
 
-  const reset = useCallback(() => { esRef.current?.close(); setState(initial()); }, []);
+  const reset = useCallback(() => { stopRef.current?.(); setState(initial()); }, []);
   const closeGate = useCallback(() => setState((s) => ({ ...s, gate: null })), []);
   // Let the Copilot inject events (e.g. a rework artifact) so the feed / Artifacts /
   // Diff update exactly as they would from the live stream.
