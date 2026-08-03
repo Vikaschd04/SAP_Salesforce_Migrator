@@ -29,8 +29,13 @@ import hashlib
 import json
 import os
 import re
+import threading
 from pathlib import Path
 from typing import Any
+
+# Guards shared mutable state so the agentic orchestrator can run stages concurrently:
+# token accounting (read-modify-write) and lazy client construction.
+_STATE_LOCK = threading.Lock()
 
 import yaml
 
@@ -68,12 +73,15 @@ def reset_accounting():
 
 def _record(provider: str, prompt_tokens: int, completion_tokens: int,
             cache_read: int = 0, cache_write: int = 0):
-    _accounting["requests"] += 1
-    _accounting["prompt_tokens"] += prompt_tokens
-    _accounting["completion_tokens"] += completion_tokens
-    _accounting["cache_read_tokens"] += cache_read
-    _accounting["cache_write_tokens"] += cache_write
-    _accounting["providers"][provider] = _accounting["providers"].get(provider, 0) + 1
+    # Read-modify-write on shared counters — must be atomic when stages run concurrently,
+    # or the reported request/token totals silently undercount.
+    with _STATE_LOCK:
+        _accounting["requests"] += 1
+        _accounting["prompt_tokens"] += prompt_tokens
+        _accounting["completion_tokens"] += completion_tokens
+        _accounting["cache_read_tokens"] += cache_read
+        _accounting["cache_write_tokens"] += cache_write
+        _accounting["providers"][provider] = _accounting["providers"].get(provider, 0) + 1
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -149,8 +157,19 @@ def _read_cache(cache_dir: Path, key: str) -> dict | None:
 
 
 def _write_cache(cache_dir: Path, key: str, data: dict):
+    # Atomic: write to a unique temp file then rename, so a concurrent reader never
+    # sees a half-written cache entry (and two writers can't interleave content).
     cache_dir.mkdir(parents=True, exist_ok=True)
-    (cache_dir / f"{key}.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+    final = cache_dir / f"{key}.json"
+    tmp = cache_dir / f".{key}.{os.getpid()}.{threading.get_ident()}.tmp"
+    try:
+        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp, final)          # atomic on POSIX and Windows
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 # ── Anthropic backend ─────────────────────────────────────────────────────────
@@ -159,18 +178,23 @@ _client = None
 
 
 def _anthropic_client(api_key: str):
+    """Lazily build (and reuse) the SDK client. Double-checked locking so concurrent
+    stages share one client instead of racing to construct several."""
     global _client
-    if _client is None:
-        import anthropic  # imported lazily so `mock` runs need no SDK/network
-        # Optional Anthropic-compatible gateway (self-hosted proxy, LiteLLM,
-        # corporate gateway, etc.) via ANTHROPIC_BASE_URL. NOTE: a third-party
-        # gateway sees all prompts/source you send and may override the model or
-        # inject its own context — only point this at an endpoint you trust.
-        base_url = _get_api_key("ANTHROPIC_BASE_URL")
-        if base_url:
-            _client = anthropic.Anthropic(api_key=api_key, base_url=base_url)
-        else:
-            _client = anthropic.Anthropic(api_key=api_key)
+    if _client is not None:
+        return _client
+    with _STATE_LOCK:
+        if _client is None:
+            import anthropic  # imported lazily so `mock` runs need no SDK/network
+            # Optional Anthropic-compatible gateway (self-hosted proxy, LiteLLM,
+            # corporate gateway, etc.) via ANTHROPIC_BASE_URL. NOTE: a third-party
+            # gateway sees all prompts/source you send and may override the model or
+            # inject its own context — only point this at an endpoint you trust.
+            base_url = _get_api_key("ANTHROPIC_BASE_URL")
+            if base_url:
+                _client = anthropic.Anthropic(api_key=api_key, base_url=base_url)
+            else:
+                _client = anthropic.Anthropic(api_key=api_key)
     return _client
 
 
@@ -235,9 +259,12 @@ _or_client = None
 
 def _openrouter_client(api_key: str, base_url: str):
     global _or_client
-    if _or_client is None:
-        from openai import OpenAI  # lazy — only needed for provider=openrouter
-        _or_client = OpenAI(base_url=base_url, api_key=api_key)
+    if _or_client is not None:
+        return _or_client
+    with _STATE_LOCK:                        # double-checked, as above
+        if _or_client is None:
+            from openai import OpenAI  # lazy — only needed for provider=openrouter
+            _or_client = OpenAI(base_url=base_url, api_key=api_key)
     return _or_client
 
 

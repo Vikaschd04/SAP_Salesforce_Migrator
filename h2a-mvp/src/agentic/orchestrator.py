@@ -15,6 +15,8 @@ Planner and Critic degrade to deterministic behavior and the whole run is keyles
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from src.repo_analyzer import (get_translation_schedule, build_dependency_graph,
@@ -156,6 +158,51 @@ def _discovery_payload(bb) -> dict:
         "schema": schema,
         "skipped": list(bb.frontend_skipped or []),
     }
+
+
+def _concurrency(config: dict) -> int:
+    """How many LLM-bound units of work run at once. H2A_CONCURRENCY wins (ops override),
+    then config `concurrency`, default 8. `1` restores fully-sequential behavior."""
+    raw = os.environ.get("H2A_CONCURRENCY") or (config or {}).get("concurrency") or 8
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = 8
+    return max(1, min(n, 32))
+
+
+def _map_parallel(fn, items: list, workers: int) -> list:
+    """Run fn over items, returning results in the SAME order as `items` regardless of
+    completion order — so downstream merging stays deterministic and a parallel run
+    produces byte-identical output to a sequential one. Falls back to a plain loop at
+    workers<=1 or a single item."""
+    if workers <= 1 or len(items) <= 1:
+        return [fn(x) for x in items]
+    with ThreadPoolExecutor(max_workers=min(workers, len(items))) as pool:
+        return list(pool.map(fn, items))
+
+
+def _domain_levels(schedule: list, adjacency: dict) -> list:
+    """Group domains into dependency *wavefronts*: every domain in a level is mutually
+    independent (if A depended on B they'd be at different depths), so a whole level can
+    be built concurrently while cross-level ordering is still respected."""
+    known, memo = set(schedule or []), {}
+
+    def depth(d: str, stack: set) -> int:
+        if d in memo:
+            return memo[d]
+        if d in stack:          # dependency cycle — treat as a root so we still progress
+            return 0
+        stack.add(d)
+        deps = [x for x in (adjacency.get(d) or []) if x in known and x != d]
+        memo[d] = 0 if not deps else 1 + max(depth(x, stack) for x in deps)
+        stack.discard(d)
+        return memo[d]
+
+    buckets: dict[int, list] = {}
+    for d in (schedule or []):
+        buckets.setdefault(depth(d, set()), []).append(d)
+    return [buckets[k] for k in sorted(buckets)]
 
 
 def _transitive_deps(adjacency: dict, domain: str) -> set:
@@ -358,12 +405,19 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # ── Comprehend (routed to the cheap tier) ──
     print("  --- Comprehend ---")
     emit("stage", name="comprehend", status="start")
-    for cls in bb.all_classes:
-        if cls["layer"] == "Model":
-            continue
-        _ck()
-        model = route_model(config, f"comprehend_{cls['class_name']}")
-        u = comprehend_class(cls, offline=offline, model=model)
+    # Comprehension is embarrassingly parallel — each class is analyzed independently,
+    # so this is bounded-pool concurrent (see _concurrency). Results are merged in input
+    # order on this thread, keeping the outcome identical to a sequential run.
+    _ck()
+    _to_comprehend = [c for c in bb.all_classes if c.get("layer") != "Model"]
+    conc = _concurrency(config)
+
+    def _comprehend_one(cls):
+        return comprehend_class(cls, offline=offline,
+                                model=route_model(config, f"comprehend_{cls['class_name']}"))
+
+    _results = _map_parallel(_comprehend_one, _to_comprehend, conc)
+    for cls, u in zip(_to_comprehend, _results):
         bb.comprehensions[cls["class_name"]] = u
         # Surface what the agent actually understood so the reviewer can see the AI's
         # reading of each class — not just that it was processed.
@@ -422,21 +476,41 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                   f"{retriever.n_chunks} chunks from bundled Salesforce docs (lexical RAG)")
         print(f"    · RAG grounding on ({retriever.n_chunks} doc chunks)")
 
-    for domain in bb.schedule:
-        dep_domains = _transitive_deps(bb.adjacency, domain)
-        for item in [p for p in bb.code_plan() if p.domain == domain]:
-            _ck()
-            scoped = registry.get_signatures_for_domains(dep_domains)
+    # Build runs as dependency *wavefronts*: domains at the same depth are mutually
+    # independent, so every target in a level is built+reviewed concurrently, while
+    # cross-level ordering (signatures from dependencies) is still guaranteed.
+    levels = _domain_levels(bb.schedule, bb.adjacency)
+    if conc > 1:
+        print(f"    · concurrency {conc} over {len(levels)} dependency wavefront(s)")
+
+    for level in levels:
+        _ck()
+        # Snapshot each domain's signature scope BEFORE the level runs. Every dependency
+        # lives in an earlier level and is already registered, so this is both correct
+        # and race-free while the level executes in parallel.
+        scoped_by_domain = {d: registry.get_signatures_for_domains(_transitive_deps(bb.adjacency, d))
+                            for d in level}
+        work = [(d, item) for d in level for item in bb.code_plan() if item.domain == d]
+        if not work:
+            continue
+
+        def _build_one(pair):
+            """Runs on a worker thread: LLM-bound work only. Touches nothing shared —
+            it returns a journal of decisions for the main thread to record, so the
+            audit trail and artifact order stay deterministic."""
+            domain, item = pair
+            _ck()                       # outside the try: cancellation must not be swallowed
+            scoped = scoped_by_domain[domain]
             # "building" carries the plan context so the reviewer sees WHAT is being
             # built and WHY (pattern, source classes, native-review flag) as it starts.
             emit("artifact", target_name=item.target_name, layer=item.layer, status="building",
                  apex_pattern=item.apex_pattern, domain=item.domain, rationale=item.rationale,
                  native_recommendation=item.native_recommendation,
                  sources=[c.get("class_name") for c in item.source_classes])
-            build_error = None
+            journal, remaining = [], []
             try:
                 art = builder.build(item, bb, scoped, mappings, max_repair, retriever=retriever)
-                bb.record("Builder", "generated", f"{art.target_name} ({art.apex_pattern})")
+                journal.append(("Builder", "generated", f"{art.target_name} ({art.apex_pattern})"))
 
                 if critic_enabled:
                     findings = critic.review(art, bb.schema, offline=offline, retriever=retriever)
@@ -449,28 +523,39 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                             emit("critic_repair", target_name=art.target_name, errors=n_err,
                                  categories=sorted({f.get("category") for f in findings
                                                     if f.get("severity") == "ERROR"}))
-                            bb.record("Builder", "critic_repair",
-                                      f"{art.target_name}: repaired {n_err} critic error(s)")
+                            journal.append(("Builder", "critic_repair",
+                                            f"{art.target_name}: repaired {n_err} critic error(s)"))
                             findings = critic.review(art, bb.schema, offline=offline, retriever=retriever)
                     remaining = [f for f in findings if f.get("severity") == "ERROR"]
                     art.status = "accepted" if not remaining else "needs_review"
-                    bb.record("Critic", "reviewed",
-                              f"{art.target_name}: {len(findings)} finding(s) → {art.status}")
-                    for f in remaining:
-                        bb.ask("Critic", f"{art.target_name}: [{f.get('category')}] {f.get('message')}")
-                    if remaining:
-                        print(f"    ⚠ {art.target_name}: {len(remaining)} unresolved critic finding(s) → needs_review")
+                    journal.append(("Critic", "reviewed",
+                                    f"{art.target_name}: {len(findings)} finding(s) → {art.status}"))
                 else:
                     art.status = "accepted"
+                return domain, item, art, None, journal, remaining
             except Exception as be:
                 # Contain a single-target failure: flag it for manual migration and keep
                 # going, so one problematic class never aborts the whole repo.
-                build_error = f"{type(be).__name__}: {be}"
+                return domain, item, None, f"{type(be).__name__}: {be}", journal, []
+
+        results = _map_parallel(_build_one, work, conc)
+
+        # ── Merge on this thread, in work order: deterministic and identical to a
+        #    sequential run, no matter what order the workers actually finished in.
+        for domain, item, art, build_error, journal, remaining in results:
+            if build_error is not None:
                 print(f"    ⚠ build FAILED for {item.target_name}: {build_error} "
                       f"— flagged for manual review, continuing")
                 art = _error_artifact(item, build_error)
-                bb.record("Builder", "build_failed", f"{item.target_name}: {build_error}")
+                journal = journal + [("Builder", "build_failed", f"{item.target_name}: {build_error}")]
+            for agent, action, detail in journal:
+                bb.record(agent, action, detail)
+            if build_error is not None:
                 bb.ask("Builder", f"{item.target_name}: automatic build failed — {build_error}")
+            for f in remaining:
+                bb.ask("Critic", f"{art.target_name}: [{f.get('category')}] {f.get('message')}")
+            if remaining:
+                print(f"    ⚠ {art.target_name}: {len(remaining)} unresolved critic finding(s) → needs_review")
 
             bb.artifacts.append(art)
             try:

@@ -24,6 +24,14 @@ mappings_file: mappings/hybris_to_apex.yaml
 incremental: true
 max_repair_attempts: 2
 
+# How many LLM-bound units of work run at once (agentic engine).
+#   Comprehend is fully parallel; Build+Critic runs one dependency "wavefront" at a
+#   time, parallel within it. Output is identical to a sequential run — results are
+#   merged in deterministic order — this only changes wall-clock time.
+#   Raise for big repos + generous rate limits; set 1 to force sequential.
+#   Override per-run with H2A_CONCURRENCY.
+concurrency: 8
+
 # Adaptive-thinking effort per stage (Anthropic only; ignored by other providers)
 effort:
   comprehend: low
