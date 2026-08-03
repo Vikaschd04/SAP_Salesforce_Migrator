@@ -376,9 +376,12 @@ def _detect_rework(question: str, bb):
     return None
 
 
-def _copilot_rework(run, art, feedback: str, provider: str) -> dict:
-    """Actually act: re-run the Builder on one target with the reviewer's instruction,
-    re-review with the Critic, rewrite the output, and return events for the UI."""
+def _do_regenerate(run, art, instruction: str, provider: str, who: str = "Reviewer"):
+    """Re-run Builder (+Critic) on ONE artifact and update it in place.
+
+    Safe to call while the run is paused at a review gate: the engine thread is blocked
+    on the gate, so nothing else is touching this artifact. Returns None on success or
+    an error string."""
     bb = run.bb
     from src.agentic.builders import BuilderAgent
     from src.agentic.critic import CriticAgent
@@ -386,18 +389,55 @@ def _copilot_rework(run, art, feedback: str, provider: str) -> dict:
     prev = os.environ.get("H2A_PROVIDER")
     os.environ["H2A_PROVIDER"] = provider
     try:
-        BuilderAgent().rework(art, feedback, bb, [])          # scoped sigs best-effort
+        BuilderAgent().rework(art, instruction, bb, [])       # scoped sigs best-effort
         findings = CriticAgent().review(art, bb.schema, offline=bb.offline)
         art.status = "accepted" if not any(f.get("severity") == "ERROR" for f in findings) else "needs_review"
-        write_outputs(run.output_dir, bb.generated_dicts(), bb.item_types, _load_mappings())
+        # Only write to disk when the pipeline is already finished — mid-run the
+        # orchestrator writes everything at the Reconcile stage anyway.
+        if run.status not in ("queued", "running"):
+            write_outputs(run.output_dir, bb.generated_dicts(), bb.item_types, _load_mappings())
+        bb.record(who, "regenerate", f"{art.target_name}: {instruction[:80]}")
+        return None
     except Exception as e:
-        return {"answer": f"⚠ I couldn't rework {art.target_name}: {e}", "events": []}
+        return f"{type(e).__name__}: {e}"
     finally:
         if prev is None:
             os.environ.pop("H2A_PROVIDER", None)
         else:
             os.environ["H2A_PROVIDER"] = prev
-    bb.record("Copilot", "rework", f"{art.target_name}: {feedback[:80]}")
+
+
+@app.post("/api/runs/{run_id}/regenerate")
+async def api_regenerate(run_id: str, body: dict):
+    """Regenerate a single file on demand — including while the run is paused at the
+    build review gate, so a reviewer can fix one odd class without re-running anything."""
+    run = get_run(run_id)
+    if not run:
+        raise HTTPException(404, "run not found")
+    bb = getattr(run, "bb", None)
+    if bb is None:
+        raise HTTPException(409, "no artifacts yet for this run")
+    target = (body.get("target") or "").strip()
+    art = next((a for a in bb.artifacts if a.target_name == target), None)
+    if art is None:
+        raise HTTPException(404, f"unknown target: {target}")
+    instruction = (body.get("instruction") or "").strip() or (
+        "Regenerate this file. Address every Critic finding and improve correctness, "
+        "security and clarity while preserving the original behavior.")
+    err = _do_regenerate(run, art, instruction, (run.provider or "mock").lower())
+    if err:
+        raise HTTPException(500, f"regenerate failed: {err}")
+    ev = _artifact_done_payload(art)
+    run.emit(ev)                    # live feed / Artifacts update for anyone watching
+    return {"ok": True, "artifact": ev}
+
+
+def _copilot_rework(run, art, feedback: str, provider: str) -> dict:
+    """Copilot action: same regeneration, phrased conversationally."""
+    bb = run.bb
+    err = _do_regenerate(run, art, feedback, provider, who="Copilot")
+    if err:
+        return {"answer": f"⚠ I couldn't rework {art.target_name}: {err}", "events": []}
     answer = (f"Done — I re-ran the Builder on **{art.target_name}** with your instruction and "
               f"re-reviewed it with the Critic (status: {art.status}, {len(art.critic_findings)} finding(s)). "
               "The Artifacts, Diff, and Files tabs now reflect the new version.")

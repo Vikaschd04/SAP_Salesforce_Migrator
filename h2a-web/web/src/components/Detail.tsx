@@ -4,6 +4,7 @@ import { fetchFile, fetchFiles, fetchReport, packageUrl } from '../api';
 import { cxBadge } from './Gate';
 import PipelineFlow from './PipelineFlow';
 import Discovery from './Discovery';
+import ArtifactReview from './ArtifactReview';
 import type { StageStatus } from '../types';
 
 const Diff = lazy(() => import('./Diff'));
@@ -99,42 +100,11 @@ export default function Detail(p: Props) {
 
       {tab === 'artifacts' && (
         <div className="tabpanel">
-          {p.artifacts.length === 0 ? <p className="empty">Generated Apex + LWC appear here. Click a row for what was mapped and every Critic finding.</p> :
-            p.artifacts.map((a) => {
-              const isOpen = open.has(a.target_name);
-              const fnd = a.findings_detail || [];
-              return (
-                <div className="a-card" key={a.target_name}>
-                  <div className="a-head" onClick={() => toggle(a.target_name)}>
-                    <span className="tw">{isOpen ? '▾' : '▸'}</span>
-                    <span className="a-name">{a.target_name}</span>
-                    <span className={`badge ${a.is_lwc ? 'b-lwc' : 'b-skip'}`}>{a.is_lwc ? 'LWC' : (a.apex_pattern || 'Apex')}</span>
-                    <span className={`badge ${a.status === 'accepted' ? 'b-accepted' : a.status === 'error' ? 'b-err' : 'b-needs'}`}>{a.status}</span>
-                    {(a.review_flags || []).map((f, i) => <span className="badge b-flag" key={i}>{f.length > 28 ? 'flag' : f}</span>)}
-                    <span className="a-count">{fnd.length} finding{fnd.length === 1 ? '' : 's'}</span>
-                  </div>
-                  {isOpen && (
-                    <div className="a-body">
-                      {a.mapping_notes && <div className="a-sec"><span className="u-lbl">What was mapped</span><p className="dim" style={{ margin: 0 }}>{a.mapping_notes}</p></div>}
-                      {!!a.sobject_refs?.length && <div className="a-sec"><span className="u-lbl">SObjects</span> {a.sobject_refs.map((s, i) => <code key={i}>{s}</code>)}</div>}
-                      {!!a.business_rules?.length && <div className="a-sec"><span className="u-lbl">Business rules preserved</span><ul>{a.business_rules.map((r, i) => <li key={i}>{r}</li>)}</ul></div>}
-                      {a.is_lwc && !!a.lwc_parts?.length && <div className="a-sec"><span className="u-lbl">LWC bundle</span> {a.lwc_parts.map((x, i) => <code key={i}>{x}</code>)} {a.has_controller && <code>+Apex controller</code>}</div>}
-                      <div className="a-sec"><span className="u-lbl">Critic findings</span>
-                        <ul className="findings">
-                          {fnd.length === 0 ? <li className="fnd ok">Critic clean — no findings</li> :
-                            fnd.map((f, i) => (
-                              <li className={`fnd ${f.severity === 'ERROR' ? 'err' : 'warn'}`} key={i}>
-                                <span className="sev">{f.severity}</span><span className="cat">{f.category}</span>{f.message}
-                                {f.suggestion && <div className="fix">💡 <b>Fix:</b> {f.suggestion}</div>}
-                              </li>
-                            ))}
-                        </ul>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          {p.artifacts.length === 0
+            ? <p className="empty">Generated Apex + LWC appear here. Open any file to see the code, compare it with the SAP source, read the Critic findings — and regenerate it if it looks wrong.</p>
+            : p.artifacts.map((a) => (
+              <ArtifactReview key={a.target_name} runId={p.runId!} art={a} />
+            ))}
         </div>
       )}
 

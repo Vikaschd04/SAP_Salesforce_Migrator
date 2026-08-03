@@ -28,12 +28,13 @@ export interface RunState {
   ledgerSummary: Record<string, number>;
   gate: GateState | null;
   discovery: any | null;
+  errorMsg: string;
 }
 
 const initial = (): RunState => ({
   runId: null, status: 'idle', elapsed: '', stages: {}, feed: [], plan: [],
   comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, gate: null,
-  discovery: null,
+  discovery: null, errorMsg: '',
 });
 
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -105,7 +106,8 @@ export function useRun() {
         case 'cancelled':
           return feed({ ...s, status: 'idle' }, 'system', 'Run stopped', 'system');
         case 'error':
-          return feed({ ...s, status: 'error' }, 'Error', ev.message || 'run failed', 'error');
+          return feed({ ...s, status: 'error', errorMsg: ev.message || 'The migration failed.' },
+            'Error', ev.message || 'run failed', 'error');
         case 'stream_end':
           return s.status === 'running' ? { ...s, status: (ev.status as any) || 'complete' } : s;
         default:

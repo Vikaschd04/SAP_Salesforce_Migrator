@@ -166,10 +166,14 @@ def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
                     run.emit({"type": "run_complete", "note": "linear run finished"})
                 else:
                     from src.agentic.orchestrator import run_agentic_migration
-                    run.bb = run_agentic_migration(input_dir, output_dir, verify=verify or None,
-                                                   on_event=run.emit,
-                                                   gate=(run.gate_cb if run.supervised else None),
-                                                   should_cancel=lambda: run.cancelled)
+                    run.bb = run_agentic_migration(
+                        input_dir, output_dir, verify=verify or None,
+                        on_event=run.emit,
+                        gate=(run.gate_cb if run.supervised else None),
+                        should_cancel=lambda: run.cancelled,
+                        # available immediately, so the UI can view code and regenerate a
+                        # single file while the run is paused at a review gate
+                        on_blackboard=lambda b: setattr(run, "bb", b))
                 run.status = "cancelled" if run.cancelled else "complete"
             except Exception as e:
                 if run.cancelled:                 # RunCancelled (or any error after a cancel)

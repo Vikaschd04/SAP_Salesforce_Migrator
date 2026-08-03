@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { GateState } from '../useRun';
 import { submitGate } from '../api';
 import Discovery from './Discovery';
+import ArtifactReview from './ArtifactReview';
 
 export function cxBadge(cx?: string) {
   if (!cx) return null;
@@ -10,22 +11,30 @@ export function cxBadge(cx?: string) {
 
 export default function Gate({ runId, gate, onClosed }: { runId: string; gate: GateState; onClosed: () => void }) {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
-  const [feedback, setFeedback] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  // Local copy so a per-file regenerate updates this screen immediately.
+  const [arts, setArts] = useState<any[]>(gate.artifacts || []);
+  useEffect(() => { setArts(gate.artifacts || []); }, [gate.artifacts]);
 
   const send = async (decision: unknown) => {
     setBusy(true);
     try { await submitGate(runId, decision); onClosed(); } finally { setBusy(false); }
   };
 
+  const onUpdated = (updated: any) =>
+    setArts((prev) => prev.map((a) => (a.target_name === updated.target_name ? { ...a, ...updated } : a)));
+
+  const failedCount = arts.filter((a) => a.failed || a.status === 'error').length;
+  const needsCount = arts.filter((a) => a.status === 'needs_review').length;
+
   return (
     <div className="overlay">
-      <div className={`gate-card ${gate.gate === 'discovery' ? 'wide' : ''}`}>
+      <div className={`gate-card ${gate.gate === 'discovery' || gate.gate === 'build' ? 'wide' : ''}`}>
         <div className="gate-head">
           <div>
             <span className="gate-pill">⏸ Review gate</span>
             <h2>{gate.gate === 'discovery' ? 'Review what the AI found in your codebase'
-              : gate.gate === 'plan' ? 'Approve the migration plan' : 'Review the generated code'}</h2>
+              : gate.gate === 'plan' ? 'Approve the migration plan' : 'Review the generated Salesforce code'}</h2>
           </div>
           <span className="mono faint">run {runId}</span>
         </div>
@@ -72,33 +81,21 @@ export default function Gate({ runId, gate, onClosed }: { runId: string; gate: G
             </>
           ) : (
             <>
-              <p className="gate-note">Review each artifact. Approve everything, or type feedback on any file and send it back — the Builder regenerates it addressing your note, the Critic re-reviews, then you review again.</p>
-              {(gate.artifacts || []).map((a: any) => {
-                const kind = a.is_lwc ? 'LWC' : (a.apex_pattern || 'Apex');
-                return (
-                  <div className="a-card" key={a.target_name} style={{ background: 'transparent' }}>
-                    <div className="a-head" style={{ cursor: 'default' }}>
-                      <span className="a-name">{a.target_name} · {kind}</span>
-                      <span className={`badge ${a.status === 'accepted' ? 'b-accepted' : 'b-needs'}`}>{a.status}</span>
-                    </div>
-                    <div style={{ padding: '0 14px 12px' }}>
-                      {(a.findings || []).length > 0 && (
-                        <ul className="findings">
-                          {a.findings.map((f: any, i: number) => (
-                            <li className={`fnd ${f.severity === 'ERROR' ? 'err' : 'warn'}`} key={i}>
-                              <span className="sev">{f.severity}</span><span className="cat">{f.category}</span>{f.message}
-                              {f.suggestion && <div className="fix">💡 {f.suggestion}</div>}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      <textarea placeholder="Send back with feedback (leave empty to accept)…"
-                        value={feedback[a.target_name] || ''}
-                        onChange={(e) => setFeedback({ ...feedback, [a.target_name]: e.target.value })} />
-                    </div>
-                  </div>
-                );
-              })}
+              <p className="gate-note">Open any file to see the generated Salesforce code, compare it side-by-side with
+                the original SAP source, read every Critic finding, and see exactly what was mapped. If something looks
+                wrong, <b>regenerate just that file</b> — you never need to re-run the whole migration.</p>
+
+              {(failedCount > 0 || needsCount > 0) && (
+                <div className={`gate-alert ${failedCount ? 'bad' : 'warn'}`}>
+                  {failedCount > 0 && <><b>{failedCount} file{failedCount === 1 ? '' : 's'} failed to generate.</b>{' '}</>}
+                  {needsCount > 0 && <>{needsCount} file{needsCount === 1 ? '' : 's'} still {needsCount === 1 ? 'has' : 'have'} unresolved Critic errors.{' '}</>}
+                  Review {failedCount ? 'them' : 'those'} below and regenerate before approving.
+                </div>
+              )}
+
+              {arts.map((a) => (
+                <ArtifactReview key={a.target_name} runId={runId} art={a} onUpdated={onUpdated} />
+              ))}
             </>
           )}
         </div>
@@ -118,14 +115,9 @@ export default function Gate({ runId, gate, onClosed }: { runId: string; gate: G
               send({ action: 'approve', overrides: ov });
             }}>Approve plan ▶</button>
           ) : (
-            <>
-              <button className="btn" disabled={busy} onClick={() => {
-                const fb: Record<string, string> = {};
-                Object.entries(feedback).forEach(([k, v]) => { if (v.trim()) fb[k] = v.trim(); });
-                if (!Object.keys(fb).length) send({ action: 'approve' }); else send({ action: 'rework', feedback: fb });
-              }}>↺ Send back & rebuild</button>
-              <button className="btn primary" disabled={busy} onClick={() => send({ action: 'approve' })}>Approve all ▶</button>
-            </>
+            <button className="btn primary" disabled={busy} onClick={() => send({ action: 'approve' })}>
+              Approve {arts.length} file{arts.length === 1 ? '' : 's'} &amp; continue ▶
+            </button>
           )}
         </div>
       </div>

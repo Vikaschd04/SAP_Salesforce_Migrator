@@ -327,16 +327,23 @@ def _plan_payload(bb) -> dict:
 
 
 def _build_payload(bb) -> dict:
-    def code_of(a):
-        return (a.lwc_bundle or {}).get("js", "") if a.is_lwc else a.main_class
+    """Metadata for the build review gate. Deliberately does NOT carry code — the UI
+    fetches source/generated per file on demand (/diff) when a reviewer opens it, so the
+    1.2s status poll stays small even on a repo with hundreds of artifacts."""
     return {"artifacts": [{
         "target_name": a.target_name, "layer": a.layer, "is_lwc": a.is_lwc,
         "apex_pattern": a.apex_pattern, "status": a.status,
+        "failed": a.status == "error",
         "review_flags": list(a.review_flags),
         "findings": [{"severity": f.get("severity"), "category": f.get("category"),
                       "message": f.get("message"), "suggestion": f.get("suggestion", "")}
                      for f in a.critic_findings],
-        "code": code_of(a)[:6000],
+        "mapping_notes": (a.mapping_notes or "")[:800],
+        "sobject_refs": list(a.sobject_refs or []),
+        "business_rules": list(a.business_rules or [])[:10],
+        "sources": [c.get("class_name") for c in a.source_classes],
+        "lwc_parts": (sorted((a.lwc_bundle or {}).keys()) if a.is_lwc else []),
+        "has_controller": bool(a.apex_controller),
     } for a in bb.artifacts]}
 
 
@@ -346,10 +353,17 @@ class RunCancelled(Exception):
 
 def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = False,
                           verify: bool | None = None, on_event=None, gate=None,
-                          should_cancel=None):
+                          should_cancel=None, on_blackboard=None):
     reset_accounting()
     config = _load_config()
     bb = Blackboard(input_dir=input_dir, output_dir=output_dir, offline=offline)
+    # Publish the Blackboard immediately (not just on return) so a caller can inspect
+    # artifacts and regenerate a single file *while the run is paused at a review gate*.
+    if on_blackboard is not None:
+        try:
+            on_blackboard(bb)
+        except Exception:
+            pass
     emit = _make_emitter(on_event)
 
     def _ck():

@@ -14,6 +14,7 @@ export default function App() {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
   const [cpOpen, setCpOpen] = useState(false);
+  const [errDismissed, setErrDismissed] = useState(false);
   const [hosted, setHosted] = useState(false);
   const [defaultProvider, setDefaultProvider] = useState('mock');
   const feedRef = useRef<HTMLDivElement>(null);
@@ -29,7 +30,7 @@ export default function App() {
   const showLanding = state.status === 'idle';
 
   const start = async (fd: FormData) => {
-    setStarting(true); setError('');
+    setStarting(true); setError(''); setErrDismissed(false);
     try { begin(await startRun(fd)); }
     catch (e: any) { setError(e.message || 'failed to start'); }
     finally { setStarting(false); }
@@ -62,6 +63,20 @@ export default function App() {
         <Landing hosted={hosted} defaultProvider={defaultProvider} starting={starting} error={error} onStart={start} />
       ) : (
         <>
+          {state.errorMsg && !errDismissed && (
+            <div className="run-error">
+              <span>⚠</span>
+              <div>
+                <b>The migration hit an error.</b> {state.errorMsg}
+                <div style={{ marginTop: 4, opacity: 0.85 }}>
+                  Everything produced before the failure is still available in the tabs below — you can
+                  regenerate individual files without re-running the whole migration.
+                </div>
+              </div>
+              <button className="re-x" onClick={() => setErrDismissed(true)}>✕</button>
+            </div>
+          )}
+
           <section className="stepper">
             {STAGES.map((s, i) => {
               const st = state.stages[s.id]?.status || 'pending';

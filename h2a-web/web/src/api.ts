@@ -62,6 +62,28 @@ export async function submitGate(runId: string, decision: unknown): Promise<void
   });
 }
 
+export interface DiffPayload {
+  target: string; is_lwc: boolean; source: string; generated: string;
+  left_lang: string; right_lang: string; targets: string[];
+}
+/** Original source + generated output for one target. Works mid-run (including while
+ *  paused at a review gate), so code is fetched only when a reviewer opens a file. */
+export async function fetchDiff(runId: string, target: string): Promise<DiffPayload> {
+  const res = await fetch(`/api/runs/${runId}/diff?target=${encodeURIComponent(target)}`);
+  if (!res.ok) throw new Error((await res.text()) || 'could not load code');
+  return res.json();
+}
+
+/** Re-run Builder + Critic on a single file, without re-running the migration. */
+export async function regenerateArtifact(runId: string, target: string, instruction: string): Promise<any> {
+  const res = await fetch(`/api/runs/${runId}/regenerate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target, instruction }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'regenerate failed');
+  return (await res.json()).artifact;
+}
+
 export async function fetchFiles(runId: string): Promise<{ files: string[]; reports: string[] }> {
   return (await fetch(`/api/runs/${runId}/files`)).json();
 }
