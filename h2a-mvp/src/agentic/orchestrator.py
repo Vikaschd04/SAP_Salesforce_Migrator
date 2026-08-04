@@ -794,6 +794,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                    _artifact_state)
 
     acct = get_accounting()
+    from src import pricing
+    cost = pricing.summarise(acct.get("models") or {}, config)
     ledger = bb.completeness_ledger()
     report_file = generate_report(
         output_dir, bb.validation_results, acct,
@@ -813,6 +815,13 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     if any(r["outcome"] == "unaccounted" for r in ledger):
         print("  ⚠ some inputs are UNACCOUNTED for — see the completeness ledger in MIGRATION_PLAN.md")
     print(f"  provider(s)={acct.get('providers', {})}  requests={acct['requests']}")
+    if cost["by_model"]:
+        print(f"  Cost: {pricing.fmt(cost['total_usd'])}"
+              + ("" if cost["priced"] else f" (+ unpriced: {', '.join(cost['unpriced'])})"))
+        for row in cost["by_model"]:
+            print(f"    · {row['model']}: {row['requests']} call(s), "
+                  f"{row['input_tokens']:,} in / {row['output_tokens']:,} out"
+                  f" → {pricing.fmt(row['usd'])}")
     if bb.open_questions:
         print(f"  Open questions for review: {len(bb.open_questions)} (see MIGRATION_PLAN.md)")
 
@@ -821,6 +830,9 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
          open_questions=list(bb.open_questions),
          report="FEASIBILITY_REPORT.md", plan="MIGRATION_PLAN.md",
          providers=acct.get("providers", {}), requests=acct.get("requests", 0),
+         cost=cost, tokens={"input": acct.get("prompt_tokens", 0),
+                            "output": acct.get("completion_tokens", 0),
+                            "cache_read": acct.get("cache_read_tokens", 0)},
          # The full agent audit trail — every meaningful choice each agent made,
          # in order — so the reviewer can trace the whole run after the fact.
          decisions=[{"agent": d["agent"], "action": d["action"], "detail": d["detail"]}

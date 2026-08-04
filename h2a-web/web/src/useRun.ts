@@ -29,12 +29,14 @@ export interface RunState {
   gate: GateState | null;
   discovery: any | null;
   errorMsg: string;
+  cost: any | null;
+  tokens: { input: number; output: number; cache_read: number } | null;
 }
 
 const initial = (): RunState => ({
   runId: null, status: 'idle', elapsed: '', stages: {}, feed: [], plan: [],
   comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, gate: null,
-  discovery: null, errorMsg: '',
+  discovery: null, errorMsg: '', cost: null, tokens: null,
 });
 
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -112,7 +114,8 @@ export function useRun() {
           s = { ...s, gate: null };
           return feed(s, 'Reviewer', `gate ${ev.gate} → ${ev.action}`, 'system');
         case 'run_complete':
-          return { ...s, status: 'complete', ledger: ev.ledger || [], ledgerSummary: ev.ledger_summary || {}, decisions: ev.decisions || s.decisions };
+          return { ...s, status: 'complete', ledger: ev.ledger || [], ledgerSummary: ev.ledger_summary || {},
+            decisions: ev.decisions || s.decisions, cost: ev.cost || null, tokens: ev.tokens || null };
         case 'cancelled':
           return feed({ ...s, status: 'idle' }, 'system', 'Run stopped', 'system');
         case 'error':

@@ -50,6 +50,7 @@ _accounting = {
     "cache_read_tokens": 0,
     "cache_write_tokens": 0,
     "providers": {},        # provider -> request count
+    "models": {},           # model -> per-model usage (drives cost, see src/pricing.py)
 }
 
 
@@ -68,11 +69,12 @@ def reset_accounting():
         "cache_read_tokens": 0,
         "cache_write_tokens": 0,
         "providers": {},
+        "models": {},
     }
 
 
 def _record(provider: str, prompt_tokens: int, completion_tokens: int,
-            cache_read: int = 0, cache_write: int = 0):
+            cache_read: int = 0, cache_write: int = 0, model: str = ""):
     # Read-modify-write on shared counters — must be atomic when stages run concurrently,
     # or the reported request/token totals silently undercount.
     with _STATE_LOCK:
@@ -82,6 +84,17 @@ def _record(provider: str, prompt_tokens: int, completion_tokens: int,
         _accounting["cache_read_tokens"] += cache_read
         _accounting["cache_write_tokens"] += cache_write
         _accounting["providers"][provider] = _accounting["providers"].get(provider, 0) + 1
+        # Per-model breakdown — with routing on, a run mixes tiers, and cost can only
+        # be computed if we know which model spent which tokens.
+        if model:
+            m = _accounting["models"].setdefault(
+                model, {"requests": 0, "prompt_tokens": 0, "completion_tokens": 0,
+                        "cache_read_tokens": 0, "cache_write_tokens": 0})
+            m["requests"] += 1
+            m["prompt_tokens"] += prompt_tokens
+            m["completion_tokens"] += completion_tokens
+            m["cache_read_tokens"] += cache_read
+            m["cache_write_tokens"] += cache_write
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -479,6 +492,10 @@ def call_llm(
         result.get("completion_tokens", 0),
         result.get("cache_read_tokens", 0),
         result.get("cache_write_tokens", 0),
+        # Attribute usage to the model that actually ran. The mock provider borrows the
+        # configured model id, so record it as "mock" — otherwise a free deterministic
+        # run would report real Anthropic dollar costs.
+        model=("mock" if provider == "mock" else result.get("model", model)),
     )
 
     to_cache = {

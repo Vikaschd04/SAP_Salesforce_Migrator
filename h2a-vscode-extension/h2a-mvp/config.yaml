@@ -24,6 +24,23 @@ mappings_file: mappings/hybris_to_apex.yaml
 incremental: true
 max_repair_attempts: 2
 
+# How many LLM-bound units of work run at once (agentic engine).
+#   Comprehend is fully parallel; Build+Critic runs one dependency "wavefront" at a
+#   time, parallel within it. Output is identical to a sequential run — results are
+#   merged in deterministic order — this only changes wall-clock time.
+#   Raise for big repos + generous rate limits; set 1 to force sequential.
+#   Override per-run with H2A_CONCURRENCY.
+concurrency: 8
+
+# Cost reporting. Rates are USD per 1,000,000 tokens; the built-in table in
+# src/pricing.py covers the current Claude models, and anything listed here
+# overrides it — so a price change (or a negotiated rate) needs no code edit.
+# Models with no known rate are reported as "unpriced" rather than guessed.
+pricing:
+  models: {}
+    # claude-opus-4-8:  {input: 5.00,  output: 25.00}
+    # claude-haiku-4-5: {input: 1.00,  output: 5.00}
+
 # Adaptive-thinking effort per stage (Anthropic only; ignored by other providers)
 effort:
   comprehend: low
@@ -48,10 +65,16 @@ agentic:
     enabled: true            # lexical retrieval over src/agentic/knowledge/*.md (no deps)
     top_k: 3                 # how many doc chunks to inject per prompt
   routing:                   # per-task model routing (anthropic only; saves cost)
-    enabled: false           # turn on to use a cheap model for comprehend/plan
+    # ON by default: comprehension and planning are classification-ish and do fine
+    # on the cheap tier, while generation/repair/critique earn a frontier model.
+    # Measured saving is ~20% on a typical mix — generation and critique carry most
+    # of the tokens and stay on the frontier tier, so routing alone is a trim, not a
+    # halving. (Incremental re-runs and prompt slimming are the bigger cost levers.)
+    # Set false to run every stage on `model:` above.
+    enabled: true
     models:
-      cheap: claude-haiku-4-5-20251001
-      frontier: claude-opus-4-8
+      cheap: claude-haiku-4-5     # $1 / $5 per 1M tokens
+      frontier: claude-opus-4-8   # $5 / $25 per 1M tokens
     tiers:                   # which tier each task family uses
       comprehend: cheap
       plan: cheap

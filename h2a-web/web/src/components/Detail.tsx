@@ -17,7 +17,12 @@ interface Props {
   plan: PlanItem[]; comprehensions: Comprehension[]; artifacts: Artifact[];
   decisions: Decision[]; ledger: LedgerRow[]; ledgerSummary: Record<string, number>;
   discovery: any | null;
+  cost: any | null;
+  tokens: { input: number; output: number; cache_read: number } | null;
 }
+
+const usd = (v: number | null | undefined) =>
+  v == null ? 'n/a' : v === 0 ? '$0.00' : v < 0.01 ? `$${v.toFixed(4)}` : `$${v.toFixed(2)}`;
 
 export default function Detail(p: Props) {
   const [tab, setTab] = useState<Tab>('flow');
@@ -135,6 +140,40 @@ export default function Detail(p: Props) {
           {Object.keys(p.ledgerSummary).length > 0 && (
             <div className="chips-row">
               {Object.entries(p.ledgerSummary).map(([k, v]) => <span key={k} className={`chip ${k}`}>{v} {k}</span>)}
+            </div>
+          )}
+
+          {p.cost && (p.cost.by_model || []).length > 0 && (
+            <div className="cost-box">
+              <div className="cost-head">
+                <span className="u-lbl" style={{ margin: 0 }}>What this run cost</span>
+                <span className="cost-total num">{usd(p.cost.total_usd)}</span>
+              </div>
+              <table>
+                <thead><tr><th>Model</th><th>Calls</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
+                <tbody>
+                  {p.cost.by_model.map((r: any) => (
+                    <tr key={r.model}>
+                      <td><code>{r.model}</code></td>
+                      <td className="num">{r.requests}</td>
+                      <td className="num">{(r.input_tokens || 0).toLocaleString()}</td>
+                      <td className="num">{(r.output_tokens || 0).toLocaleString()}</td>
+                      <td className="num">{usd(r.usd)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!p.cost.priced && (
+                <div className="cost-note">
+                  ⚠ No published rate for {p.cost.unpriced.join(', ')} — the total above excludes it,
+                  so treat it as a floor rather than the full cost.
+                </div>
+              )}
+              {p.tokens?.cache_read ? (
+                <div className="cost-note good">
+                  {p.tokens.cache_read.toLocaleString()} tokens served from cache at ~10% of input price.
+                </div>
+              ) : null}
             </div>
           )}
           <div className="chips-row">
