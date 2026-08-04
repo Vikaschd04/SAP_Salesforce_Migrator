@@ -16,6 +16,7 @@ Planner and Critic degrade to deterministic behavior and the whole run is keyles
 from __future__ import annotations
 
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -441,6 +442,34 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     _state = load_state(_state_dir, _recipe) if inc_enabled else {"comprehensions": {}, "artifacts": {}}
     _artifact_state: dict = {}
     _reused = {"comprehensions": 0, "artifacts": 0}
+    _checkpoint_on = inc_enabled and bool((config.get("resilience") or {}).get("checkpoint", True))
+
+    _last_ckpt = [0.0]
+    _CKPT_MIN_INTERVAL = 2.0        # seconds; bounds how much work a crash can cost
+
+    def _checkpoint(force: bool = False):
+        """Persist reusable results *as the run progresses*, not only at the end.
+
+        Without this, a run that dies at call 800 of 900 — a crash, a cancel, an
+        exhausted retry — leaves nothing behind and the retry starts from zero.
+
+        Called after every artifact merges (which happens on this thread, so the
+        state is always consistent) but throttled to at most one write every couple
+        of seconds: fine-grained enough that a crash loses seconds of work, cheap
+        enough that a 300-class run isn't dominated by rewriting the state file.
+        Best-effort by design — a failed checkpoint must never break a live run."""
+        if not _checkpoint_on:
+            return
+        now = time.monotonic()
+        if not force and (now - _last_ckpt[0]) < _CKPT_MIN_INTERVAL:
+            return
+        _last_ckpt[0] = now
+        try:
+            save_state(_state_dir, _recipe,
+                       {n: {"h": _hashes.get(n, ""), "u": u} for n, u in bb.comprehensions.items()},
+                       _artifact_state)
+        except Exception:
+            pass
 
     # ── Comprehend (routed to the cheap tier) ──
     print("  --- Comprehend ---")
@@ -492,6 +521,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     emit("stage", name="comprehend", status="done",
          detail=f"{len(bb.comprehensions)} classes understood"
                 + (f" ({_reused['comprehensions']} reused)" if _reused["comprehensions"] else ""))
+    _checkpoint(force=True)   # comprehension is the cheapest thing to lose — bank it now
 
     # ── Plan ──
     print("  --- Planner ---")
@@ -664,6 +694,12 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                  has_controller=bool(art.apex_controller),
                  cached=hit is not None)
 
+            # Bank progress as each artifact lands (throttled), so a crash costs
+            # seconds of work rather than the whole wavefront.
+            _checkpoint()
+
+        _checkpoint(force=True)     # level complete — always bank it
+
     if inc_enabled and (_reused["comprehensions"] or _reused["artifacts"]):
         print(f"    ⚡ incremental: reused {_reused['comprehensions']} comprehension(s) and "
               f"{_reused['artifacts']} artifact(s) unchanged since the last run")
@@ -814,7 +850,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     print(f"  Completeness: {ledger_line}")
     if any(r["outcome"] == "unaccounted" for r in ledger):
         print("  ⚠ some inputs are UNACCOUNTED for — see the completeness ledger in MIGRATION_PLAN.md")
-    print(f"  provider(s)={acct.get('providers', {})}  requests={acct['requests']}")
+    print(f"  provider(s)={acct.get('providers', {})}  requests={acct['requests']}"
+          + (f"  retries={acct['retries']}" if acct.get("retries") else ""))
     if cost["by_model"]:
         print(f"  Cost: {pricing.fmt(cost['total_usd'])}"
               + ("" if cost["priced"] else f" (+ unpriced: {', '.join(cost['unpriced'])})"))

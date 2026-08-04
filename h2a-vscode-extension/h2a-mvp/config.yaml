@@ -32,6 +32,23 @@ max_repair_attempts: 2
 #   Override per-run with H2A_CONCURRENCY.
 concurrency: 8
 
+# Resilience. At ~900 LLM calls for a large repo, rare failures become certainties:
+# a single 429 or 503 must not cost the whole run.
+#   sdk_max_retries — retries inside the provider SDK (it already does correct
+#                     exponential backoff on 408/409/429/5xx and connection errors)
+#   max_attempts    — additional app-level attempts on top, with jittered backoff,
+#                     for the case where the SDK exhausts its own retries
+#   request_timeout — seconds per call; prevents one wedged request stalling a wavefront
+#   checkpoint      — persist reusable state as the run progresses, so an interrupted
+#                     run resumes instead of restarting (needs `incremental: true`)
+resilience:
+  sdk_max_retries: 3
+  max_attempts: 4
+  base_delay: 2.0
+  max_delay: 60.0
+  request_timeout: 600
+  checkpoint: true
+
 # Cost reporting. Rates are USD per 1,000,000 tokens; the built-in table in
 # src/pricing.py covers the current Claude models, and anything listed here
 # overrides it — so a price change (or a negotiated rate) needs no code edit.

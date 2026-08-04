@@ -28,8 +28,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
 import re
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +53,7 @@ _accounting = {
     "cache_write_tokens": 0,
     "providers": {},        # provider -> request count
     "models": {},           # model -> per-model usage (drives cost, see src/pricing.py)
+    "retries": 0,           # transient failures retried (see _with_retry)
 }
 
 
@@ -70,7 +73,65 @@ def reset_accounting():
         "cache_write_tokens": 0,
         "providers": {},
         "models": {},
+        "retries": 0,
     }
+
+
+# ── Transient-failure retry ───────────────────────────────────────────────────
+
+# Provider-agnostic: match by exception class name and HTTP status rather than
+# importing SDK error types (the SDKs are imported lazily, and both providers
+# expose the same shapes).
+_TRANSIENT_EXC = {
+    "RateLimitError", "APIConnectionError", "APITimeoutError", "APIConnectionTimeoutError",
+    "InternalServerError", "OverloadedError", "ServiceUnavailableError", "Timeout",
+}
+_TRANSIENT_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 529}
+
+
+def _is_transient(exc: Exception) -> bool:
+    """True when retrying could plausibly succeed (rate limit, overload, network)."""
+    if type(exc).__name__ in _TRANSIENT_EXC:
+        return True
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    return status in _TRANSIENT_STATUS
+
+
+def _retry_cfg(config: dict) -> dict:
+    r = (config or {}).get("resilience") or {}
+    return {
+        "max_attempts": max(1, int(r.get("max_attempts", 4) or 1)),
+        "base_delay": float(r.get("base_delay", 2.0) or 2.0),
+        "max_delay": float(r.get("max_delay", 60.0) or 60.0),
+    }
+
+
+def _with_retry(fn, *, stage: str, config: dict):
+    """Run fn(), retrying transient failures with jittered exponential backoff.
+
+    This sits *on top of* the provider SDK's own retries: the SDK handles the
+    common case, and this catches the rarer one where it exhausts its budget —
+    which stops being rare across the ~900 calls a large repo needs."""
+    cfg = _retry_cfg(config)
+    last = None
+    for attempt in range(cfg["max_attempts"]):
+        try:
+            return fn()
+        except Exception as exc:                       # noqa: BLE001 — re-raised below
+            last = exc
+            if attempt == cfg["max_attempts"] - 1 or not _is_transient(exc):
+                raise
+            # Full jitter: spreads concurrent workers instead of retrying in lockstep.
+            delay = min(cfg["max_delay"], cfg["base_delay"] * (2 ** attempt))
+            delay *= 0.5 + random.random()
+            with _STATE_LOCK:
+                _accounting["retries"] = _accounting.get("retries", 0) + 1
+            print(f"    ⟳ {stage}: {type(exc).__name__} — retry "
+                  f"{attempt + 1}/{cfg['max_attempts'] - 1} in {delay:.1f}s")
+            time.sleep(delay)
+    raise last                                          # pragma: no cover
 
 
 def _record(provider: str, prompt_tokens: int, completion_tokens: int,
@@ -204,10 +265,16 @@ def _anthropic_client(api_key: str):
             # gateway sees all prompts/source you send and may override the model or
             # inject its own context — only point this at an endpoint you trust.
             base_url = _get_api_key("ANTHROPIC_BASE_URL")
+            # The SDK does correct exponential backoff on 408/409/429/5xx and
+            # connection errors — its default budget (2) is thin for a repo-scale
+            # run, so raise it and bound each request. _with_retry sits on top.
+            r = (_load_config().get("resilience") or {})
+            opts = {"max_retries": int(r.get("sdk_max_retries", 3) or 3),
+                    "timeout": float(r.get("request_timeout", 600) or 600)}
             if base_url:
-                _client = anthropic.Anthropic(api_key=api_key, base_url=base_url)
+                _client = anthropic.Anthropic(api_key=api_key, base_url=base_url, **opts)
             else:
-                _client = anthropic.Anthropic(api_key=api_key)
+                _client = anthropic.Anthropic(api_key=api_key, **opts)
     return _client
 
 
@@ -277,7 +344,10 @@ def _openrouter_client(api_key: str, base_url: str):
     with _STATE_LOCK:                        # double-checked, as above
         if _or_client is None:
             from openai import OpenAI  # lazy — only needed for provider=openrouter
-            _or_client = OpenAI(base_url=base_url, api_key=api_key)
+            r = (_load_config().get("resilience") or {})
+            _or_client = OpenAI(base_url=base_url, api_key=api_key,
+                                max_retries=int(r.get("sdk_max_retries", 3) or 3),
+                                timeout=float(r.get("request_timeout", 600) or 600))
     return _or_client
 
 
@@ -464,11 +534,11 @@ def call_llm(
     if provider == "mock":
         result = _call_mock(stage=stage, prompt=prompt, json_schema=json_schema)
     elif provider == "anthropic":
-        result = _call_anthropic(
+        result = _with_retry(lambda: _call_anthropic(
             model=model, system_prompt=system_prompt, prompt=prompt,
             max_tokens=max_tokens, json_schema=json_schema, effort=effort,
             cache_system=cache_system,
-        )
+        ), stage=stage, config=config)
     elif provider == "openrouter":
         orcfg = config.get("openrouter") or {}
         api_key = _get_api_key("OPENROUTER_API_KEY")
@@ -477,12 +547,12 @@ def call_llm(
                 "OPENROUTER_API_KEY not found. Set it in the environment or .env, "
                 "get a key at https://openrouter.ai/keys, or use provider=anthropic / mock."
             )
-        result = _call_openrouter(
+        result = _with_retry(lambda: _call_openrouter(
             model=model, system_prompt=system_prompt, prompt=prompt,
             max_tokens=max_tokens, json_schema=json_schema,
             base_url=orcfg.get("base_url", "https://openrouter.ai/api/v1"),
             api_key=api_key,
-        )
+        ), stage=stage, config=config)
     else:
         raise ValueError(f"Unknown provider '{provider}'. Use 'anthropic', 'openrouter', or 'mock'.")
 
