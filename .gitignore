@@ -41,3 +41,5 @@ Testing/salesforce_*/
 Testing/out-*/
 Testing/out_*/
 Testing/*.zip
+.h2a_agentic_state.json
+**/.h2a_agentic_state.json

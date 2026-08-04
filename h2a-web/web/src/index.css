@@ -241,6 +241,7 @@ td code { font-family: var(--mono); font-size: 11.5px; }
 .b-needs { background: var(--danger-bg); color: var(--danger); }
 .b-lwc { background: var(--violet-bg); color: var(--violet); }
 .b-err { background: var(--danger-bg); color: var(--danger); }
+.b-cached { background: var(--panel-3); color: var(--text-dim); border-color: var(--border); }
 .cx-low { background: var(--good-bg); color: var(--good); }
 .cx-medium { background: var(--warn-bg); color: var(--warn); }
 .cx-high { background: var(--danger-bg); color: var(--danger); }

@@ -80,8 +80,18 @@ export function useRun() {
           const others = s.artifacts.filter((x) => x.target_name !== a.target_name);
           s = { ...s, artifacts: [...others, a] };
           const flag = a.review_flags?.length ? ' · flagged' : '';
+          if ((a as any).cached) {
+            return feed(s, 'Builder', `${a.target_name} — unchanged, reused from the last run`, 'system');
+          }
           return feed(s, 'Critic', `${a.target_name} → ${a.status}${a.reworked ? ' (reworked)' : ''}${flag} (${a.findings ?? 0} finding${a.findings === 1 ? '' : 's'})`, a.review_flags?.length ? 'flag' : 'build');
         }
+        case 'incremental':
+          if (ev.enabled && (ev.comprehensions || ev.artifacts)) {
+            return feed(s, 'Incremental',
+              `reused ${ev.comprehensions} comprehension(s) and ${ev.artifacts} artifact(s) unchanged `
+              + `since the last run — that AI work was skipped entirely`, 'plan');
+          }
+          return s;
         case 'critic_repair':
           return feed(s, 'Critic ⇄ Builder', `${ev.target_name}: ${ev.errors} error(s) → repaired & re-reviewed` + (ev.categories?.length ? ` [${ev.categories.join(', ')}]` : ''), 'flag');
         case 'reconcile': {

@@ -59,6 +59,7 @@ export default function ArtifactReview({ runId, art, onUpdated }:
         <span className={`badge ${failed ? 'b-err' : art.status === 'accepted' ? 'b-accepted' : 'b-needs'}`}>
           {failed ? 'failed' : art.status}
         </span>
+        {art.cached && <span className="badge b-cached" title="Unchanged since the last run — reused, no AI call">↻ reused</span>}
         {errCount > 0 && <span className="badge b-err">{errCount} error{errCount === 1 ? '' : 's'}</span>}
         {(art.review_flags || []).length > 0 && !failed && <span className="badge b-flag">flagged</span>}
         <span className="a-count">{findings.length} finding{findings.length === 1 ? '' : 's'}</span>

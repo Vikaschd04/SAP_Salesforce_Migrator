@@ -30,7 +30,10 @@ from src.metadata_generator import write_schema_metadata
 from src.parity import build_parity, write_parity_md, close_parity_gaps
 from src.report import generate_report
 from src.signature_registry import SignatureRegistry
-from src.llm import reset_accounting, get_accounting, _load_config, _get_provider
+from src.llm import reset_accounting, get_accounting, _load_config, _get_provider, _get_model
+from src.agentic.incremental import (recipe_hash, class_hashes, target_fingerprint,
+                                     load_state, save_state, artifact_to_cache,
+                                     artifact_from_cache)
 
 from src.agentic.blackboard import Blackboard
 from src.agentic.router import route_model
@@ -158,6 +161,15 @@ def _discovery_payload(bb) -> dict:
         "schema": schema,
         "skipped": list(bb.frontend_skipped or []),
     }
+
+
+def _incremental_enabled(config: dict) -> bool:
+    """H2A_INCREMENTAL overrides config `incremental` (default on), matching the linear
+    pipeline's contract."""
+    env = os.environ.get("H2A_INCREMENTAL")
+    if env is not None:
+        return env.strip().lower() in ("true", "1", "yes")
+    return bool((config or {}).get("incremental", True))
 
 
 def _concurrency(config: dict) -> int:
@@ -353,7 +365,7 @@ class RunCancelled(Exception):
 
 def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = False,
                           verify: bool | None = None, on_event=None, gate=None,
-                          should_cancel=None, on_blackboard=None):
+                          should_cancel=None, on_blackboard=None, state_dir=None):
     reset_accounting()
     config = _load_config()
     bb = Blackboard(input_dir=input_dir, output_dir=output_dir, offline=offline)
@@ -416,6 +428,20 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         bb.record("Reviewer", "discovery_gate", "repository analysis reviewed and accepted")
         _ck()
 
+    # ── Incremental: reuse whatever provably hasn't changed since the last run ──
+    inc_enabled = _incremental_enabled(config)
+    _mappings = _load_mappings()
+    _provider = _get_provider(config)
+    _recipe = recipe_hash(_provider, _get_model(config, _provider), bb.schema, _mappings)
+    _hashes = class_hashes(bb.all_classes)
+    # State lives with the output by default (CLI/extension reuse the same folder), but a
+    # caller with per-run output dirs (the web app keeps run history) can point it at a
+    # stable per-codebase location so re-runs still benefit.
+    _state_dir = state_dir or output_dir
+    _state = load_state(_state_dir, _recipe) if inc_enabled else {"comprehensions": {}, "artifacts": {}}
+    _artifact_state: dict = {}
+    _reused = {"comprehensions": 0, "artifacts": 0}
+
     # ── Comprehend (routed to the cheap tier) ──
     print("  --- Comprehend ---")
     emit("stage", name="comprehend", status="start")
@@ -426,13 +452,30 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     _to_comprehend = [c for c in bb.all_classes if c.get("layer") != "Model"]
     conc = _concurrency(config)
 
+    # Reuse a stored understanding when the class's source is byte-identical; only the
+    # rest actually costs an LLM call.
+    _fresh, _cached_names = [], set()
+    for cls in _to_comprehend:
+        name = cls.get("class_name", "")
+        entry = _state["comprehensions"].get(name)
+        if entry and entry.get("h") == _hashes.get(name):
+            bb.comprehensions[name] = entry.get("u") or {}
+            _cached_names.add(name)
+            _reused["comprehensions"] += 1
+        else:
+            _fresh.append(cls)
+
     def _comprehend_one(cls):
         return comprehend_class(cls, offline=offline,
                                 model=route_model(config, f"comprehend_{cls['class_name']}"))
 
-    _results = _map_parallel(_comprehend_one, _to_comprehend, conc)
-    for cls, u in zip(_to_comprehend, _results):
+    _results = _map_parallel(_comprehend_one, _fresh, conc)
+    for cls, u in zip(_fresh, _results):
         bb.comprehensions[cls["class_name"]] = u
+
+    # Emit for every class (reused included) so the reviewer still sees the full picture.
+    for cls in _to_comprehend:
+        u = bb.comprehensions.get(cls.get("class_name", "")) or {}
         # Surface what the agent actually understood so the reviewer can see the AI's
         # reading of each class — not just that it was processed.
         emit("comprehend", cls=cls["class_name"], layer=cls.get("layer"),
@@ -444,8 +487,11 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
              outputs=list(u.get("outputs") or [])[:8],
              dependencies=list(u.get("dependencies") or [])[:12],
              migration_risks=list(u.get("migration_risks") or [])[:8],
-             complexity=u.get("complexity") or "")
-    emit("stage", name="comprehend", status="done", detail=f"{len(bb.comprehensions)} classes understood")
+             complexity=u.get("complexity") or "",
+             cached=cls.get("class_name", "") in _cached_names)
+    emit("stage", name="comprehend", status="done",
+         detail=f"{len(bb.comprehensions)} classes understood"
+                + (f" ({_reused['comprehensions']} reused)" if _reused["comprehensions"] else ""))
 
     # ── Plan ──
     print("  --- Planner ---")
@@ -504,9 +550,23 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         # and race-free while the level executes in parallel.
         scoped_by_domain = {d: registry.get_signatures_for_domains(_transitive_deps(bb.adjacency, d))
                             for d in level}
-        work = [(d, item) for d in level for item in bb.code_plan() if item.domain == d]
-        if not work:
+
+        # Decide per target: reuse the previous artifact, or build it. The fingerprint
+        # covers its own source, every dependency class's source, the schema, mappings,
+        # the plan decision and the provider/model — so a cache hit is provably current.
+        level_items = []
+        for d in level:
+            dep_names = {c.get("class_name") for dd in _transitive_deps(bb.adjacency, d)
+                         for c in (bb.domains.get(dd) or [])}
+            for item in [p for p in bb.code_plan() if p.domain == d]:
+                fp = target_fingerprint(item, _hashes, dep_names, _recipe)
+                entry = _state["artifacts"].get(item.target_name) if inc_enabled else None
+                hit = entry if (entry and entry.get("h") == fp and entry.get("a")) else None
+                level_items.append((d, item, fp, hit))
+        if not level_items:
             continue
+
+        work = [(d, item) for d, item, _fp, hit in level_items if hit is None]
 
         def _build_one(pair):
             """Runs on a worker thread: LLM-bound work only. Touches nothing shared —
@@ -552,11 +612,20 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                 # going, so one problematic class never aborts the whole repo.
                 return domain, item, None, f"{type(be).__name__}: {be}", journal, []
 
-        results = _map_parallel(_build_one, work, conc)
+        results = iter(_map_parallel(_build_one, work, conc))
 
-        # ── Merge on this thread, in work order: deterministic and identical to a
+        # ── Merge on this thread, in level order: deterministic and identical to a
         #    sequential run, no matter what order the workers actually finished in.
-        for domain, item, art, build_error, journal, remaining in results:
+        for _domain, _item, fp, hit in level_items:
+            if hit is not None:
+                domain, item = _domain, _item
+                art = artifact_from_cache(hit["a"], item)
+                build_error, remaining = None, []
+                journal = [("Builder", "reused", f"{item.target_name}: unchanged since last run")]
+                _reused["artifacts"] += 1
+            else:
+                domain, item, art, build_error, journal, remaining = next(results)
+
             if build_error is not None:
                 print(f"    ⚠ build FAILED for {item.target_name}: {build_error} "
                       f"— flagged for manual review, continuing")
@@ -572,6 +641,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                 print(f"    ⚠ {art.target_name}: {len(remaining)} unresolved critic finding(s) → needs_review")
 
             bb.artifacts.append(art)
+            # Remember this result keyed by its fingerprint so the next run can reuse it.
+            _artifact_state[art.target_name] = {"h": fp, "a": artifact_to_cache(art)}
             try:
                 registry.register(domain, art.target_name, builder.signatures(art))
             except Exception:
@@ -590,9 +661,17 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                  business_rules=list(art.business_rules or [])[:10],
                  sources=[c.get("class_name") for c in art.source_classes],
                  lwc_parts=(sorted((art.lwc_bundle or {}).keys()) if art.is_lwc else []),
-                 has_controller=bool(art.apex_controller))
+                 has_controller=bool(art.apex_controller),
+                 cached=hit is not None)
 
-    emit("stage", name="build", status="done", detail=f"{len(bb.artifacts)} artifact(s) built")
+    if inc_enabled and (_reused["comprehensions"] or _reused["artifacts"]):
+        print(f"    ⚡ incremental: reused {_reused['comprehensions']} comprehension(s) and "
+              f"{_reused['artifacts']} artifact(s) unchanged since the last run")
+    emit("incremental", enabled=inc_enabled, **_reused,
+         total_artifacts=len(bb.artifacts), total_classes=len(bb.comprehensions))
+    emit("stage", name="build", status="done",
+         detail=f"{len(bb.artifacts)} artifact(s) built"
+                + (f" ({_reused['artifacts']} reused)" if _reused["artifacts"] else ""))
 
     # ── Review gate: approve, or send artifacts back to the Builder with feedback ──
     if gate is not None:
@@ -702,6 +781,17 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         bb.parity["strengthened"] = parity_strengthen
     write_parity_md(output_dir, bb.parity)
     _write_plan_doc(bb)
+
+    # Persist reusable results last, so parity-strengthened tests and any late edits are
+    # captured. Written after a successful pipeline only — a crashed run leaves the
+    # previous (known-good) state intact.
+    if inc_enabled:
+        for a in bb.artifacts:
+            if a.target_name in _artifact_state:
+                _artifact_state[a.target_name]["a"] = artifact_to_cache(a)
+        save_state(_state_dir, _recipe,
+                   {n: {"h": _hashes.get(n, ""), "u": u} for n, u in bb.comprehensions.items()},
+                   _artifact_state)
 
     acct = get_accounting()
     ledger = bb.completeness_ledger()

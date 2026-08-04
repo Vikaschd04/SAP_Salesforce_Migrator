@@ -144,7 +144,8 @@ def cancel_active_runs() -> int:
 
 
 def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
-              engine: str = "agentic", verify: bool = False, supervised: bool = False) -> Run:
+              engine: str = "agentic", verify: bool = False, supervised: bool = False,
+              state_dir: str | None = None) -> Run:
     # Free any prior run still holding the single-run lock before starting a new one.
     cancel_active_runs()
     run_id = uuid.uuid4().hex[:12]
@@ -173,7 +174,10 @@ def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
                         should_cancel=lambda: run.cancelled,
                         # available immediately, so the UI can view code and regenerate a
                         # single file while the run is paused at a review gate
-                        on_blackboard=lambda b: setattr(run, "bb", b))
+                        on_blackboard=lambda b: setattr(run, "bb", b),
+                        # per-run output dirs keep history; incremental state is keyed to
+                        # the codebase so a re-run of the same repo still reuses results
+                        state_dir=state_dir)
                 run.status = "cancelled" if run.cancelled else "complete"
             except Exception as e:
                 if run.cancelled:                 # RunCancelled (or any error after a cancel)

@@ -9,6 +9,7 @@ the same engine unchanged — this is just a second front door.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
@@ -31,8 +32,10 @@ FRONTEND_DIR = WEB_DIST if WEB_DIST.exists() else LEGACY_FRONTEND
 REPO_ROOT = ENGINE_ROOT.parent
 UPLOAD_ROOT = Path(tempfile.gettempdir()) / "h2a_web_uploads"
 OUTPUT_ROOT = Path(tempfile.gettempdir()) / "h2a_web_outputs"
+STATE_ROOT = Path(tempfile.gettempdir()) / "h2a_web_state"     # incremental state per codebase
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+STATE_ROOT.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="H2A Migration Dashboard", version="0.1.0")
 
@@ -61,8 +64,19 @@ async def create_run(
         raise HTTPException(400, "Provide input_path or upload a .zip")
 
     run = start_run(input_dir, str(OUTPUT_ROOT / _new_out_name(input_dir)),
-                    provider=provider, engine=engine, verify=verify, supervised=supervised)
+                    provider=provider, engine=engine, verify=verify, supervised=supervised,
+                    state_dir=_state_dir_for(input_dir))
     return {"run_id": run.id, "status": run.status}
+
+
+def _state_dir_for(input_dir: str) -> str:
+    """Incremental state keyed by codebase, not by run: every run gets its own output
+    folder (so history is preserved), but re-migrating the same repo still reuses the
+    unchanged results from last time."""
+    key = hashlib.md5(str(Path(input_dir).resolve()).encode("utf-8")).hexdigest()[:16]
+    d = STATE_ROOT / key
+    d.mkdir(parents=True, exist_ok=True)
+    return str(d)
 
 
 @app.post("/api/runs/{run_id}/gate")
