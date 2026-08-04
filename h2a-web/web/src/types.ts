@@ -28,4 +28,19 @@ export interface Decision { agent: string; action: string; detail?: string; }
 
 export interface LedgerRow { source: string; layer: string; outcome: string; target: string; note?: string; }
 
+/** One business rule, traced from the source class to the code that implements it. */
+export type RuleStatus = 'asserted' | 'implemented' | 'at_risk' | 'dropped';
+export interface RuleRow {
+  id: string; rule: string; source: string; target: string;
+  status: RuleStatus; evidence: string;
+}
+export interface RuleLedger {
+  rules: RuleRow[];
+  summary: {
+    total: number; asserted: number; implemented: number; at_risk: number;
+    dropped: number; preserved: number;
+    assured_pct: number | null; preserved_pct: number | null;
+  };
+}
+
 export type StageStatus = 'pending' | 'active' | 'done' | 'error';

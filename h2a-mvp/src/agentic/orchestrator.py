@@ -831,8 +831,14 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
 
     acct = get_accounting()
     from src import pricing
+    from src.rule_ledger import build_rule_ledger, write_rules_md, headline
     cost = pricing.summarise(acct.get("models") or {}, config)
     ledger = bb.completeness_ledger()
+    # Completeness in business rules, not files — the question a customer actually asks.
+    rule_ledger = build_rule_ledger(bb)
+    write_rules_md(output_dir, rule_ledger)
+    if rule_ledger["summary"]["total"]:
+        bb.record("RuleLedger", "assessed", headline(rule_ledger["summary"]))
     report_file = generate_report(
         output_dir, bb.validation_results, acct,
         generated_results=bb.generated_dicts(), skipped_domains=[],
@@ -848,6 +854,11 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     print(f"  Report: {report_file}")
     print(f"  Plan + decisions: {Path(output_dir) / 'MIGRATION_PLAN.md'}")
     print(f"  Completeness: {ledger_line}")
+    if rule_ledger["summary"]["total"]:
+        print(f"  Business rules: {headline(rule_ledger['summary'])}")
+        if rule_ledger["summary"]["dropped"]:
+            print("  ⚠ some business rules are carried by NO generated artifact "
+                  "— see BUSINESS_RULES.md")
     if any(r["outcome"] == "unaccounted" for r in ledger):
         print("  ⚠ some inputs are UNACCOUNTED for — see the completeness ledger in MIGRATION_PLAN.md")
     print(f"  provider(s)={acct.get('providers', {})}  requests={acct['requests']}"
@@ -866,6 +877,9 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
          ledger=ledger, ledger_summary=counts,
          open_questions=list(bb.open_questions),
          report="FEASIBILITY_REPORT.md", plan="MIGRATION_PLAN.md",
+         # Completeness in business rules, not files: every rule the Comprehender
+         # found, and whether the generated code carries (and tests) it.
+         rule_ledger=rule_ledger,
          providers=acct.get("providers", {}), requests=acct.get("requests", 0),
          cost=cost, tokens={"input": acct.get("prompt_tokens", 0),
                             "output": acct.get("completion_tokens", 0),

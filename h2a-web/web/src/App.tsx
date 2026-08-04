@@ -108,6 +108,7 @@ export default function App() {
             <Detail runId={state.runId} status={state.status} stages={state.stages} plan={state.plan}
               comprehensions={state.comprehensions} artifacts={state.artifacts} decisions={state.decisions}
               ledger={state.ledger} ledgerSummary={state.ledgerSummary} discovery={state.discovery}
+              ruleLedger={state.ruleLedger}
               cost={state.cost} tokens={state.tokens} />
           </main>
         </>

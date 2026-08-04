@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import type { Artifact, Comprehension, Decision, Ev, LedgerRow, PlanItem, StageStatus } from './types';
+import type { Artifact, Comprehension, Decision, Ev, LedgerRow, PlanItem, RuleLedger, StageStatus } from './types';
 import { openStream } from './api';
 
 export const STAGES = [
@@ -26,6 +26,7 @@ export interface RunState {
   decisions: Decision[];
   ledger: LedgerRow[];
   ledgerSummary: Record<string, number>;
+  ruleLedger: RuleLedger | null;
   gate: GateState | null;
   discovery: any | null;
   errorMsg: string;
@@ -35,7 +36,7 @@ export interface RunState {
 
 const initial = (): RunState => ({
   runId: null, status: 'idle', elapsed: '', stages: {}, feed: [], plan: [],
-  comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, gate: null,
+  comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, ruleLedger: null, gate: null,
   discovery: null, errorMsg: '', cost: null, tokens: null,
 });
 
@@ -115,7 +116,8 @@ export function useRun() {
           return feed(s, 'Reviewer', `gate ${ev.gate} → ${ev.action}`, 'system');
         case 'run_complete':
           return { ...s, status: 'complete', ledger: ev.ledger || [], ledgerSummary: ev.ledger_summary || {},
-            decisions: ev.decisions || s.decisions, cost: ev.cost || null, tokens: ev.tokens || null };
+            decisions: ev.decisions || s.decisions, cost: ev.cost || null, tokens: ev.tokens || null,
+            ruleLedger: ev.rule_ledger || null };
         case 'cancelled':
           return feed({ ...s, status: 'idle' }, 'system', 'Run stopped', 'system');
         case 'error':

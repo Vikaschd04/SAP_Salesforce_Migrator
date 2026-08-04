@@ -40,8 +40,8 @@ STATE_ROOT.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="H2A Migration Dashboard", version="0.1.0")
 
 # Report files at the output root that the dashboard surfaces.
-_REPORT_FILES = ["MIGRATION_PLAN.md", "FEASIBILITY_REPORT.md", "PARITY.md",
-                 "DATA_MIGRATION.md", "CRON_JOBS.md", "MAPPING.md"]
+_REPORT_FILES = ["MIGRATION_PLAN.md", "BUSINESS_RULES.md", "FEASIBILITY_REPORT.md",
+                 "PARITY.md", "DATA_MIGRATION.md", "CRON_JOBS.md", "MAPPING.md"]
 
 
 # ── starting a run ────────────────────────────────────────────────────────────

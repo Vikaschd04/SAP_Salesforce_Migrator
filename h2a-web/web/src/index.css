@@ -393,6 +393,48 @@ textarea:focus { outline: none; border-color: var(--accent); }
   padding: 6px 9px; border-radius: 6px; }
 .cost-note.good { color: var(--good); background: var(--good-bg); }
 
+/* ── Business-rule ledger ──
+   Severity is carried by colour AND position: the riskiest rows sort to the top and
+   keep a left stripe, so what needs attention reads before anything is itemised. */
+.rule-hero { display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: 14px 16px;
+  margin-bottom: 12px; background: var(--panel-2); }
+.rule-score { display: flex; flex-direction: column; gap: 3px; }
+.rule-num { font-size: 30px; font-weight: 700; line-height: 1; background: var(--grad);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.rule-den { font-size: 17px; color: var(--text-faint); -webkit-text-fill-color: var(--text-faint); }
+.rule-bar { display: flex; flex: 1 1 200px; height: 9px; gap: 2px;
+  border-radius: 5px; overflow: hidden; min-width: 160px; }
+.rb { display: block; min-width: 3px; }
+.rb.asserted { background: var(--good); }
+.rb.implemented { background: var(--warn); }
+.rb.at_risk { background: var(--danger); opacity: .72; }
+.rb.dropped { background: var(--danger); }
+
+.rule-warn { font-size: 12.5px; line-height: 1.55; color: var(--danger);
+  background: var(--danger-bg); border-radius: 8px; padding: 9px 12px; margin-bottom: 12px; }
+
+.btn-mini.rule-f.dropped, .btn-mini.rule-f.at_risk { color: var(--danger); }
+.btn-mini.rule-f.implemented { color: var(--warn); }
+.btn-mini.rule-f.asserted { color: var(--good); }
+
+.rule-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.rule-tbl th { text-align: left; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--text-faint); font-weight: 700;
+  padding: 0 10px 6px; border-bottom: 1px solid var(--border); }
+.rule-tbl td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.rule-row.dropped td:first-child { box-shadow: inset 2px 0 0 var(--danger); }
+.rule-row.at_risk td:first-child { box-shadow: inset 2px 0 0 rgba(255, 111, 111, .6); }
+.rule-txt { line-height: 1.5; max-width: 34em; }
+.rule-id { display: block; font-family: var(--mono); font-size: 10px; color: var(--text-faint); margin-top: 3px; }
+.rule-ev { color: var(--text-dim); line-height: 1.5; max-width: 22em; }
+.rule-none { color: var(--danger); font-weight: 600; }
+.chip.rule.asserted { background: var(--good-bg); color: var(--good); border-color: transparent; }
+.chip.rule.implemented { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.chip.rule.at_risk, .chip.rule.dropped { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
+.rule-caveat { margin-top: 14px; font-size: 11.5px; line-height: 1.6; color: var(--text-dim);
+  border-left: 2px solid var(--border-strong); padding-left: 11px; }
+
 /* ── Discovery (repository understanding review) ── */
 .disc-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0 14px; }
 .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; }

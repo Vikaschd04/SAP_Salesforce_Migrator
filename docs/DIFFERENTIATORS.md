@@ -26,7 +26,7 @@ line 42, the Java that caused it highlights, and vice-versa.
   Monaco diff.
 - **Compounding:** provenance also powers *impact analysis*, *audit*, and *selective re-generation*.
 
-### 2. Business-rule coverage as the completeness metric
+### 2. Business-rule coverage as the completeness metric — ✅ **SHIPPED**
 Today's ledger proves every **class** is accounted for. That's the wrong unit. The real
 question is *"did every business rule survive?"*
 
@@ -36,6 +36,30 @@ question is *"did every business rule survive?"*
   not "100% of files converted."
 - **Why it wins:** it reframes the buying conversation from *coverage* to *correctness*, and
   it's a number a competitor can't fake without doing the same deep work.
+
+**How it shipped** (`src/rule_ledger.py`, Rules tab, `BUSINESS_RULES.md`): every extracted rule
+gets a stable id (`R-49651d37`) and is traced *source class → artifact → test*, then given one
+of four verdicts:
+
+| Verdict | Meaning |
+|---|---|
+| `asserted` | Implemented, and the generated test references the rule's terms |
+| `implemented` | In the generated code, but no test evidence |
+| `at_risk` | Its target failed to generate |
+| `dropped` | **No artifact carries it** — the class was skipped, or the rule was lost |
+
+`dropped` is the row that carries the moat. Everything else reports on work that happened;
+this reports on work that *didn't*, and it's the only place a silently-lost rule surfaces.
+The UI sorts dropped and at-risk rows to the top and stripes them, so the reviewer meets the
+risk before the reassurance.
+
+> **Honest limit:** `asserted` is decided by keyword overlap between the rule text and the
+> generated test (`parity._rule_covered`, threshold 0.4). That is real evidence and it is
+> reported as such, but it is **not** proof of behavioral equivalence — a test can name the
+> right terms and still assert the wrong thing. The report and the UI both say so in those
+> words. **#3 (characterization testing) is what upgrades this from evidence to proof**, and
+> it is now the highest-value thing left to build, because the ledger has made the gap
+> legible and put a number on it.
 
 ### 3. Characterization testing (golden-master parity)
 Mine the customer's **existing JUnit tests** for input→output pairs, then replay those exact
@@ -129,11 +153,14 @@ branch/compare alternative migration strategies instead of re-running from zero.
 
 ## What I'd build next, in order
 
-1. **Business-rule ledger** (#2) — biggest narrative shift, mostly reuses extracted rules.
-2. **Line-level provenance** (#1) — unlocks review, audit, and impact analysis together.
-3. **Anti-pattern radar** (#4) — fastest credibility win in a demo with a real architect.
-4. **Risk-ranked triage** (#6) — what makes it survive a 400-class repo.
-5. **Characterization tests** (#3) — the proof artifact that closes enterprise deals.
+1. ~~**Business-rule ledger** (#2)~~ — ✅ shipped. It reframed the metric *and* exposed the
+   next gap: the ledger can say "a test plausibly covers this", never "this behaves the same".
+2. **Characterization tests** (#3) — promoted to next. The ledger created the demand for it:
+   every `implemented` row is a rule with no proof, and this is what turns those into
+   `asserted` for real. It's also the proof artifact that closes enterprise deals.
+3. **Line-level provenance** (#1) — unlocks review, audit, and impact analysis together.
+4. **Anti-pattern radar** (#4) — fastest credibility win in a demo with a real architect.
+5. **Risk-ranked triage** (#6) — what makes it survive a 400-class repo.
 
 > **The one-line pitch to aim at:** *"Every other tool converts your code. H2A proves it still
 > behaves the same — rule by rule, line by line, against your own org."*
