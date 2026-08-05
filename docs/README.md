@@ -13,6 +13,7 @@ This folder is the single home for every project document. Start with whichever 
 | **Understand it in plain English, no jargon** | [HOW_IT_WORKS.md](HOW_IT_WORKS.md) |
 | **Learn the actual code — how agents work & coordinate** | [CODEBASE_GUIDE.md](CODEBASE_GUIDE.md) |
 | **Present the slide deck to management** | `DEMO_DECK.pptx` (10 slides, 10–12 min) + [DEMO_DECK_SCRIPT.md](DEMO_DECK_SCRIPT.md) (what to say per slide, with time budgets) |
+| **Present the architecture to engineers** | `ARCHITECTURE_DECK.pptx` (10 slides) + `architecture-diagram.png` (the diagram on its own) |
 | **Run the software live during a demo** | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) |
 | **Install and run it myself** | [HOW_TO_USE.md](HOW_TO_USE.md) |
 
@@ -30,7 +31,11 @@ This folder is the single home for every project document. Start with whichever 
 | `DEMO_DECK.pptx` | The 10-slide executive accelerator deck — **editable PowerPoint** (A4 landscape), built for a 10–12 minute presentation |
 | [DEMO_DECK_SCRIPT.md](DEMO_DECK_SCRIPT.md) | **Deck speaker script** — what to say per slide, with per-slide time budgets and Q&A quick answers |
 | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) | **Live product demo script** — how to run the software live on the sample project, with talking points and Q&A |
+| `ARCHITECTURE_DECK.pptx` | The 10-slide **architecture deck** for a technical audience — surfaces, layers, pipeline, run lifecycle, stack, deployment, and the decisions behind them |
+| `architecture-diagram.png` | The full layered architecture as **one image** (2600×1906) — drop it into any deck, doc, or wiki |
 | `build_deck.py` | Regenerates `DEMO_DECK.pptx` from code |
+| `build_arch_deck.py` | Regenerates `ARCHITECTURE_DECK.pptx` (embeds the diagram — run `build_arch_image.py` first if it is stale) |
+| `build_arch_image.py` | Regenerates `architecture-diagram.png` |
 | [ROADMAP.md](ROADMAP.md) | **Future scope** — what's shipped, what's in progress, what's next, and the hardest open bets |
 
 ## The one-paragraph pitch
