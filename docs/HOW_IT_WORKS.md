@@ -146,17 +146,113 @@ AI can make mistakes — it can write code that looks right but subtly loses a b
 
 That's the difference between a tool that *produces* code and one that produces code you can actually trust as a starting point.
 
+## Under the hood — how the thing is actually built
+
+You don't need this section to *use* the tool. But if you're going to trust it with a real migration — or explain it to someone who asks "how does it actually work?" — here's the inside, still in plain words.
+
+The system is built as **five layers stacked on top of each other**, like floors in a building. The rule is simple and it's the whole trick: **each floor only knows about the floor directly below it.** The engine that does migrations has no idea a web browser exists. That sounds pedantic, but it's exactly why the dashboard, the VS Code extension, and the command line can never drift apart — they're all just different front doors into the same building.
+
+```
+     Hybris code  ──▶   LAYER 1 · SURFACES        the three front doors
+                        LAYER 2 · ORCHESTRATION   the foreman
+                        LAYER 3 · AGENTS          the crew + the whiteboard
+                        LAYER 4 · CAPABILITIES    the toolbox
+                        LAYER 5 · AI GATEWAY      the single door to the AI
+                                                                ──▶  Salesforce project
+```
+
+### Layer 1 — Surfaces: the front doors
+
+The dashboard, the VS Code extension, and the command line. Their only job is talking to *you* — showing progress, taking your approvals. They contain no migration logic at all. If you deleted all three tomorrow, the engine would still work perfectly; you'd just have no way to talk to it.
+
+### Layer 2 — Orchestration: the foreman
+
+This is the one that runs the job. One file, `orchestrator.py`, is the foreman on the site. It doesn't write any code itself — it decides who does what, in what order, and when to stop and ask you something. Four ideas live here, and they're the ones worth understanding:
+
+**The stage machine — the recipe.**
+The whole migration is six numbered steps that always happen in the same order: read the code → understand it → plan → build and review → assemble everything → verify. You can't bake before you've mixed. The foreman announces "starting step 3" and "finished step 3" out loud, which is exactly what you see scrolling past in the dashboard. That's all a "stage machine" is: a recipe it works through, narrating as it goes.
+
+**Wavefronts — doing things at the same time, safely.**
+Here's the problem it solves. Some pieces of code depend on others. If `OrderService` uses `OrderDao`, then `OrderDao` has to be built first — otherwise the AI is writing code against something that doesn't exist yet.
+
+But if you take that seriously and do everything one at a time, a big migration takes forever.
+
+So the foreman sorts all the work into **waves**. A wave is a group of pieces that don't depend on each other *at all*, which means every piece in it can be built simultaneously with no risk. It does wave 1 all at once, waits for it to finish completely, then does wave 2 all at once, and so on.
+
+> Think of building a house. You can pour every foundation at the same time — they don't depend on each other. But you can't start any walls until all the foundations are done. Foundations are wave 1, walls are wave 2. You get the speed of doing things in parallel without ever building a wall on wet concrete.
+
+The result is roughly **7× faster** than one-at-a-time — and here's the important part: the finished output is **identical**, character for character. Going faster changes the clock, never the answer.
+
+**Human gates — the pause button.**
+These are the three review points described earlier. Technically, the foreman genuinely *stops* — the work halts, mid-migration, and sits there waiting. It isn't running ahead in the background and showing you a replay. Nothing further happens until you click approve. And if you close the tab or hit stop, it stops for real and lets go cleanly, so you can start a fresh run whenever you like.
+
+**Containment — one bad file doesn't kill the job.**
+Occasionally the AI just can't convert something. The naive behaviour would be to crash and lose the entire run — which on a 300-class migration would be infuriating.
+
+Instead, the foreman puts a clearly-labelled placeholder in that spot saying *"automatic conversion failed here, this is why, migrate this one by hand"*, marks it in the reports, and carries on with everything else.
+
+> It's the difference between a builder who hits a problem in one room and downs tools for the day, versus one who tapes off that room, notes what's wrong, and finishes the rest of the house.
+
+You end up with 299 converted classes and one honest flag, instead of nothing.
+
+**Checkpointing — autosave.**
+It saves its progress continuously as it works. If a run is interrupted halfway — laptop sleeps, connection drops, you hit stop — restarting picks up where it left off instead of starting from zero.
+
+### Layer 3 — Agents: the crew and the whiteboard
+
+This is the Planner, Builder, Critic, and Verifier described earlier. The structural point is *how they communicate*: **they never talk to each other directly.**
+
+Instead there's a big shared whiteboard in the middle of the room — we call it the **Blackboard**. The Planner writes its plan on the board. The Builder reads the plan off the board and writes the finished code back onto it. The Critic reads that code off the board and writes its findings next to it.
+
+Why do it that way? Because it means **you can walk up to the board at any moment and see everything** — every decision, every draft, every objection, in one place. That single design choice is what makes the review gates, the side-by-side code comparison, the regenerate-one-file button, and the full audit trail possible. If the agents just phoned each other, all of that would be invisible and none of those features could exist.
+
+Three quieter helpers live on this floor too:
+
+| Helper | What it does, plainly |
+|---|---|
+| **The reference library** | A small bundled set of Salesforce rulebooks. Before writing anything, the relevant pages get pulled up and kept open in front of the AI. It's what stops it inventing Salesforce features that don't exist. |
+| **The dispatcher** | Picks which AI to use for which task — a cheaper, faster one for the simpler thinking (reading and planning), the expensive one for the hard parts (writing and reviewing code). You don't send a senior architect to do data entry. |
+| **The memory** | Remembers what it converted last time and what the code looked like then, so a re-run only redoes what actually changed. |
+
+### Layer 4 — Capabilities: the toolbox
+
+A drawer of single-purpose tools. Each one does exactly one job and knows nothing about the others: *read Java · read the data model · read Angular screens · write Apex · write LWC · check the result · deploy it · trace the business rules · convert the data · convert the scheduled jobs · write the reports.*
+
+They're deliberately dumb and self-contained. That's what makes it possible to test each one on its own and know it works — which is where most of the 85 automated tests point.
+
+### Layer 5 — The AI gateway: one door, with a meter on it
+
+Every single request to the AI — from any agent, any stage — goes through **one door**. Nothing is allowed to sneak around it. Four things live at that door:
+
+| At the door | What it does |
+|---|---|
+| **The switch** | Which AI you're using: Claude, OpenRouter, or mock (no AI at all). Everything above this floor is written once and works with all three. |
+| **The retry** | AI services occasionally get busy and refuse. Across hundreds of calls that stops being bad luck and becomes a certainty, so it waits and tries again, backing off politely rather than hammering. |
+| **The notebook** | Remembers answers it already got. Ask the same question twice and it doesn't pay twice. |
+| **The meter** | Counts every request and what it cost, which is where your cost report comes from. |
+
+Putting all four in one place is the point. It means no part of the system can accidentally skip the retry, dodge the meter, or bypass your choice of AI — and adding a new AI provider later means changing one file, not fifty.
+
+### Why the layering is the actual feature
+
+Stack those five ideas and you get the property that matters: **the migration engine doesn't know who's asking.** It can't tell whether the request came from a browser, an editor, or a script.
+
+That's why you get identical results from all three, why the web dashboard could be added without changing a single line of how the command line behaves, and why a new front end tomorrow would need no changes to the engine at all.
+
+> Want the same thing as a diagram? See `architecture-diagram.png`, or `ARCHITECTURE_DECK.pptx` for the presentable version.
+
 ## Built for real projects, not just demos
 
-A demo migrates 6 files. A real Hybris estate has hundreds. Four things make that difference survivable:
+A demo migrates 6 files. A real Hybris estate has hundreds. The machinery described above exists for that gap, and here is what it actually buys you — all measured on this repository, not estimated:
 
-**It's fast.** It works on many classes at once instead of one at a time — about **7× faster** on a typical repository. It's careful about ordering, so the result is *identical* to running them one by one, just quicker.
+| | Result |
+|---|---|
+| **Speed** | **~7× faster** than one-at-a-time (the waves), with byte-for-byte identical output |
+| **Re-runs** | Change nothing and it skips **100%** of the AI work — near-instant, and free. Change one class and it redoes one class. |
+| **Failures** | One class failing costs you that class, not the run. An interrupted run resumes instead of restarting. |
+| **Cost** | Reported per run and per AI model, so there's never a surprise bill |
 
-**It doesn't redo finished work.** Migrations are never one-shot; you'll run it again and again as you fix things. On a re-run it only re-does the classes that actually changed. Change nothing and it skips **100%** of the AI work — near-instant, and free.
-
-**It survives failures.** Over hundreds of AI calls, occasional failures are a certainty, not a risk. It retries intelligently, and it saves progress as it goes — so if a run is interrupted, restarting picks up where it stopped instead of starting over. If one class fails outright, it's flagged for manual work and the rest of the run continues; one bad file never kills the job.
-
-**It tells you what it costs.** You see exactly how much each run spent, broken down by AI model. It also uses a cheaper AI for the simpler thinking (reading and planning) and saves the expensive one for the hard parts (writing and reviewing code).
+The re-run number is the one people underestimate. Migrations are never one-shot — you'll run it again and again as you fix things, adjust the plan, and re-review. A tool that charges you full price every time is a tool you use twice and abandon.
 
 ## Where to go next
 
