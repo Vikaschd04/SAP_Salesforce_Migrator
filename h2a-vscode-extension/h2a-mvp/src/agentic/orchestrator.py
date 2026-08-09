@@ -229,6 +229,46 @@ def _transitive_deps(adjacency: dict, domain: str) -> set:
     return seen
 
 
+_CHAR_META = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+              '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">\n'
+              "    <apiVersion>60.0</apiVersion>\n    <status>Active</status>\n</ApexClass>\n")
+
+
+def _characterize(bb, output_dir: str) -> dict | None:
+    """Mine the customer's JUnit suite and replay it against the generated Apex.
+
+    Written into force-app alongside everything else, so the existing Verify step
+    deploys and runs these tests with no special handling — a failure surfaces through
+    the same channel as any other Apex test failure.
+
+    Never allowed to break a run: characterization is evidence, not a dependency.
+    """
+    if not getattr(bb, "test_classes", None):
+        return None
+    try:
+        from src.characterize import (mine_behaviors, plan_replay, generate_apex,
+                                      summarise, headline, write_characterization_md)
+        behaviors = mine_behaviors(bb.test_classes)
+        if not behaviors:
+            return None
+        planned = plan_replay(behaviors, bb.artifacts)
+        apex = generate_apex(planned)
+
+        classes_dir = Path(output_dir) / "force-app" / "main" / "default" / "classes"
+        classes_dir.mkdir(parents=True, exist_ok=True)
+        for name, body in apex.items():
+            (classes_dir / f"{name}.cls").write_text(body, encoding="utf-8")
+            (classes_dir / f"{name}.cls-meta.xml").write_text(_CHAR_META, encoding="utf-8")
+
+        write_characterization_md(output_dir, planned, apex)
+        s = summarise(planned)
+        bb.record("Characterizer", "replayed", headline(s))
+        return {"summary": s, "behaviors": planned, "classes": sorted(apex)}
+    except Exception as e:                                  # evidence, never a blocker
+        print(f"  ⚠ characterization skipped: {e}")
+        return None
+
+
 def _error_artifact(item, err: str):
     """A placeholder for a target whose automatic build failed — so one bad class is
     flagged for manual migration and accounted for in the ledger, never a reason to
@@ -404,6 +444,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     bb.relations = ingest_result.get("relations", [])
     bb.enum_types = ingest_result.get("enum_types", [])
     bb.frontend_skipped = ingest_result.get("frontend_skipped", [])
+    bb.test_classes = ingest_result.get("test_classes", [])
     bb.schema = build_schema(bb.item_types, bb.relations, bb.enum_types)
     bb.source_corpus = "\n".join(c.get("source", "") for c in bb.all_classes)
 
@@ -839,6 +880,11 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     write_rules_md(output_dir, rule_ledger)
     if rule_ledger["summary"]["total"]:
         bb.record("RuleLedger", "assessed", headline(rule_ledger["summary"]))
+
+    # Golden-master parity: replay the customer's own recorded JUnit behaviour against
+    # the generated Apex. This is the only check here that tests *behaviour* rather than
+    # appearance, so its verdicts are the strongest evidence the run produces.
+    characterization = _characterize(bb, output_dir)
     report_file = generate_report(
         output_dir, bb.validation_results, acct,
         generated_results=bb.generated_dicts(), skipped_domains=[],
@@ -859,6 +905,9 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         if rule_ledger["summary"]["dropped"]:
             print("  ⚠ some business rules are carried by NO generated artifact "
                   "— see BUSINESS_RULES.md")
+    if characterization:
+        from src.characterize import headline as _char_headline
+        print(f"  Characterization: {_char_headline(characterization['summary'])}")
     if any(r["outcome"] == "unaccounted" for r in ledger):
         print("  ⚠ some inputs are UNACCOUNTED for — see the completeness ledger in MIGRATION_PLAN.md")
     print(f"  provider(s)={acct.get('providers', {})}  requests={acct['requests']}"
@@ -880,6 +929,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
          # Completeness in business rules, not files: every rule the Comprehender
          # found, and whether the generated code carries (and tests) it.
          rule_ledger=rule_ledger,
+         # Golden-master parity from the customer's own JUnit suite — behaviour, not looks.
+         characterization=characterization,
          providers=acct.get("providers", {}), requests=acct.get("requests", 0),
          cost=cost, tokens={"input": acct.get("prompt_tokens", 0),
                             "output": acct.get("completion_tokens", 0),

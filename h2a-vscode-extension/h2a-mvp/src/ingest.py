@@ -193,7 +193,40 @@ def _parse_java_file(filepath: str) -> dict | None:
         "referenced_types": sorted(referenced_types),
         "source": source,
         "file": path.name,
+        "is_test": _is_junit_test(tree, class_decl, class_name),
     }
+
+
+def _is_junit_test(tree, class_decl, class_name: str) -> bool:
+    """Is this a JUnit test rather than production code?
+
+    It matters twice over. Translating a Java unit test into Apex is waste — the
+    Builder already writes Apex tests from the comprehension, so a ported one is noise
+    nobody asked for. And these files are the raw material for characterization testing:
+    they are a recorded log of how the old system actually behaved.
+
+    Detection is by import and @Test annotation first (the only real proof), then the
+    naming convention — a class called `FooTest` with no JUnit anywhere in it is
+    somebody's production class and must not be excluded from the migration.
+    """
+    for _, node in tree.filter(javalang.tree.Import):
+        p = node.path or ""
+        if p.startswith(("org.junit", "junit.framework", "org.testng")):
+            return True
+
+    body = class_decl.body or []
+    for decl in body:
+        if not isinstance(decl, javalang.tree.MethodDeclaration):
+            continue
+        for ann in (decl.annotations or []):
+            if (ann.name or "").split(".")[-1] in ("Test", "ParameterizedTest", "RepeatedTest"):
+                return True
+
+    # Naming alone is weak evidence, so require a test-shaped body to go with it.
+    if class_name.endswith(("Test", "Tests", "TestCase", "IT")):
+        return any(isinstance(d, javalang.tree.MethodDeclaration) and d.name.startswith("test")
+                   for d in body)
+    return False
 
 
 def _type_to_str(type_node) -> str:
@@ -357,11 +390,18 @@ def ingest(input_dir: str) -> dict:
             if file.endswith(".java"):
                 java_files.append(Path(root) / file)
 
-    classes = []
+    # JUnit tests are split out, never migrated. They are not production logic, and
+    # porting them to Apex burns tokens producing code nobody wants. They are kept
+    # because characterization testing replays them against the generated Apex.
+    classes, test_classes = [], []
     for java_file in sorted(java_files, key=lambda p: p.name):
         parsed = _parse_java_file(str(java_file))
-        if parsed:
-            classes.append(parsed)
+        if not parsed:
+            continue
+        (test_classes if parsed.get("is_test") else classes).append(parsed)
+    if test_classes:
+        print(f"  · {len(test_classes)} JUnit test class(es) held aside "
+              f"(not migrated — used as recorded behaviour)")
 
     # Sort by dependency order
     classes = _sort_by_dependency(classes)
@@ -400,6 +440,7 @@ def ingest(input_dir: str) -> dict:
 
     return {
         "classes": classes,
+        "test_classes": test_classes,
         "item_types": item_types,
         "relations": relations,
         "enum_types": enum_types,

@@ -99,6 +99,9 @@ class Blackboard:
     # Frontend framework glue / type-only files recorded (not converted) so the
     # completeness ledger can account for them with a reason.
     frontend_skipped: list = field(default_factory=list)
+    # JUnit tests found in the source. Never migrated — they are the recorded
+    # behaviour that characterization testing replays against the generated Apex.
+    test_classes: list = field(default_factory=list)
 
     # Agent products
     comprehensions: dict = field(default_factory=dict)     # class_name -> understanding
