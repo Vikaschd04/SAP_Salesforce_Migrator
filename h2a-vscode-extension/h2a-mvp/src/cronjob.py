@@ -28,6 +28,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field as dc_field
 from pathlib import Path
 
+from src.textio import read_text_or_empty
+
 
 @dataclass
 class CronTrigger:
@@ -183,14 +185,14 @@ def find_cron_triggers(input_dir: str) -> list[CronTrigger]:
         if name == "items.xml" or name.endswith("-items.xml"):
             continue
         try:
-            text = path.read_text(encoding="utf-8")
+            text = read_text_or_empty(path)
         except Exception:
             continue
         if "<bean" in text:
             triggers += parse_spring_triggers(text, source=str(path))
     for path in Path(input_dir).rglob("*.impex"):
         try:
-            text = path.read_text(encoding="utf-8")
+            text = read_text_or_empty(path)
         except Exception:
             continue
         triggers += parse_impex_triggers(text, source=str(path))

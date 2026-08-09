@@ -24,6 +24,8 @@ import re
 from dataclasses import dataclass, field as dc_field
 from pathlib import Path
 
+from src.textio import read_text_or_empty
+
 _MODES = ("INSERT_UPDATE", "INSERT", "UPDATE", "REMOVE")
 _HEADER_RE = re.compile(r"^(" + "|".join(_MODES) + r")\s+(\w+)\s*;(.*)$")
 
@@ -276,7 +278,7 @@ def mark_external_id_fields(output_dir: str, plan: list) -> list:
         fpath = base / obj.object_api / "fields" / f"{obj.external_id}.field-meta.xml"
         if not fpath.exists():
             continue
-        xml = fpath.read_text(encoding="utf-8")
+        xml = read_text_or_empty(fpath)
         if "<externalId>" not in xml:
             xml = xml.replace("</CustomField>", "    <externalId>true</externalId>\n</CustomField>")
         if "<unique>" not in xml:
@@ -297,7 +299,7 @@ def translate_impex_dir(input_dir: str, output_dir: str, *, mark_metadata: bool 
     files = find_impex_files(input_dir)
     blocks: list = []
     for f in files:
-        blocks += parse_impex(Path(f).read_text(encoding="utf-8"))
+        blocks += parse_impex(read_text_or_empty(f))
     plan = build_data_plan(blocks)
     written = write_data_migration(output_dir, plan) if plan else []
     patched = mark_external_id_fields(output_dir, plan) if (plan and mark_metadata) else []

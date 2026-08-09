@@ -104,6 +104,9 @@ class Blackboard:
     test_classes: list = field(default_factory=list)
     # Preflight verdict: what this codebase is, and anything alarming in it.
     preflight: dict = field(default_factory=dict)
+    # Files we could not read or parse. Recorded rather than dropped: a migration that
+    # silently forgets a file is worse than one that admits it could not read it.
+    unreadable: list = field(default_factory=list)
 
     # Agent products
     comprehensions: dict = field(default_factory=dict)     # class_name -> understanding
@@ -175,6 +178,14 @@ class Blackboard:
             else:
                 rows.append({"source": name, "layer": layer, "outcome": "unaccounted",
                              "target": "—", "note": "NOT represented in output — investigate"})
+
+        # Files that never reached the parser at all. These are the rows that would
+        # otherwise vanish without trace, so they are called out as needing a human.
+        for u in self.unreadable:
+            rows.append({"source": u.get("class_name", "?"), "layer": "—",
+                         "outcome": "unreadable", "target": "—",
+                         "note": f"{u.get('unreadable', 'unknown')} ({u.get('file', '')})"
+                                 " — migrate this file by hand"})
 
         # Frontend framework glue / type-only files: no business logic to convert.
         for sk in self.frontend_skipped:

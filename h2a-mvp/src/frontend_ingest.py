@@ -24,6 +24,8 @@ import os
 import re
 from pathlib import Path
 
+from src.textio import read_text_or_empty
+
 FRONTEND_COMPONENT_LAYER = "Component"
 
 _CLASS_RE = re.compile(r"export\s+class\s+(\w+)")
@@ -50,7 +52,7 @@ _TS_KEYWORD_TYPES = {
 
 def _read(path: Path) -> str:
     try:
-        return path.read_text(encoding="utf-8")
+        return read_text_or_empty(path)
     except (OSError, UnicodeDecodeError):
         return ""
 

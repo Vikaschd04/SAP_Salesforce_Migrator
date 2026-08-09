@@ -138,11 +138,17 @@ def _merge_by_name(targets: list[dict]) -> list[dict]:
         if cur is None:
             merged[t["target_name"]] = {**t, "source_classes": list(t["source_classes"])}
             continue
-        seen = {c.get("class_name") for c in cur["source_classes"]}
+        # Keyed by (name, file), not name alone. Two extensions routinely ship a class
+        # of the same simple name — `DefaultOrderService` in acmecore and again in
+        # acmeb2b — and they are genuinely different classes. Apex has no namespaces, so
+        # they must land in one artifact; deduping by name alone made one of them
+        # disappear from that artifact's sources instead, taking its logic with it.
+        seen = {(c.get("class_name"), c.get("file")) for c in cur["source_classes"]}
         for c in t["source_classes"]:
-            if c.get("class_name") not in seen:
+            key = (c.get("class_name"), c.get("file"))
+            if key not in seen:
                 cur["source_classes"].append(c)
-                seen.add(c.get("class_name"))
+                seen.add(key)
     return list(merged.values())
 
 

@@ -10,6 +10,8 @@ from pathlib import Path
 from src.ingest import looks_like_test_file
 from src.domain_classifier import classify_domains
 
+from src.textio import read_text_or_empty
+
 
 def _strip_comments_and_strings(content: str) -> str:
     """Remove comments and string literals so identifier matching avoids false positives."""
@@ -44,7 +46,7 @@ def build_dependency_graph(input_dir: str) -> tuple[dict[str, list[str]], dict]:
             path = Path(cls["absolute_path"])
             if not path.exists():
                 continue
-            content = _strip_comments_and_strings(path.read_text(encoding="utf-8"))
+            content = _strip_comments_and_strings(read_text_or_empty(path))
             for target_cls, target_domain in class_to_domain.items():
                 if target_domain == domain:
                     continue
@@ -110,7 +112,7 @@ def extract_method_call_graph(input_dir: str, output_dir: str):
 
     for fpath in java_files:
         try:
-            content = fpath.read_text(encoding="utf-8")
+            content = read_text_or_empty(fpath)
         except Exception:
             continue
 
@@ -139,7 +141,7 @@ def extract_method_call_graph(input_dir: str, output_dir: str):
     for class_name, methods in class_methods.items():
         fpath = class_to_file[class_name]
         try:
-            content = Path(fpath).read_text(encoding="utf-8")
+            content = read_text_or_empty(fpath)
         except Exception:
             continue
 
@@ -187,7 +189,7 @@ def extract_method_call_graph(input_dir: str, output_dir: str):
         
         for c in controllers:
             for s in services:
-                c_content = Path(class_to_file[c]).read_text(encoding="utf-8")
+                c_content = read_text_or_empty(class_to_file[c])
                 if s in c_content:
                     c_methods = class_methods[c]
                     s_methods = class_methods[s]
@@ -196,7 +198,7 @@ def extract_method_call_graph(input_dir: str, output_dir: str):
 
         for s in services:
             for d in daos:
-                s_content = Path(class_to_file[s]).read_text(encoding="utf-8")
+                s_content = read_text_or_empty(class_to_file[s])
                 if d in s_content:
                     s_methods = class_methods[s]
                     d_methods = class_methods[d]

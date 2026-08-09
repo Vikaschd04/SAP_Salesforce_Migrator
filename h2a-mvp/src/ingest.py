@@ -16,6 +16,8 @@ from pathlib import Path
 
 import javalang
 
+from src.textio import read_source, read_text_or_empty
+
 
 # ── Layer inference ──────────────────────────────────────────────────────────
 
@@ -99,13 +101,26 @@ def _parse_java_file(filepath: str) -> dict | None:
         None if parsing fails.
     """
     path = Path(filepath)
-    source = path.read_text(encoding="utf-8")
+    got = read_source(path)
+    if got is None:
+        # A binary file with a .java extension — a build artefact, a Git LFS pointer,
+        # an accidental commit. Reported, not raised.
+        print(f"  ⚠ {path.name} is not a text file — skipped")
+        return {"class_name": path.stem, "unreadable": "not a text file", "file": path.name}
+    source, encoding = got
 
     try:
         tree = javalang.parse.parse(source)
-    except javalang.parser.JavaSyntaxError as e:
-        print(f"  ⚠ Parse error in {path.name}: {e}")
-        return None
+    except Exception as e:
+        # javalang predates records, sealed types and switch expressions, so modern
+        # syntax lands here. Returning None used to make the class vanish entirely —
+        # it never reached all_classes, so the completeness ledger could not report it
+        # either. A migration that silently forgets a file is worse than one that says
+        # it could not read it.
+        detail = str(e).strip() or type(e).__name__
+        print(f"  ⚠ Could not parse {path.name}: {detail}")
+        return {"class_name": path.stem, "unreadable": f"could not parse Java: {detail}",
+                "file": path.name, "source": source}
 
     # Find the first class or interface declaration
     class_decl = None
@@ -193,6 +208,7 @@ def _parse_java_file(filepath: str) -> dict | None:
         "referenced_types": sorted(referenced_types),
         "source": source,
         "file": path.name,
+        "encoding": encoding,
         "is_test": _is_junit_test(tree, class_decl, class_name),
     }
 
@@ -205,9 +221,8 @@ def looks_like_test_file(path) -> bool:
     domains like `OrderServiceTest` and schedule work for classes that are deliberately
     never migrated.
     """
-    try:
-        src = Path(path).read_text(encoding="utf-8", errors="ignore")
-    except Exception:
+    src = read_text_or_empty(path)
+    if not src:
         return False
     if "org.junit" in src or "junit.framework" in src or "org.testng" in src:
         return True
@@ -282,7 +297,14 @@ def _parse_items_xml(filepath: str) -> list[dict]:
     Returns:
         List of dicts with keys: name, description, fields.
     """
-    tree = ET.parse(filepath)
+    # One malformed items.xml used to abort the entire migration. A hand-edited type
+    # system with an unclosed tag is common in a long-lived estate, and it must cost you
+    # that file's types, not the run.
+    try:
+        tree = ET.parse(filepath)
+    except ET.ParseError as e:
+        print(f"  ⚠ Malformed XML in {Path(filepath).name}: {e} — skipped")
+        return []
     root = tree.getroot()
 
     item_types = []
@@ -410,12 +432,20 @@ def ingest(input_dir: str) -> dict:
     # JUnit tests are split out, never migrated. They are not production logic, and
     # porting them to Apex burns tokens producing code nobody wants. They are kept
     # because characterization testing replays them against the generated Apex.
-    classes, test_classes = [], []
+    classes, test_classes, unreadable = [], [], []
     for java_file in sorted(java_files, key=lambda p: p.name):
         parsed = _parse_java_file(str(java_file))
         if not parsed:
             continue
-        (test_classes if parsed.get("is_test") else classes).append(parsed)
+        if parsed.get("unreadable"):
+            unreadable.append(parsed)
+        elif parsed.get("is_test"):
+            test_classes.append(parsed)
+        else:
+            classes.append(parsed)
+    if unreadable:
+        print(f"  ⚠ {len(unreadable)} file(s) could not be read or parsed "
+              f"— listed in the completeness ledger, not silently dropped")
     if test_classes:
         print(f"  · {len(test_classes)} JUnit test class(es) held aside "
               f"(not migrated — used as recorded behaviour)")
@@ -458,6 +488,7 @@ def ingest(input_dir: str) -> dict:
     return {
         "classes": classes,
         "test_classes": test_classes,
+        "unreadable": unreadable,
         "item_types": item_types,
         "relations": relations,
         "enum_types": enum_types,
