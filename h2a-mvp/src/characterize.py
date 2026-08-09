@@ -266,15 +266,25 @@ def plan_replay(behaviors: list[dict], artifacts: list) -> list[dict]:
     return planned
 
 
-def generate_apex(planned: list[dict]) -> dict[str, str]:
-    """Build one Apex characterization test class per target, from `direct` rows only.
+def is_runnable(r: dict) -> bool:
+    """A behaviour we can emit as an executable Apex test — replayed or bridged."""
+    return r["mode"] == "direct" or bool(r.get("bridge"))
 
-    Deliberately deterministic: no model is asked what the answer should be. Every
-    asserted value here was recorded by the customer's own suite.
+
+def generate_apex(planned: list[dict]) -> dict[str, str]:
+    """Build one Apex characterization test class per target.
+
+    Two kinds of row make it in: `direct` (the signature survived, so the call is
+    constructed deterministically) and bridged `adapter` rows (a model arranged the
+    inputs for a reshaped signature).
+
+    In BOTH cases the assertion is written here, from the recorded value. The model is
+    never asked what the answer should be and its output is never trusted to say — that
+    separation is the whole reason a bridged test still counts as evidence.
     """
     by_target: dict[str, list[dict]] = {}
     for r in planned:
-        if r["mode"] == "direct":
+        if is_runnable(r):
             by_target.setdefault(r["target"], []).append(r)
 
     out = {}
@@ -287,10 +297,29 @@ def generate_apex(planned: list[dict]) -> dict[str, str]:
              "    // means the migrated behaviour genuinely differs from the legacy behaviour.",
              ""]
         for r in rows:
+            msg = f"{r['id']} · {r['test_class']}.{r['test_method']}"
+
+            if r.get("bridge"):
+                br = r["bridge"]
+                L += [f"    // {r['id']} — recorded: {r['label']}",
+                      f"    // bridged onto the reshaped signature: {br.get('note', '')[:110]}",
+                      "    @isTest",
+                      f"    static void {r['id'].replace('-', '_').lower()}() {{"]
+                if r["expects_exception"]:
+                    L += ["        Boolean threw = false;", "        try {"]
+                    L += [f"            {ln}" for ln in br["setup"].splitlines()]
+                    L += ["        } catch (Exception e) { threw = true; }",
+                          f"        System.assert(threw, '{msg} — expected a rejection');"]
+                else:
+                    L += [f"        {ln}" for ln in br["setup"].splitlines()]
+                    L += [f"        System.assertEquals({r['expected']['apex']}, {br['result_expr']},",
+                          f"            '{msg}');"]
+                L += ["    }", ""]
+                continue
+
             args = ", ".join(a["apex"] for a in r["args"])
             call = (f"{r['target']}.{r['target_method']}({args})" if r.get("static")
                     else f"new {r['target']}().{r['target_method']}({args})")
-            msg = f"{r['id']} · {r['test_class']}.{r['test_method']}"
             L += [f"    // {r['id']} — recorded: {r['label']}",
                   f"    @isTest",
                   f"    static void {r['id'].replace('-', '_').lower()}() {{"]
@@ -311,9 +340,11 @@ def summarise(planned: list[dict]) -> dict:
     counts = {m: 0 for m in ("direct", "adapter", "manual")}
     for r in planned:
         counts[r["mode"]] = counts.get(r["mode"], 0) + 1
+    bridged = sum(1 for r in planned if r.get("bridge"))
+    runnable = counts["direct"] + bridged
     total = len(planned)
-    return {"total": total, **counts,
-            "replayable_pct": round(100.0 * counts["direct"] / total) if total else None}
+    return {"total": total, **counts, "bridged": bridged, "runnable": runnable,
+            "replayable_pct": round(100.0 * runnable / total) if total else None}
 
 
 def headline(s: dict) -> str:
@@ -321,8 +352,19 @@ def headline(s: dict) -> str:
     if not t:
         return ("No JUnit tests found — characterization needs the customer's existing "
                 "test suite as its source of recorded behaviour.")
-    return (f"{s['direct']}/{t} recorded behaviours replay directly against the generated Apex "
-            f"({s.get('replayable_pct', 0)}%) · {s['adapter']} need bridging · {s['manual']} manual")
+    parts = [f"{s['direct']} direct"] if s.get("direct") else []
+    if s.get("bridged"):
+        parts.append(f"{s['bridged']} bridged")
+    unbridged = s.get("adapter", 0) - s.get("bridged", 0)
+    tail = []
+    if unbridged:
+        tail.append(f"{unbridged} unbridged")
+    if s.get("manual"):
+        tail.append(f"{s['manual']} manual")
+    return (f"{s.get('runnable', 0)}/{t} recorded behaviours replay against the generated Apex "
+            f"({s.get('replayable_pct', 0)}%"
+            + (" — " + ", ".join(parts) if parts else "") + ")"
+            + (" · " + ", ".join(tail) if tail else ""))
 
 
 def write_characterization_md(output_dir: str, planned: list[dict], apex: dict[str, str]) -> str:
@@ -377,3 +419,119 @@ def write_characterization_md(output_dir: str, planned: list[dict], apex: dict[s
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(out) + "\n", encoding="utf-8")
     return str(path)
+
+
+# ── bridging a reshaped call ──────────────────────────────────────────────────
+
+ADAPTER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "bridges": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "description": "the behaviour id being bridged"},
+                    "feasible": {"type": "boolean",
+                                 "description": "false if this legacy call cannot be faithfully "
+                                                "expressed against the new signature"},
+                    "setup": {"type": "string",
+                              "description": "Apex statements that arrange test data and invoke "
+                                             "the new method. NO assertions."},
+                    "result_expr": {"type": "string",
+                                    "description": "an Apex expression yielding the single value "
+                                                   "equivalent to what the legacy call returned"},
+                    "note": {"type": "string", "description": "how the shapes were reconciled"},
+                },
+                "required": ["id", "feasible", "setup", "result_expr", "note"],
+            },
+        }
+    },
+    "required": ["bridges"],
+}
+
+_ADAPTER_SYSTEM = (
+    "You port recorded legacy test cases onto migrated Apex. You are given facts about how "
+    "a Java system behaved and the Apex that replaced it. Your ONLY job is to arrange the "
+    "equivalent inputs and invoke the new code.\n\n"
+    "You must NEVER write an assertion, and you must NEVER state what the expected value is — "
+    "the expected value is a recorded fact supplied separately and will be asserted for you. "
+    "If you cannot express the legacy call against the new signature without changing its "
+    "meaning, set feasible=false. A false is always better than a plausible fabrication."
+)
+
+# An adapter that writes its own assertion would defeat the entire point of the module,
+# so bridges that try are rejected outright rather than trusted.
+_FORBIDDEN = ("System.assert", "System.assertEquals", "System.assertNotEquals", "@isTest")
+
+
+def _adapter_prompt(target: str, apex: str, rows: list[dict]) -> str:
+    lines = [f"# The migrated Apex class `{target}`", "```apex", (apex or "")[:12000], "```", "",
+             "# Recorded legacy behaviours to bridge", ""]
+    for r in rows:
+        args = ", ".join(a["java"] for a in r["args"])
+        lines.append(f"- id `{r['id']}` — legacy call `{r['source_class']}.{r['target_method']}({args})`")
+        lines.append(f"  · what it did: {r['label']}")
+        if r["expects_exception"]:
+            lines.append(f"  · the legacy code REJECTED this input (threw {r['expects_exception']}). "
+                         "Arrange the equivalent invalid input and invoke; the rejection is asserted for you.")
+        else:
+            lines.append("  · it returned a single value. `result_expr` must yield the Apex "
+                         "equivalent of that value.")
+    lines += ["", "For each id return a bridge. `setup` may insert records and call the new "
+                  "method; `result_expr` must be a single expression (often a local variable you "
+                  "assigned in `setup`). Do not assert anything."]
+    return "\n".join(lines)
+
+
+def build_adapters(planned: list[dict], *, offline: bool = False, model: str | None = None,
+                   apex_of: dict[str, str] | None = None) -> list[dict]:
+    """Ask the model to bridge reshaped calls — arrange and act only.
+
+    The expected value is never sent for the model to echo back and never accepted from
+    it. That is what keeps a bridged test evidence rather than a second opinion.
+    """
+    from src.llm import call_structured
+
+    apex_of = apex_of or {}
+    by_target: dict[str, list[dict]] = {}
+    for r in planned:
+        if r["mode"] != "adapter" or not r.get("target"):
+            continue
+        # No point bridging a call whose recorded *answer* we cannot state in Apex —
+        # there would be nothing to assert against, and asserting nothing is worse than
+        # admitting the gap. Those stay for a human.
+        if not r["expects_exception"] and (r["expected"] or {}).get("apex") is None:
+            r["reason"] = "the recorded return value is an object graph, not a value we can assert"
+            continue
+        by_target.setdefault(r["target"], []).append(r)
+    if not by_target:
+        return planned
+
+    for target, rows in by_target.items():
+        try:
+            res = call_structured(
+                f"characterize_{target}", _adapter_prompt(target, apex_of.get(target, ""), rows),
+                ADAPTER_SCHEMA, 4000, offline=offline, model=model,
+                system_prompt=_ADAPTER_SYSTEM,
+            )
+            bridges = {b.get("id"): b for b in ((res.get("parsed") or {}).get("bridges") or [])}
+        except Exception as e:
+            for r in rows:
+                r["reason"] = f"{r['reason']} (bridging unavailable: {e})"
+            continue
+
+        for r in rows:
+            b = bridges.get(r["id"])
+            if not b or not b.get("feasible"):
+                r["reason"] = (b or {}).get("note") or r["reason"]
+                continue
+            setup, expr = (b.get("setup") or "").strip(), (b.get("result_expr") or "").strip()
+            if not setup or not expr:
+                continue
+            if any(f in setup or f in expr for f in _FORBIDDEN):
+                r["reason"] = "bridge rejected — it tried to write its own assertion"
+                continue
+            r["bridge"] = {"setup": setup, "result_expr": expr, "note": b.get("note", "")}
+            r["reason"] = b.get("note") or "bridged onto the reshaped signature"
+    return planned

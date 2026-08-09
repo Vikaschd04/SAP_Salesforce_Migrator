@@ -234,7 +234,7 @@ _CHAR_META = ('<?xml version="1.0" encoding="UTF-8"?>\n'
               "    <apiVersion>60.0</apiVersion>\n    <status>Active</status>\n</ApexClass>\n")
 
 
-def _characterize(bb, output_dir: str) -> dict | None:
+def _characterize(bb, output_dir: str, *, offline: bool, config: dict) -> dict | None:
     """Mine the customer's JUnit suite and replay it against the generated Apex.
 
     Written into force-app alongside everything else, so the existing Verify step
@@ -246,12 +246,19 @@ def _characterize(bb, output_dir: str) -> dict | None:
     if not getattr(bb, "test_classes", None):
         return None
     try:
-        from src.characterize import (mine_behaviors, plan_replay, generate_apex,
+        from src.characterize import (mine_behaviors, plan_replay, generate_apex, build_adapters,
                                       summarise, headline, write_characterization_md)
         behaviors = mine_behaviors(bb.test_classes)
         if not behaviors:
             return None
         planned = plan_replay(behaviors, bb.artifacts)
+
+        # Most real behaviours land in `adapter`, because the migration deliberately
+        # reshapes calls (single-record → bulk). Bridging is where the coverage is.
+        if not offline:
+            apex_of = {a.target_name: (a.main_class or "") for a in bb.artifacts}
+            planned = build_adapters(planned, offline=offline,
+                                     model=route_model("generate", config), apex_of=apex_of)
         apex = generate_apex(planned)
 
         classes_dir = Path(output_dir) / "force-app" / "main" / "default" / "classes"
@@ -884,7 +891,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # Golden-master parity: replay the customer's own recorded JUnit behaviour against
     # the generated Apex. This is the only check here that tests *behaviour* rather than
     # appearance, so its verdicts are the strongest evidence the run produces.
-    characterization = _characterize(bb, output_dir)
+    characterization = _characterize(bb, output_dir, offline=offline, config=config)
     report_file = generate_report(
         output_dir, bb.validation_results, acct,
         generated_results=bb.generated_dicts(), skipped_domains=[],

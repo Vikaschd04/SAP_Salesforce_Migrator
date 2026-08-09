@@ -4,7 +4,8 @@ import textwrap
 
 from src.agentic.blackboard import Artifact
 from src.characterize import (mine_behaviors, plan_replay, generate_apex, summarise,
-                              headline, write_characterization_md, behavior_id)
+                              headline, write_characterization_md, behavior_id,
+                              is_runnable, build_adapters)
 
 JUNIT = textwrap.dedent("""
     package com.acme;
@@ -126,7 +127,7 @@ def test_no_apex_generated_when_nothing_is_direct():
 def test_summary_and_headline_are_honest():
     s = summarise(plan_replay(mine_behaviors(_tests()), [_art()]))
     assert s["total"] == 5 and s["direct"] == 4 and s["adapter"] == 1
-    assert "4/5 recorded behaviours replay directly" in headline(s)
+    assert "4/5 recorded behaviours replay against the generated Apex (80% — 4 direct)" in headline(s)
     assert "No JUnit tests found" in headline(summarise([]))
 
 
@@ -141,7 +142,7 @@ def test_report_grades_the_evidence(tmp_path):
     planned = plan_replay(mine_behaviors(_tests()), [_art()])
     text = open(write_characterization_md(str(tmp_path), planned, generate_apex(planned)),
                 encoding="utf-8").read()
-    assert "4/5 recorded behaviours replay directly" in text
+    assert "4/5 recorded behaviours replay against the generated Apex" in text
     # The reader must be told how far to trust each mode.
     assert "**Strong**" in text and "Medium" in text
     assert "PromotionServiceCharacterizationTest.cls" in text
@@ -184,3 +185,102 @@ def test_ingest_holds_tests_aside_from_the_migration_set():
     assert [c["class_name"] for c in r["test_classes"]] == [
         "DefaultOrderServiceTest", "DefaultPromotionServiceTest"]
     assert not any(c["class_name"].endswith("Test") for c in r["classes"])
+
+
+# ── the adapter bridge: a model may arrange, never assert ─────────────────────
+
+BULK = ("public with sharing class PromotionService { "
+        "public List<Decimal> applyDiscounts(List<Decimal> subs) { return subs; } }")
+
+
+def _adapters(bridges, monkeypatch):
+    """Run build_adapters against a stubbed model response."""
+    import src.llm as llm
+    monkeypatch.setattr(llm, "call_structured",
+                        lambda *a, **k: {"parsed": {"bridges": bridges}})
+    planned = plan_replay(mine_behaviors(_tests()), [_art(main=BULK)])
+    return build_adapters(planned, apex_of={"PromotionService": BULK})
+
+
+def _ids(planned):
+    return {p["test_method"]: p for p in planned}
+
+
+def test_a_feasible_bridge_becomes_runnable(monkeypatch):
+    rows = plan_replay(mine_behaviors(_tests()), [_art(main=BULK)])
+    target = _ids(rows)["spendDiscountAppliesTenPercentOverThreshold"]
+    planned = _adapters([{"id": target["id"], "feasible": True,
+                          "setup": "Decimal r = new PromotionService().applyDiscounts(new List<Decimal>{200.00})[0];",
+                          "result_expr": "r", "note": "wrapped the single value in a list"}],
+                        monkeypatch)
+    got = _ids(planned)["spendDiscountAppliesTenPercentOverThreshold"]
+    assert got["bridge"]["result_expr"] == "r"
+    assert is_runnable(got)
+
+
+def test_the_assertion_is_written_by_us_not_the_model(monkeypatch):
+    """The recorded value must appear in the generated assert even though the model
+    was never told it — that separation is what keeps a bridged test evidence."""
+    rows = plan_replay(mine_behaviors(_tests()), [_art(main=BULK)])
+    target = _ids(rows)["spendDiscountAppliesTenPercentOverThreshold"]
+    planned = _adapters([{"id": target["id"], "feasible": True,
+                          "setup": "Decimal r = svc.applyDiscounts(new List<Decimal>{200.00})[0];",
+                          "result_expr": "r", "note": ""}], monkeypatch)
+    body = generate_apex(planned)["PromotionServiceCharacterizationTest"]
+    assert "System.assertEquals(180.00, r," in body
+
+
+def test_a_bridge_that_writes_its_own_assertion_is_rejected(monkeypatch):
+    """Otherwise a model could assert whatever makes the test pass."""
+    rows = plan_replay(mine_behaviors(_tests()), [_art(main=BULK)])
+    target = _ids(rows)["spendDiscountAppliesTenPercentOverThreshold"]
+    planned = _adapters([{"id": target["id"], "feasible": True,
+                          "setup": "Decimal r = 999; System.assertEquals(999, r);",
+                          "result_expr": "r", "note": ""}], monkeypatch)
+    got = _ids(planned)["spendDiscountAppliesTenPercentOverThreshold"]
+    assert "bridge" not in got
+    assert "own assertion" in got["reason"]
+    assert generate_apex(planned) == {}
+
+
+def test_an_infeasible_bridge_is_never_emitted(monkeypatch):
+    rows = plan_replay(mine_behaviors(_tests()), [_art(main=BULK)])
+    target = _ids(rows)["spendDiscountAppliesTenPercentOverThreshold"]
+    planned = _adapters([{"id": target["id"], "feasible": False, "setup": "", "result_expr": "",
+                          "note": "the new API has no single-order equivalent"}], monkeypatch)
+    got = _ids(planned)["spendDiscountAppliesTenPercentOverThreshold"]
+    assert "bridge" not in got and "no single-order equivalent" in got["reason"]
+
+
+def test_unassertable_return_values_are_never_sent_for_bridging(monkeypatch):
+    """A behaviour whose recorded ANSWER is an object graph has nothing to assert
+    against, so bridging it would produce a test that proves nothing."""
+    src = textwrap.dedent("""
+        import org.junit.Test;
+        import static org.junit.Assert.assertEquals;
+        public class DefaultPromotionServiceTest {
+            @Test public void returnsTheSameCart() {
+                assertEquals(expectedCart, svc.rebuildCart(cart));
+            }
+        }
+        """)
+    sent = []
+    import src.llm as llm
+    monkeypatch.setattr(llm, "call_structured",
+                        lambda *a, **k: sent.append(a[0]) or {"parsed": {"bridges": []}})
+    planned = plan_replay(mine_behaviors([{"class_name": "DefaultPromotionServiceTest",
+                                           "source": src}]), [_art(main=BULK)])
+    build_adapters(planned, apex_of={"PromotionService": BULK})
+    assert "object graph" in planned[0]["reason"]
+    assert sent == [], "an unassertable behaviour must never reach the model"
+
+
+def test_a_model_failure_never_breaks_the_run(monkeypatch):
+    import src.llm as llm
+    def boom(*a, **k):
+        raise RuntimeError("provider down")
+    monkeypatch.setattr(llm, "call_structured", boom)
+    planned = plan_replay(mine_behaviors(_tests()), [_art(main=BULK)])
+    out = build_adapters(planned, apex_of={"PromotionService": BULK})
+    assert all("bridge" not in r for r in out)
+    assert any("bridging unavailable" in r["reason"] for r in out)
