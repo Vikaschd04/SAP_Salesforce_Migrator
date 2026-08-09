@@ -189,8 +189,21 @@ def build_system_prompt(mappings: dict, schema: dict | None) -> str:
 
 
 def _build_source_summary(source_classes: list[dict], comprehensions: dict) -> tuple[str, str]:
+    """Java + comprehension context for the generation prompt.
+
+    Source is slimmed first (imports and generated accessors removed, logic and javadoc
+    kept verbatim) — this is the frontier-tier call, so it is where prompt bytes cost the
+    most."""
     # Defensive: real-world ingest can yield class dicts missing a field (odd syntax,
     # inner classes, non-Java files). A missing key must never crash generation.
+    try:
+        from src.slim import slim_classes, enabled as _slim_on
+        from src.llm import _load_config
+        if _slim_on(_load_config()):
+            source_classes = slim_classes(source_classes)[0]
+    except Exception:
+        pass                      # slimming is an optimisation, never a dependency
+
     sources, comp_summaries = [], []
     for cls in (source_classes or []):
         name = cls.get("class_name", "UnknownClass")

@@ -63,8 +63,11 @@ not the full two hours.
   generate/critic. Measured ~20%: generation and critique carry most of the tokens and
   stay on the frontier tier, so routing alone is a trim, not a halving.
 - ✅ **Per-model cost accounting + live spend meter** in the cockpit.
-- ⬜ **Prompt slimming** — still open, and now the largest unclaimed cost lever. Whole-file
-  source is still sent even though ingest already parses methods and fields.
+- ✅ **Prompt slimming** — import blocks and provably-trivial accessors stripped from the
+  source sent to the model; logic and javadoc kept verbatim. **~9% end-to-end on the
+  hand-written demo, 74% on a realistic generated Hybris `*Model` class** — and a real
+  estate is mostly those, so the demo badly understates it. Falls back to untouched
+  source on anything unexpected.
 - ⬜ **Per-run cost cap.**
 
 ### 6D. Resilience at scale · ✅
@@ -125,7 +128,6 @@ signed sign-off contract export, security review, on-prem/VPC packaging, load te
 | ~~4~~ | ~~Phase 7 platform~~ | ✅ done, and moved ahead of Phase 8 in practice: concurrency made isolation and admission control urgent |
 | **5** | **Anti-pattern radar → risk triage** | **Next.** Reuses the preflight static-analysis walk; no model calls, no org, demos on a locked-down laptop |
 | **6** | Line-level provenance | Unlocks review, audit and impact analysis together |
-| **7** | Prompt slimming | The largest unclaimed cost lever |
 | **8** | Phase 9 | Procurement gates, not product gates |
 
 > **The one metric to lead with:** *"A 300-class Hybris extension, fully migrated, reviewed,

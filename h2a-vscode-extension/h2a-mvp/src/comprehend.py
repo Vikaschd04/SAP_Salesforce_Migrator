@@ -62,8 +62,11 @@ def comprehend_class(class_info: dict, *, offline: bool = False,
     layer = class_info.get("layer", "")
 
     try:
+        from src.slim import slim_java, enabled as _slim_on
+        raw = class_info.get("source", "")
+        java_source = slim_java(raw)[0] if _slim_on(config) else raw
         prompt = _load_prompt_template().format(
-            java_source=class_info.get("source", ""),
+            java_source=java_source,
             class_name=name,
             layer=layer,
             methods=_format_methods(class_info.get("methods", [])),

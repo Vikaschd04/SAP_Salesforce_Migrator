@@ -58,6 +58,17 @@ pricing:
     # claude-opus-4-8:  {input: 5.00,  output: 25.00}
     # claude-haiku-4-5: {input: 1.00,  output: 5.00}
 
+# Prompt slimming. Strips import blocks and provably-trivial getters/setters from the
+# source sent to the model, keeping all logic AND all javadoc verbatim (javadoc is a
+# quarter of the bytes here and it is where business rules are usually written down).
+#
+# Savings depend entirely on the codebase. Measured: ~9% end-to-end on the hand-written
+# demo, but 74% on a realistic generated Hybris *Model class — and a real estate is
+# mostly those. Falls back to the untouched source whenever anything looks off.
+# Override per-run with H2A_SLIM_PROMPTS=0 to compare against the baseline.
+prompts:
+  slim: true
+
 # Adaptive-thinking effort per stage (Anthropic only; ignored by other providers)
 effort:
   comprehend: low
