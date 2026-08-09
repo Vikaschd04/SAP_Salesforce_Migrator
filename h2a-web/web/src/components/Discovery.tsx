@@ -197,38 +197,130 @@ function Stat({ n, l }: { n?: number; l: string }) {
   return <div className="stat"><div className="stat-n num">{(n ?? 0).toLocaleString()}</div><div className="stat-l">{l}</div></div>;
 }
 
-/** Domains on a ring with dependency edges — how the system is wired, at a glance. */
-function DomainGraph({ domains, edges }: { domains: Record<string, string[]>; edges: { from: string; to: string }[] }) {
+/** Domains on a ring with dependency edges — how the system is wired, at a glance.
+ *
+ * Labels sit *radially outside* the ring rather than stacked above each node. Domain
+ * names come from real class names (`OrderFulfilment`, `PricingBreakdownPopulator`) and
+ * are long; centring them all above their node made neighbours overlap into mush as soon
+ * as there were more than about six. Anchoring by which side of the ring a node sits on
+ * pushes every label away from its neighbours instead of into them.
+ */
+function DomainGraph({ domains, edges }: {
+  domains: Record<string, string[]>;
+  edges: { from: string; to: string }[];
+}) {
   const names = Object.keys(domains);
   if (!names.length) return <p className="empty">No domain structure detected.</p>;
-  const W = 460, H = Math.min(300, 120 + names.length * 18), cx = W / 2, cy = H / 2;
-  const r = Math.min(cx, cy) - 54;
-  const pos: Record<string, { x: number; y: number }> = {};
-  names.forEach((n, i) => {
+
+  const MAX_LABEL = 18;
+  // A ring in a fixed viewport holds about twenty labels. Beyond that the radius is
+  // capped by width, so growing the diagram does nothing and the labels simply collide.
+  // Rather than render mush, label the domains that carry the most structure and leave
+  // the rest as dots — every circle still names itself on hover, and the caption says
+  // plainly how many are unlabelled. A readable partial view beats an unreadable whole.
+  const MAX_LABELLED = 20;
+  // Spread the candidates evenly around the ring first — picking the twenty
+  // most-connected sounds better and is worse, since nothing stops them being
+  // neighbours.
+  const stride = Math.ceil(names.length / MAX_LABELLED);
+  const single = names.length === 1;
+  // Room for a label on each side, and vertical room that grows with the count so a
+  // large estate spreads out instead of crowding.
+  const W = 720;
+  const H = Math.max(260, Math.min(560, 200 + names.length * 26));
+  const cx = W / 2;
+  const cy = H / 2;
+  const r = Math.min(W / 2 - 170, H / 2 - 46);
+
+  const nodes = names.map((n, i) => {
     const a = (i / names.length) * Math.PI * 2 - Math.PI / 2;
-    pos[n] = names.length === 1 ? { x: cx, y: cy } : { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+    const cos = single ? 0 : Math.cos(a);
+    const sin = single ? 0 : Math.sin(a);
+    const x = single ? cx : cx + r * cos;
+    const y = single ? cy : cy + r * sin;
+    // Right of the ring reads left-to-right, left of it right-to-left, poles stay
+    // centred — so text always grows away from the diagram, never across it.
+    const anchor: 'start' | 'end' | 'middle' =
+      cos > 0.25 ? 'start' : cos < -0.25 ? 'end' : 'middle';
+    // Past ~20 domains the ring stops growing (the height is capped) and neighbouring
+    // labels start to touch. Pushing every other one further out doubles the effective
+    // gap between adjacent labels without making the diagram any taller.
+    // Alternate on the LABEL sequence, not the node index: with a stride every
+    // labelled node has an even index, so keying off `i % 2` staggered nothing.
+    const pad = names.length > 12 && Math.floor(i / stride) % 2 === 1 ? 38 : 17;
+    return {
+      n, x, y, anchor,
+      lx: x + cos * pad + (anchor === 'middle' ? 0 : cos > 0 ? 4 : -4),
+      ly: y + sin * pad + (anchor === 'middle' ? (sin >= 0 ? 15 : -8) : 4),
+      label: n.length > MAX_LABEL ? n.slice(0, MAX_LABEL - 1) + '…' : n,
+      truncated: n.length > MAX_LABEL,
+      candidate: i % stride === 0,
+    };
   });
+
+  // Then place them greedily and drop anything that would still collide. Every
+  // heuristic tried before this (stagger, stride, a taller viewBox) left a handful of
+  // sizes overlapping, because ring geometry does not divide evenly. Measuring the box
+  // and rejecting is the only version that is actually true at every size — and a
+  // dropped label costs a hover, while an overlapping one costs both names.
+  const CH = 6.2, LINE = 14;                       // 10.5px semibold sans, measured
+  const placed: { x0: number; x1: number; y0: number; y1: number }[] = [];
+  const show = new Set<string>();
+  for (const d of nodes) {
+    if (!d.candidate) continue;
+    const w = d.label.length * CH;
+    const x0 = d.anchor === 'start' ? d.lx : d.anchor === 'end' ? d.lx - w : d.lx - w / 2;
+    const box = { x0, x1: x0 + w, y0: d.ly - LINE * 0.75, y1: d.ly + LINE * 0.3 };
+    if (box.x0 < 2 || box.x1 > W - 2) continue;    // would run off the edge
+    if (placed.some((b) => box.x0 < b.x1 && b.x0 < box.x1 && box.y0 < b.y1 && b.y0 < box.y1)) continue;
+    placed.push(box);
+    show.add(d.n);
+  }
+  const hidden = names.length - show.size;
+  const pos: Record<string, (typeof nodes)[number]> =
+    Object.fromEntries(nodes.map((d) => [d.n, d]));
+
   return (
-    <svg className="domgraph" viewBox={`0 0 ${W} ${H}`} width="100%">
-      {edges.filter((e) => pos[e.from] && pos[e.to]).map((e, i) => (
-        <line key={i} x1={pos[e.from].x} y1={pos[e.from].y} x2={pos[e.to].x} y2={pos[e.to].y}
-          stroke="var(--border-strong)" strokeWidth={1.2} markerEnd="url(#dgArrow)" />
-      ))}
+    <>
+    <svg className="domgraph" viewBox={`0 0 ${W} ${H}`} width="100%" role="img"
+      aria-label={`${names.length} domains and their dependencies`}>
       <defs>
         <marker id="dgArrow" markerWidth="7" markerHeight="7" refX="16" refY="3" orient="auto">
           <path d="M0,0 L6,3 L0,6" fill="none" stroke="var(--border-strong)" strokeWidth="1.2" />
         </marker>
       </defs>
-      {names.map((n) => (
-        <g key={n}>
-          <circle cx={pos[n].x} cy={pos[n].y} r={11} fill="var(--panel-3)" stroke="var(--teal)" strokeWidth={1.4} />
-          <text x={pos[n].x} y={pos[n].y + 3.5} textAnchor="middle" className="dg-count num">{(domains[n] || []).length}</text>
-          <text x={pos[n].x} y={pos[n].y - 17} textAnchor="middle" className="dg-name">{n}</text>
+      {edges.filter((e) => pos[e.from] && pos[e.to]).map((e, i) => (
+        <line key={i} x1={pos[e.from].x} y1={pos[e.from].y} x2={pos[e.to].x} y2={pos[e.to].y}
+          stroke="var(--border-strong)" strokeWidth={1.2} markerEnd="url(#dgArrow)" />
+      ))}
+      {nodes.map((d) => (
+        <g key={d.n}>
+          <circle cx={d.x} cy={d.y} r={11} fill="var(--panel-3)" stroke="var(--teal)" strokeWidth={1.4}>
+            <title>{`${d.n} — ${(domains[d.n] || []).length} class(es)`}</title>
+          </circle>
+          <text x={d.x} y={d.y + 3.5} textAnchor="middle" className="dg-count num">
+            {(domains[d.n] || []).length}
+          </text>
+          {show.has(d.n) && (
+            <text x={d.lx} y={d.ly} textAnchor={d.anchor} className="dg-name">
+              {d.label}
+              {/* Truncation must not lose the name — the full one stays on hover. */}
+              {d.truncated && <title>{d.n}</title>}
+            </text>
+          )}
         </g>
       ))}
     </svg>
+    {hidden > 0 && (
+      <p className="dg-note">
+        {show.size} of {names.length} domains are labelled — the rest are drawn
+        unlabelled to keep the names legible. Hover any circle for its name.
+      </p>
+    )}
+    </>
   );
 }
+
 
 /** Real folder tree of everything the scan saw. */
 function FileTree({ files }: { files: { path: string; bytes: number }[] }) {

@@ -204,6 +204,7 @@ input, select, textarea { font-family: inherit; }
 
 /* ── Body grid ── */
 .body { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(440px, 1.7fr); gap: 16px; padding: 12px 24px 24px; }
+.body > * { min-width: 0; }
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r); display: flex; flex-direction: column; min-height: 440px; overflow: hidden; box-shadow: var(--shadow-sm); }
 .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid var(--border); }
 .panel-head h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
@@ -310,12 +311,23 @@ td code { font-family: var(--mono); font-size: 11.5px; }
 
 /* ── Files ── */
 .files-layout { display: grid; grid-template-columns: minmax(200px, 300px) 1fr; gap: 12px; height: 58vh; }
+.files-layout > * { min-width: 0; }
 .filelist { list-style: none; margin: 0; padding: 0; overflow: auto; border-right: 1px solid var(--border); }
 .filelist li { padding: 6px 9px; font-family: var(--mono); font-size: 11.5px; cursor: pointer; border-radius: 6px; color: var(--text-dim); white-space: nowrap; }
 .filelist li:hover { background: var(--panel-hover); }
 .filelist li.sel { background: var(--accent-bg); color: var(--text); }
 .filelist li.lwc { color: var(--violet); }
-.code-view { margin: 0; padding: 12px; background: #05080d; border-radius: 8px; overflow: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.55; white-space: pre; height: 58vh; color: #d6deea; }
+.code-view { margin: 0; padding: 12px; background: #05080d; border-radius: 8px;
+  overflow: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+  white-space: pre; height: 58vh; color: #d6deea;
+  /* Both axes scroll. SAP and Apex files are wide, and a horizontal bar that only
+     appears on hover is one most people never discover. */
+  overflow-x: auto; overflow-y: auto; scrollbar-gutter: stable;
+  overscroll-behavior: contain; }
+.code-view::-webkit-scrollbar { width: 11px; height: 11px; }
+.code-view::-webkit-scrollbar-thumb { background: #2a3446; border-radius: 7px; border: 2px solid #05080d; }
+.code-view::-webkit-scrollbar-thumb:hover { background: #3b4a63; }
+.code-view::-webkit-scrollbar-corner { background: #05080d; }
 
 /* ── Pipeline flow ── */
 .flow-ribbon { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-bottom: 18px; }
@@ -368,6 +380,10 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .pane-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .code-view.sm { height: auto; max-height: 320px; font-size: 11px; }
 .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* A grid item defaults to min-width:auto, so a long line of Apex widened the TRACK
+   instead of letting the pane scroll — the whole page went sideways and the code was
+   still cut off. min-width:0 lets the column shrink so overflow lands on the <pre>. */
+.cmp > * { min-width: 0; }
 .cmp-h { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-faint);
   font-weight: 700; margin-bottom: 5px; }
 .regen { display: flex; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
@@ -693,6 +709,7 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .layerkey { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 9px; font-size: 11.5px; color: var(--text-dim); }
 .layerkey i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
 .layerkey b { color: var(--text); }
+.dg-note { margin: 6px 0 0; font-size: 11.5px; color: var(--text-faint); line-height: 1.5; }
 .domgraph { display: block; margin-top: 6px; }
 .dg-name { fill: var(--text); font-size: 10.5px; font-family: var(--sans); font-weight: 600; }
 .dg-count { fill: var(--teal); font-size: 10px; font-family: var(--mono); font-weight: 700; }
