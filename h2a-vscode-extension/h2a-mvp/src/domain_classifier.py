@@ -6,6 +6,8 @@ Clustered legacy code files by domain boundaries to build step-by-step conversio
 import os
 from pathlib import Path
 
+from src.ingest import looks_like_test_file
+
 
 def classify_domains(input_dir: str) -> dict:
     """
@@ -18,7 +20,11 @@ def classify_domains(input_dir: str) -> dict:
     for root, _, files in os.walk(input_dir):
         for file in files:
             if file.endswith(".java"):
-                java_files.append(Path(root) / file)
+                fp = Path(root) / file
+                # JUnit tests are never migrated; including them here would invent
+                # domains and schedule work for classes that produce no output.
+                if not looks_like_test_file(fp):
+                    java_files.append(fp)
 
     domains = {}
     for path in java_files:

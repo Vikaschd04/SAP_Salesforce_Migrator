@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { listRuns } from '../api';
 import type { RunSummary } from '../types';
+import type { QueueState } from '../api';
 
 /**
  * Past migrations, recovered from the durable store.
@@ -33,12 +34,13 @@ export default function History({ open, onClose, onOpen }: {
   open: boolean; onClose: () => void; onOpen: (runId: string) => void;
 }) {
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
+  const [queue, setQueue] = useState<QueueState | null>(null);
   const [page, setPage] = useState(0);
 
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    const tick = () => listRuns().then((r) => { if (alive) setRuns(r); }).catch(() => {});
+    const tick = () => listRuns().then((d) => { if (alive) { setRuns(d.runs); setQueue(d.queue); } }).catch(() => {});
     tick();
     const t = setInterval(tick, 5000);
     return () => { alive = false; clearInterval(t); };
@@ -73,7 +75,13 @@ export default function History({ open, onClose, onOpen }: {
         <header className="modal-head">
           <div>
             <h2>Recent migrations</h2>
-            <p>Newest first. History survives a restart.</p>
+            <p>
+              Newest first. History survives a restart.
+              {queue && (queue.active > 0 || queue.waiting > 0) && (
+                <> · <b>{queue.active}</b> running{queue.waiting > 0 && <>, <b>{queue.waiting}</b> waiting</>}
+                  {' '}(capacity {queue.capacity})</>
+              )}
+            </p>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
         </header>
@@ -94,7 +102,11 @@ export default function History({ open, onClose, onOpen }: {
                     {r.input_dir.split('/').filter(Boolean).pop()}
                     <span className="hist-id mono">{r.id}</span>
                   </span>
-                  <span className={`chip hist-status ${r.status}`}>{LABEL[r.status] || r.status}</span>
+                  <span className={`chip hist-status ${r.status}`}>
+                    {r.status === 'queued' && r.queue_position
+                      ? `Queued · #${r.queue_position}`
+                      : LABEL[r.status] || r.status}
+                  </span>
                   <span className="hist-meta mono">{r.provider}</span>
                   {r.supervised && <span className="hist-meta mono">supervised</span>}
                   <span className="hist-meta num">{dur(r.elapsed)}</span>

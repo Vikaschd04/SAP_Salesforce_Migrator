@@ -24,8 +24,10 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, PlainTextResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from run_manager import start_run, get_run, get_run_record, list_runs, owns, ENGINE_ROOT
+from run_manager import (start_run, get_run, get_run_record, list_runs, owns,
+                         queue_state, ENGINE_ROOT)
 import auth
+import keyvault
 
 WEB_DIST = Path(__file__).resolve().parents[1] / "web" / "dist"        # built React cockpit
 LEGACY_FRONTEND = Path(__file__).resolve().parents[1] / "frontend"     # no-build fallback
@@ -112,6 +114,40 @@ async def api_logout(request: Request):
     return resp
 
 
+# ── provider credentials ──────────────────────────────────────────────────────
+
+@app.get("/api/keys")
+async def api_keys(request: Request):
+    """What this tenant has stored. Masked hints only — plaintext never leaves here."""
+    user = getattr(request.state, "user", None)
+    return {"available": keyvault.available(), "reason": keyvault.why_unavailable(),
+            "keys": keyvault.list_keys(user["id"]) if user else []}
+
+
+@app.put("/api/keys/{provider}")
+async def api_set_key(provider: str, body: dict, request: Request):
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(401, "Sign in to store a key.")
+    if provider not in ("anthropic", "openrouter"):
+        raise HTTPException(400, "Unknown provider.")
+    try:
+        return keyvault.set_key(user["id"], provider, body.get("key", ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(503, f"Key storage is unavailable — {e}.")
+
+
+@app.delete("/api/keys/{provider}")
+async def api_delete_key(provider: str, request: Request):
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(401, "Sign in first.")
+    keyvault.delete_key(user["id"], provider)
+    return {"ok": True}
+
+
 @app.get("/api/auth/me")
 async def api_me(request: Request):
     return {"required": auth.auth_required(), "signup_open": auth.signup_open(),
@@ -144,10 +180,13 @@ async def create_run(
         raise HTTPException(400, "Provide input_path or upload a .zip")
 
     user = getattr(request.state, "user", None)
+    uid = (user or {}).get("id")
     run = start_run(input_dir, str(OUTPUT_ROOT / _new_out_name(input_dir)),
                     provider=provider, engine=engine, verify=verify, supervised=supervised,
-                    state_dir=_state_dir_for(input_dir),
-                    owner=(user or {}).get("id"))
+                    state_dir=_state_dir_for(input_dir), owner=uid,
+                    # The tenant's own credential when they have stored one; otherwise
+                    # None, which falls back to the server's shared key.
+                    api_key=keyvault.get_key(uid, provider))
     return {"run_id": run.id, "status": run.status}
 
 
@@ -231,7 +270,7 @@ def _new_out_name(input_dir: str) -> str:
 @app.get("/api/runs")
 async def api_list_runs(request: Request):
     user = getattr(request.state, "user", None)
-    return {"runs": list_runs(owner=(user or {}).get("id"))}
+    return {"runs": list_runs(owner=(user or {}).get("id")), "queue": queue_state()}
 
 
 @app.get("/api/runs/{run_id}")

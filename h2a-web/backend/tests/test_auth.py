@@ -233,3 +233,101 @@ def test_signup_closes_after_the_first_account_unless_opened(tmp_path, monkeypat
     r = TestClient(appmod.app).post("/api/auth/signup",
                                     json={"email": "bob@example.com", "password": PW})
     assert r.status_code == 403
+
+
+# ── per-tenant provider credentials ───────────────────────────────────────────
+
+@pytest.fixture
+def vault(api, monkeypatch):
+    monkeypatch.setenv("H2A_SECRET_KEY", "a-deployment-secret-that-is-long-enough")
+    import keyvault
+    importlib.reload(keyvault)
+    if not keyvault.available():
+        pytest.skip(f"key storage unavailable: {keyvault.why_unavailable()}")
+    return keyvault
+
+
+def test_a_stored_key_is_encrypted_at_rest(vault, tmp_path):
+    vault.set_key("u1", "anthropic", "sk-ant-super-secret-value-1234")
+    assert b"sk-ant-super-secret-value-1234" not in (tmp_path / "runs.db").read_bytes()
+    assert vault.get_key("u1", "anthropic") == "sk-ant-super-secret-value-1234"
+
+
+def test_the_api_returns_a_mask_never_the_key(vault, api):
+    c = client(api)
+    register(c, "ada@example.com")
+    r = c.put("/api/keys/anthropic", json={"key": "sk-ant-super-secret-value-1234"})
+    assert r.status_code == 200
+    body = c.get("/api/keys").text
+    assert "sk-ant-super-secret-value-1234" not in body, "plaintext left the server"
+    assert "…1234" in body
+
+
+def test_one_tenant_cannot_read_anothers_key(vault):
+    vault.set_key("u1", "anthropic", "sk-ant-belongs-to-user-one")
+    assert vault.get_key("u2", "anthropic") is None
+
+
+def test_a_rotated_server_secret_falls_back_rather_than_failing(vault, monkeypatch):
+    """A changed H2A_SECRET_KEY makes stored keys unreadable, not wrong. Falling back to
+    the server credential beats failing every run with a decryption error."""
+    vault.set_key("u1", "anthropic", "sk-ant-super-secret-value-1234")
+    monkeypatch.setenv("H2A_SECRET_KEY", "a-completely-different-deployment-secret")
+    assert vault.get_key("u1", "anthropic") is None
+
+
+def test_storage_is_refused_without_a_server_secret(api, monkeypatch):
+    """Encrypting with a secret kept beside the ciphertext would be decoration, so the
+    feature stays off and says why."""
+    monkeypatch.delenv("H2A_SECRET_KEY", raising=False)
+    import keyvault
+    importlib.reload(keyvault)
+    assert keyvault.available() is False
+    assert "H2A_SECRET_KEY" in keyvault.why_unavailable()
+
+    c = client(api)
+    register(c, "ada@example.com")
+    r = c.put("/api/keys/anthropic", json={"key": "sk-ant-super-secret-value-1234"})
+    assert r.status_code == 503
+
+
+def test_a_deleted_key_reverts_to_the_server_credential(vault):
+    vault.set_key("u1", "anthropic", "sk-ant-super-secret-value-1234")
+    vault.delete_key("u1", "anthropic")
+    assert vault.get_key("u1", "anthropic") is None
+
+
+def test_a_run_uses_its_owners_key_not_the_servers(vault, monkeypatch):
+    """The whole point: a tenant's migration bills their account, not the server's.
+
+    Asserted on the plumbing rather than through a full migration, because a run that
+    actually reached Anthropic would need a live key and would spend real money.
+    """
+    from src.llm import _get_api_key
+    from src.runctx import set_overrides, propagate
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-the-servers-shared-key")
+
+    vault.set_key("u1", "anthropic", "sk-ant-this-tenants-own-key-9999")
+    tenant_key = vault.get_key("u1", "anthropic")
+
+    import threading
+    seen = {}
+
+    def a_run():
+        set_overrides(provider="anthropic", api_key=tenant_key)
+        seen["direct"] = _get_api_key("ANTHROPIC_API_KEY")
+        # ...and inside a pool worker, where most LLM calls actually happen.
+        w = threading.Thread(target=propagate(
+            lambda: seen.__setitem__("worker", _get_api_key("ANTHROPIC_API_KEY"))))
+        w.start(); w.join()
+
+    t = threading.Thread(target=a_run); t.start(); t.join()
+    assert seen["direct"] == "sk-ant-this-tenants-own-key-9999"
+    assert seen["worker"] == "sk-ant-this-tenants-own-key-9999", "the override did not reach workers"
+
+
+def test_a_tenant_without_a_key_falls_back_to_the_server(vault, monkeypatch):
+    from src.llm import _get_api_key
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-the-servers-shared-key")
+    assert vault.get_key("nobody", "anthropic") is None
+    assert _get_api_key("ANTHROPIC_API_KEY") == "sk-ant-the-servers-shared-key"

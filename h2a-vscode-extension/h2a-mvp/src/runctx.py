@@ -23,14 +23,19 @@ import contextvars
 
 _provider: contextvars.ContextVar[str | None] = contextvars.ContextVar("h2a_provider", default=None)
 _model: contextvars.ContextVar[str | None] = contextvars.ContextVar("h2a_model", default=None)
+# A tenant's own provider credential, so concurrent runs bill their own accounts.
+_api_key: contextvars.ContextVar[str | None] = contextvars.ContextVar("h2a_api_key", default=None)
 
 
-def set_overrides(*, provider: str | None = None, model: str | None = None) -> None:
-    """Pin provider/model for the current run (and anything it spawns via propagate)."""
+def set_overrides(*, provider: str | None = None, model: str | None = None,
+                  api_key: str | None = None) -> None:
+    """Pin provider/model/credential for this run (and anything it spawns via propagate)."""
     if provider:
         _provider.set(provider)
     if model:
         _model.set(model)
+    if api_key:
+        _api_key.set(api_key)
 
 
 def provider_override() -> str | None:
@@ -39,6 +44,10 @@ def provider_override() -> str | None:
 
 def model_override() -> str | None:
     return _model.get()
+
+
+def api_key_override() -> str | None:
+    return _api_key.get()
 
 
 def propagate(fn):
@@ -52,12 +61,14 @@ def propagate(fn):
     concurrently — so `ctx.run(...)` raises "context is already entered". Re-setting the
     values at the top of each call is both simpler and safe against pool-thread reuse.
     """
-    prov, mdl = _provider.get(), _model.get()
+    prov, mdl, key = _provider.get(), _model.get(), _api_key.get()
 
     def run(*a, **kw):
         if prov is not None:
             _provider.set(prov)
         if mdl is not None:
             _model.set(mdl)
+        if key is not None:
+            _api_key.set(key)
         return fn(*a, **kw)
     return run

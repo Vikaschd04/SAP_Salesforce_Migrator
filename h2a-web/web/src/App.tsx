@@ -9,9 +9,10 @@ import Landing from './components/Landing';
 import History from './components/History';
 import Logo from './components/Logo';
 import SignIn from './components/SignIn';
+import Keys from './components/Keys';
 
 export default function App() {
-  const { state, begin, reset, closeGate, injectEvents } = useRun();
+  const { state, begin, reset, rejoin, closeGate, injectEvents } = useRun();
   const [engineUp, setEngineUp] = useState<boolean | null>(null);
   const [theme, setTheme] = useState(localStorage.getItem('h2a-theme') || 'dark');
   const [starting, setStarting] = useState(false);
@@ -22,13 +23,19 @@ export default function App() {
   const [defaultProvider, setDefaultProvider] = useState('mock');
   const [me, setMe] = useState<Me | null>(null);
   const [histOpen, setHistOpen] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     health().then(setEngineUp);
     getConfig().then((c) => { setHosted(c.hosted); setDefaultProvider(c.default_provider); });
-    fetchMe().then(setMe);
-  }, []);
+    fetchMe().then((m) => {
+      setMe(m);
+      // Only after we know who we are: rejoining before auth resolves would 401 and
+      // wrongly discard a run that is still going.
+      if (!m.required || m.user) rejoin();
+    });
+  }, [rejoin]);
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme); localStorage.setItem('h2a-theme', theme); }, [theme]);
   useEffect(() => { if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight; }, [state.feed]);
 
@@ -73,6 +80,7 @@ export default function App() {
           {me.user && (
             <div className="acct" title={me.user.email}>
               <span className="acct-badge">{me.user.name.slice(0, 1).toUpperCase()}</span>
+              <button className="acct-out" onClick={() => setKeysOpen(true)}>Keys</button>
               <button className="acct-out" onClick={signOut}>Sign out</button>
             </div>
           )}
@@ -134,6 +142,7 @@ export default function App() {
         </>
       )}
 
+      <Keys open={keysOpen} onClose={() => setKeysOpen(false)} />
       <History open={histOpen} onClose={() => setHistOpen(false)} onOpen={begin} />
       {state.gate && state.runId && <Gate runId={state.runId} gate={state.gate} onClosed={closeGate} />}
       <Copilot runId={state.runId} open={cpOpen} onClose={() => setCpOpen(false)} onEvents={injectEvents} />

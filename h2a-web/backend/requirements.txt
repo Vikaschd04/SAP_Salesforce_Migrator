@@ -3,3 +3,5 @@ fastapi>=0.110
 uvicorn[standard]>=0.29
 python-multipart>=0.0.9
 markdown>=3.5          # render reports (.md) → HTML for the visual dashboard preview
+cryptography>=42          # encrypts per-tenant API keys at rest; the feature
+                          # degrades cleanly (and says so) if it is absent

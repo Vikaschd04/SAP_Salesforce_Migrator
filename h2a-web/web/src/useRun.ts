@@ -11,6 +11,8 @@ export const STAGES = [
   { id: 'verify', n: 'Verify' },
 ] as const;
 
+const LAST_RUN = 'h2a-last-run';
+
 export interface FeedItem { id: number; ts: string; agent: string; msg: string; kind: string; }
 export interface GateState { gate: 'discovery' | 'plan' | 'build'; items?: PlanItem[]; artifacts?: any[]; discovery?: any; }
 
@@ -136,15 +138,36 @@ export function useRun() {
   const begin = useCallback((runId: string) => {
     stopRef.current?.();
     feedId.current = 0; tsRef.current = '';
+    // Remembered so a refresh, a dropped connection, or a closed tab can rejoin. The
+    // backend already retains every event and replays from any index; the client simply
+    // never kept the id, so a reload orphaned a migration the server was still running.
+    try { localStorage.setItem(LAST_RUN, runId); } catch { /* private mode */ }
     setState({ ...initial(), runId, status: 'running' });
     stopRef.current = openStream(runId, handle);
   }, [handle]);
 
-  const reset = useCallback(() => { stopRef.current?.(); setState(initial()); }, []);
+  const reset = useCallback(() => {
+    stopRef.current?.();
+    try { localStorage.removeItem(LAST_RUN); } catch { /* private mode */ }
+    setState(initial());
+  }, []);
+
+  /** Rejoin the last run on mount, if the server still knows about it. */
+  const rejoin = useCallback(async () => {
+    let id: string | null = null;
+    try { id = localStorage.getItem(LAST_RUN); } catch { return; }
+    if (!id) return;
+    const r = await fetch(`/api/runs/${id}`).catch(() => null);
+    if (!r || !r.ok) {                       // gone, or belongs to someone else now
+      try { localStorage.removeItem(LAST_RUN); } catch { /* ignore */ }
+      return;
+    }
+    begin(id);
+  }, [begin]);
   const closeGate = useCallback(() => setState((s) => ({ ...s, gate: null })), []);
   // Let the Copilot inject events (e.g. a rework artifact) so the feed / Artifacts /
   // Diff update exactly as they would from the live stream.
   const injectEvents = useCallback((evs: Ev[]) => { evs.forEach(handle); }, [handle]);
 
-  return { state, begin, reset, closeGate, injectEvents };
+  return { state, begin, reset, rejoin, closeGate, injectEvents };
 }

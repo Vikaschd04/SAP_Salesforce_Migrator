@@ -46,11 +46,22 @@ def _await(run, timeout=90):
 # ── concurrency + isolation ───────────────────────────────────────────────────
 
 def test_two_runs_execute_concurrently(fresh, tmp_path):
-    """The process-global lock used to serialise these — one user at a time."""
+    """The process-global lock used to serialise these — one user at a time.
+
+    Sampled in a loop rather than at one instant: a mock run finishes in a couple of
+    hundred milliseconds, so a single well-timed sleep can miss the overlap entirely and
+    fail a working system.
+    """
     a = fresh.start_run(DEMO, str(tmp_path / "a"), provider="mock")
     b = fresh.start_run(DEMO, str(tmp_path / "b"), provider="mock")
-    time.sleep(0.25)
-    overlapped = a.status == "running" and b.status == "running"
+    overlapped = False
+    for _ in range(600):
+        if a.status == "running" and b.status == "running":
+            overlapped = True
+            break
+        if a.status not in ("queued", "running") and b.status not in ("queued", "running"):
+            break
+        time.sleep(0.01)
     assert _await(a) == "complete" and _await(b) == "complete"
     assert overlapped, "runs were serialised, not concurrent"
 
@@ -156,3 +167,73 @@ def test_an_unwritable_database_degrades_instead_of_breaking_runs(tmp_path, monk
     run = rm.start_run(DEMO, str(tmp_path / "a"), provider="mock")
     assert _await(run) == "complete"
     assert rm.list_runs()[0]["id"] == run.id      # still served from memory
+
+
+# ── admission control ─────────────────────────────────────────────────────────
+
+def test_concurrency_is_capped(fresh, tmp_path, monkeypatch):
+    """Removing the global lock traded 'one user at a time' for 'ten users exhaust the
+    box'. A migration holds a Blackboard in memory and fans out to parallel LLM calls,
+    so N simultaneous runs is N times that."""
+    monkeypatch.setenv("H2A_MAX_CONCURRENT_RUNS", "2")
+    runs = [fresh.start_run(DEMO, str(tmp_path / f"r{i}"), provider="mock") for i in range(5)]
+    peak = 0
+    for _ in range(400):
+        peak = max(peak, sum(1 for r in runs if r.status == "running"))
+        if all(r.status not in ("queued", "running") for r in runs):
+            break
+        time.sleep(0.02)
+    for r in runs:
+        assert _await(r) == "complete", r.error
+    assert peak <= 2, f"{peak} runs ran at once with a cap of 2"
+
+
+def test_queued_runs_report_their_place_in_line(fresh, tmp_path, monkeypatch):
+    monkeypatch.setenv("H2A_MAX_CONCURRENT_RUNS", "1")
+    runs = [fresh.start_run(DEMO, str(tmp_path / f"r{i}"), provider="mock") for i in range(4)]
+    seen = set()
+    for _ in range(200):
+        seen |= {r.summary()["queue_position"] for r in runs if r.status == "queued"}
+        if all(r.status not in ("queued", "running") for r in runs):
+            break
+        time.sleep(0.02)
+    assert seen & {1, 2, 3}, f"no queue positions were ever reported: {seen}"
+    for r in runs:
+        _await(r)
+
+
+def test_admission_is_fifo(fresh, tmp_path, monkeypatch):
+    """A semaphore alone would let a late arrival jump a run that has been waiting."""
+    monkeypatch.setenv("H2A_MAX_CONCURRENT_RUNS", "1")
+    runs = [fresh.start_run(DEMO, str(tmp_path / f"r{i}"), provider="mock") for i in range(4)]
+    order, seen = [], set()
+    for _ in range(600):
+        for r in runs:
+            if r.status == "running" and r.id not in seen:
+                seen.add(r.id); order.append(r.id)
+        if all(r.status not in ("queued", "running") for r in runs):
+            break
+        time.sleep(0.02)
+    for r in runs:
+        _await(r)
+    assert order == [r.id for r in runs], "runs did not start in submission order"
+
+
+def test_cancelling_a_queued_run_never_starts_it(fresh, tmp_path, monkeypatch):
+    monkeypatch.setenv("H2A_MAX_CONCURRENT_RUNS", "1")
+    first = fresh.start_run(DEMO, str(tmp_path / "a"), provider="mock")
+    waiting = fresh.start_run(DEMO, str(tmp_path / "b"), provider="mock")
+    waiting.request_cancel()
+    assert _await(first) == "complete"
+    assert _await(waiting) == "cancelled"
+    assert not (tmp_path / "b").exists(), "a cancelled queued run still did work"
+
+
+def test_a_slot_is_released_even_when_a_run_fails(fresh, tmp_path, monkeypatch):
+    """A leaked slot would shrink capacity permanently, one failure at a time."""
+    monkeypatch.setenv("H2A_MAX_CONCURRENT_RUNS", "1")
+    bad = fresh.start_run("/does/not/exist", str(tmp_path / "bad"), provider="mock")
+    assert _await(bad) == "error"
+    good = fresh.start_run(DEMO, str(tmp_path / "good"), provider="mock")
+    assert _await(good) == "complete", "the failed run leaked its slot"
+    assert fresh.queue_state()["active"] == 0

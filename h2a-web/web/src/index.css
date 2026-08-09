@@ -531,6 +531,23 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .pager-n { font-size: 11.5px; color: var(--text-dim); font-family: var(--mono); }
 .btn-mini:disabled { opacity: .4; cursor: default; }
 
+/* ── API keys ── */
+.key-row { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.key-row:last-of-type { border-bottom: none; }
+.key-head { display: flex; align-items: center; gap: 10px; }
+.key-head b { font-size: 14px; }
+.key-help { font-size: 11px; color: var(--text-faint); margin: 3px 0 9px; }
+.key-current { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.key-current code { font-family: var(--mono); font-size: 12px; background: var(--panel-3);
+  padding: 4px 9px; border-radius: 6px; color: var(--text-dim); }
+.key-entry { display: flex; gap: 8px; }
+.key-entry input { flex: 1; padding: 9px 12px; border-radius: var(--r-sm);
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text); font-size: 13px; }
+.key-entry input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow); }
+.key-entry input:disabled { opacity: .5; }
+.key-ok { margin-top: 7px; font-size: 11.5px; color: var(--good); }
+.chip.hist-status { background: var(--panel-3); color: var(--text-dim); }
+
 /* ── Run history ── */
 .hist-modal { max-width: 780px; }
 .hist-list { display: flex; flex-direction: column; gap: 6px; }

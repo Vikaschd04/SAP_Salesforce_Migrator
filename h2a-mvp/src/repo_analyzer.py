@@ -6,6 +6,8 @@ independent domains in a legacy monolith repository, returning a topological tra
 import os
 import re
 from pathlib import Path
+
+from src.ingest import looks_like_test_file
 from src.domain_classifier import classify_domains
 
 
@@ -91,7 +93,11 @@ def extract_method_call_graph(input_dir: str, output_dir: str):
     for root, _, files in os.walk(input_dir):
         for file in files:
             if file.endswith(".java"):
-                java_files.append(Path(root) / file)
+                fp = Path(root) / file
+                # JUnit tests are never migrated; including them here would invent
+                # domains and schedule work for classes that produce no output.
+                if not looks_like_test_file(fp):
+                    java_files.append(fp)
 
     # 1. Map classes and their methods
     class_methods = {}

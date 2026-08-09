@@ -197,6 +197,23 @@ def _parse_java_file(filepath: str) -> dict | None:
     }
 
 
+def looks_like_test_file(path) -> bool:
+    """Cheap text check for the scanners that never parse a full AST.
+
+    ingest() decides properly from the AST, but repo_analyzer and domain_classifier walk
+    the tree independently and only see filenames. Without this they build phantom
+    domains like `OrderServiceTest` and schedule work for classes that are deliberately
+    never migrated.
+    """
+    try:
+        src = Path(path).read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return False
+    if "org.junit" in src or "junit.framework" in src or "org.testng" in src:
+        return True
+    return "@Test" in src and Path(path).stem.endswith(("Test", "Tests", "TestCase", "IT"))
+
+
 def _is_junit_test(tree, class_decl, class_name: str) -> bool:
     """Is this a JUnit test rather than production code?
 

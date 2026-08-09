@@ -19,6 +19,13 @@ services:
       # set H2A_ALLOW_SIGNUP=1 — do not leave it on for a public URL.
       - key: H2A_DB_PATH        # accounts + run history; point at a disk to keep them
         value: /var/data/h2a/runs.db
+      - key: H2A_MAX_CONCURRENT_RUNS   # admission cap; each run holds a Blackboard in
+        value: "3"                     # memory and fans out to parallel LLM calls
+      # Required to store per-tenant API keys. Generate a long random value and set it
+      # in the dashboard (sync:false keeps it out of the repo). Without it, key storage
+      # stays off and every run uses the server's shared credential.
+      # - key: H2A_SECRET_KEY
+      #   sync: false
       # To enable real AI on the hosted app, add ONE of these in the Render dashboard
       # (Environment tab) and set H2A_PROVIDER accordingly — note: anyone with the URL
       # would then spend your credits, so prefer keeping it on mock or adding auth.

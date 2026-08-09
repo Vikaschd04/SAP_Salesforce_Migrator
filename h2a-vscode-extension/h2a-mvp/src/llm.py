@@ -198,8 +198,10 @@ def _get_model(config: dict, provider: str = "anthropic") -> str:
 
 
 def _get_api_key(var_name: str) -> str | None:
-    """Load an API key from the environment or the .env file. Returns None if absent."""
-    key = os.environ.get(var_name)
+    """Load an API key. A per-run override (a tenant's own credential) wins over the
+    server's environment, so concurrent runs bill their own accounts."""
+    from src.runctx import api_key_override
+    key = api_key_override() or os.environ.get(var_name)
     if key:
         return key
     env_path = _PROJECT_ROOT / ".env"

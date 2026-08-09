@@ -12,6 +12,7 @@ second implementation.
 from __future__ import annotations
 
 import sys
+import os
 import threading
 import time
 import uuid
@@ -100,6 +101,7 @@ class Run:
             "result": self.result, "event_count": len(self.events),
             "supervised": self.supervised, "awaiting_gate": self.awaiting_gate,
             "owner": self.owner,
+            "queue_position": queue_position(self.id) if self.status == "queued" else 0,
         }
 
     # ── human-in-the-loop gate (blocks the engine thread until a decision arrives) ──
@@ -125,6 +127,8 @@ class Run:
         and unblocks it if it's paused at a review gate — so the thread can exit and
         release the global run lock (otherwise a run abandoned at a gate wedges the UI)."""
         self.cancelled = True
+        with _qlock:                    # wake it if it is still waiting for a slot
+            _qlock.notify_all()
         if self.awaiting_gate is not None and not self._gate_event.is_set():
             self._gate_decision = {"action": "approve"}   # unblock the wait; _ck() then aborts
             self._gate_event.set()
@@ -133,6 +137,61 @@ class Run:
 
 
 _runs: dict[str, Run] = {}          # live, in-process runs
+
+# ── admission control ─────────────────────────────────────────────────────────
+# Removing the old process-global lock made runs concurrent with no ceiling, which
+# traded "one user at a time" for "ten users exhaust the box". A migration holds a
+# whole Blackboard in memory and fans out to `concurrency` parallel LLM calls, so N
+# simultaneous runs is N x that. Admission is FIFO — a semaphore alone would let a
+# late arrival jump a run that has been waiting.
+def _max_concurrent() -> int:
+    try:
+        return max(1, int(os.environ.get("H2A_MAX_CONCURRENT_RUNS", "3")))
+    except (TypeError, ValueError):
+        return 3
+
+
+_qlock = threading.Condition()
+_pending: list[str] = []            # run ids waiting for a slot, oldest first
+_active = 0
+
+
+def queue_position(run_id: str) -> int:
+    """1 = next to start; 0 = running or finished."""
+    with _qlock:
+        return _pending.index(run_id) + 1 if run_id in _pending else 0
+
+
+def queue_state() -> dict:
+    with _qlock:
+        return {"active": _active, "waiting": len(_pending), "capacity": _max_concurrent()}
+
+
+def _admit(run) -> bool:
+    """Block until this run may start. False if it was cancelled while waiting."""
+    global _active
+    with _qlock:
+        _pending.append(run.id)
+        while True:
+            if run.cancelled:
+                if run.id in _pending:
+                    _pending.remove(run.id)
+                _qlock.notify_all()
+                return False
+            if _active < _max_concurrent() and _pending and _pending[0] == run.id:
+                _pending.pop(0)
+                _active += 1
+                _qlock.notify_all()
+                return True
+            # Timed wait so a cancel that races the notify still gets noticed.
+            _qlock.wait(timeout=0.5)
+
+
+def _release() -> None:
+    global _active
+    with _qlock:
+        _active = max(0, _active - 1)
+        _qlock.notify_all()
 
 
 def _sweep_interrupted() -> None:
@@ -185,7 +244,8 @@ def cancel_active_runs() -> int:
 
 def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
               engine: str = "agentic", verify: bool = False, supervised: bool = False,
-              state_dir: str | None = None, owner: str | None = None) -> Run:
+              state_dir: str | None = None, owner: str | None = None,
+              api_key: str | None = None) -> Run:
     """Start a migration. Runs are independent — starting one no longer cancels another."""
     run_id = uuid.uuid4().hex[:12]
     run = Run(run_id, input_dir, output_dir, provider, engine, verify, owner=owner)
@@ -193,13 +253,21 @@ def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
     _runs[run_id] = run
 
     def worker():
+        if not _admit(run):                      # cancelled before it ever started
+            run.status = "cancelled"
+            run.finished = time.time()
+            run.emit({"type": "cancelled", "message": "run stopped before it started"})
+            store.save(run)
+            with run._cond:
+                run._cond.notify_all()
+            return
         run.status = "running"
         store.save(run)
         # Per-run provider, not os.environ. Two concurrent runs previously raced over
         # one process-global variable — a mock run could inherit another run's real
         # provider and start making live API calls.
         from src.runctx import set_overrides
-        set_overrides(provider=provider)
+        set_overrides(provider=provider, api_key=api_key)
         try:
             if engine == "linear":
                 from src.pipeline_driver import run_repo_migration
@@ -229,6 +297,7 @@ def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
                 run.status = "error"
                 run.emit({"type": "error", "message": str(e)})
         finally:
+            _release()               # let the next queued run in, whatever happened here
             run.finished = time.time()
             store.save(run)          # the run's permanent record
             with run._cond:

@@ -68,5 +68,5 @@ export interface Characterization {
 export interface RunSummary {
   id: string; status: string; provider: string; engine: string;
   started?: number; elapsed: number; error?: string | null;
-  input_dir: string; supervised?: boolean;
+  input_dir: string; supervised?: boolean; queue_position?: number;
 }

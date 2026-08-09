@@ -112,10 +112,13 @@ export async function getConfig(): Promise<ClientConfig> {
 export function packageUrl(runId: string): string { return `/api/runs/${runId}/package`; }
 
 /** Past runs, newest first — live ones plus history recovered from disk. */
-export async function listRuns(): Promise<RunSummary[]> {
+export interface QueueState { active: number; waiting: number; capacity: number; }
+
+export async function listRuns(): Promise<{ runs: RunSummary[]; queue: QueueState | null }> {
   const r = await fetch('/api/runs');
-  if (!r.ok) return [];
-  return (await r.json()).runs || [];
+  if (!r.ok) return { runs: [], queue: null };
+  const d = await r.json();
+  return { runs: d.runs || [], queue: d.queue || null };
 }
 
 
@@ -151,3 +154,27 @@ export const signup = (email: string, password: string) =>
   post('/api/auth/signup', { email, password }).then((d) => d.user);
 
 export const logout = () => post('/api/auth/logout', {});
+
+// ── provider credentials ──────────────────────────────────────────────────────
+
+export interface StoredKey { provider: string; hint: string; updated: number; }
+export interface KeyState { available: boolean; reason: string; keys: StoredKey[]; }
+
+export async function fetchKeys(): Promise<KeyState> {
+  const r = await fetch('/api/keys');
+  if (!r.ok) return { available: false, reason: '', keys: [] };
+  return r.json();
+}
+
+export async function saveKey(provider: string, key: string) {
+  const r = await fetch(`/api/keys/${provider}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.detail || 'Could not save that key.');
+  return d;
+}
+
+export const removeKey = (provider: string) =>
+  fetch(`/api/keys/${provider}`, { method: 'DELETE' });
