@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+           http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <alias name="defaultAcmePricingFacade" alias="acmePricingFacade"/>
+    <bean id="defaultAcmePricingFacade" class="com.acme.facades.pricing.impl.DefaultPricingFacade">
+        <property name="pricingService" ref="acmePricingService"/>
+        <property name="pricingBreakdownConverter" ref="acmePricingBreakdownConverter"/>
+    </bean>
+
+    <alias name="acmePricingBreakdownConverter" alias="pricingBreakdownConverter"/>
+    <bean id="acmePricingBreakdownConverter" parent="abstractPopulatingConverter">
+        <lookup-method name="createTarget" bean="pricingBreakdownData"/>
+        <property name="populators">
+            <list>
+                <ref bean="acmePricingBreakdownPopulator"/>
+            </list>
+        </property>
+    </bean>
+
+    <bean id="acmePricingBreakdownPopulator"
+          class="com.acme.facades.pricing.converters.populator.PricingBreakdownPopulator">
+        <property name="pricingService" ref="acmePricingService"/>
+    </bean>
+
+    <bean id="pricingBreakdownData" class="com.acme.core.data.PricingBreakdownData" scope="prototype"/>
+</beans>

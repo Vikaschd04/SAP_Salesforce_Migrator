@@ -1,6 +1,0 @@
-Code__c,Customer__r.Uid__c,TotalAmount__c,Status__r.Code__c,OrderDate__c,Paid__c
-ORD-9001,cust-1001,337.00,DELIVERED,2026-06-02,true
-ORD-9002,cust-1002,79.50,SHIPPED,2026-06-18,true
-ORD-9003,cust-1003,24.99,NEW,2026-07-01,false
-ORD-9004,cust-1005,288.00,PROCESSING,2026-07-08,true
-ORD-9005,cust-1004,0.00,NEW,2026-05-20,false

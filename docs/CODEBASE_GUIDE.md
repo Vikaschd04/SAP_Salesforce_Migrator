@@ -253,7 +253,7 @@ So "configuring an agent" mostly means: which model it uses (via `model`/`routin
 
 ## Part 10 — A worked example: the demo project through the machine
 
-Using `Testing/demo-hybris-ordermgmt` (5 classes), here's what actually happens:
+Using `Testing/acme-commerce-hybris` (5 classes), here's what actually happens:
 
 1. **Analyse:** domains found → `Order`, `OrderSummary`, `OrderCleanup`, `Promotion`; order sorted so `Order` precedes `OrderCleanup` (the job depends on it).
 2. **Comprehend:** Claude summarises each class. `DefaultOrderService` → *"places orders; rule: total must be > 0."*

@@ -20,7 +20,7 @@ for p in (str(BACKEND), str(REPO / "h2a-mvp")):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-DEMO = str(REPO / "Testing" / "demo-hybris-ordermgmt" / "acmeordermanagement")
+DEMO = str(REPO / "Testing" / "acme-commerce-hybris")
 
 
 @pytest.fixture
@@ -273,7 +273,7 @@ def test_a_real_hybris_extension_is_accepted_with_its_details(tmp_path):
     r = inspect(DEMO)
     assert r["verdict"] in ("ok", "warn") and r["is_hybris"]
     assert r["confidence"] >= 60
-    assert "acmeordermanagement" in r["project"]["extensions"]
+    assert "acmecore" in r["project"]["extensions"]
     assert r["project"]["java_files"] > 0
 
 
@@ -281,9 +281,9 @@ def test_a_spartacus_storefront_is_accepted_too(tmp_path):
     """It has no Java at all, but LWC migration is a supported path — rejecting it would
     turn a supported input into an error."""
     from src.preflight import inspect
-    r = inspect(str(REPO / "Testing" / "demo-spartacus-storefront"))
+    r = inspect(str(REPO / "Testing" / "acme-commerce-hybris" / "js-storefront"))
     assert r["verdict"] in ("ok", "warn") and r["is_hybris"]
-    assert r["project"]["components"] == 3
+    assert r["project"]["components"] == 2
 
 
 def test_credentials_in_the_upload_are_reported(tmp_path):

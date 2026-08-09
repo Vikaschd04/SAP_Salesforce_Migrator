@@ -9,7 +9,7 @@ from src.generate import lwc_name, plan_targets
 from src.generate_lwc import generate_lwc
 from src.validate_lwc import validate_lwc
 
-_STOREFRONT = Path(__file__).resolve().parents[2] / "Testing" / "demo-spartacus-storefront" / "storefront"
+_STOREFRONT = Path(__file__).resolve().parents[2] / "Testing" / "acme-commerce-hybris" / "js-storefront" / "acmestorefront"
 
 
 # ── frontend ingest ──
@@ -17,19 +17,19 @@ _STOREFRONT = Path(__file__).resolve().parents[2] / "Testing" / "demo-spartacus-
 def test_ingest_frontend_finds_components_and_skips_glue():
     fe = ingest_frontend(str(_STOREFRONT))
     names = {c["class_name"] for c in fe["components"]}
-    assert {"ProductListComponent", "ProductDetailComponent", "CartComponent"} <= names
+    assert {"PricingBreakdownComponent", "FulfilmentTrackerComponent"} <= names
     # framework glue / type-only files recorded (not converted), with a reason
     skipped = {s["class_name"]: s for s in fe["skipped"]}
-    assert "StorefrontModule" in skipped and skipped["StorefrontModule"]["reason"]
+    assert "AcmestorefrontModule" in skipped and skipped["AcmestorefrontModule"]["reason"]
 
 
 def test_ingest_frontend_extracts_io_and_service_source():
     fe = ingest_frontend(str(_STOREFRONT))
-    pdp = next(c for c in fe["components"] if c["class_name"] == "ProductDetailComponent")
+    pdp = next(c for c in fe["components"] if c["class_name"] == "PricingBreakdownComponent")
     assert pdp["layer"] == "Component"
-    assert "productCode" in pdp["inputs"]           # @Input()
-    assert "added" in pdp["outputs"]                # @Output()
-    assert "ProductService" in pdp["injected"]
+    assert "orderCode" in pdp["inputs"]             # @Input()
+    assert "promoApplied" in pdp["outputs"]         # @Output()
+    assert "PricingService" in pdp["injected"]
     assert pdp["services_source"]                   # injected service source inlined
     assert pdp["template"] and pdp["source"]
 

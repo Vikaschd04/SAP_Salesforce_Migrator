@@ -181,9 +181,9 @@ def test_naming_alone_needs_a_test_shaped_body(tmp_path):
 
 def test_ingest_holds_tests_aside_from_the_migration_set():
     from src.ingest import ingest
-    r = ingest("../Testing/demo-hybris-ordermgmt/acmeordermanagement")
+    r = ingest("../Testing/acme-commerce-hybris")
     assert [c["class_name"] for c in r["test_classes"]] == [
-        "DefaultOrderServiceTest", "DefaultPromotionServiceTest"]
+        "DefaultOrderFulfilmentServiceTest", "DefaultPricingServiceTest"]
     assert not any(c["class_name"].endswith("Test") for c in r["classes"])
 
 

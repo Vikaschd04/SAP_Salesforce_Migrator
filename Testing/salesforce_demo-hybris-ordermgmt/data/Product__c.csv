@@ -1,7 +1,0 @@
-Code__c,Name__c,Price__c,StockLevel__c,ProductType__r.Code__c,Active__c
-prod-2001,Aurora Wireless Headphones,129.00,50,PHYSICAL,true
-prod-2002,Nimbus Bluetooth Speaker,79.50,120,PHYSICAL,true
-prod-2003,Helios Smart Watch,199.00,35,PHYSICAL,true
-prod-2004,Meridian E-Book (annual),24.99,999,DIGITAL,true
-prod-2005,Zephyr USB-C Charger,19.00,0,PHYSICAL,false
-prod-2006,Solace Noise-Cancel Earbuds,89.00,60,PHYSICAL,true

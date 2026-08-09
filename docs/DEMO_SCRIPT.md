@@ -10,7 +10,7 @@
 ## Before you present — checklist
 
 - [ ] Extension installed and configured (`h2aMigrator.provider` set, key entered) — or terminal open with `h2a-mvp/.venv` activated
-- [ ] `Testing/dummy-hybris-store/` open in the VS Code Explorer (the demo sample)
+- [ ] `Testing/acme-commerce-hybris/` open in the VS Code Explorer (the demo sample)
 - [ ] `Testing/out-real-store/` available as a pre-generated **real Claude** reference (see §5 — for when you want to show production-quality output without spending live API credit)
 - [ ] Decide: live run on `mock` (free, ~30 seconds, fully interactive) vs. walking through the pre-generated real output (zero risk, shows true quality)
 - [ ] `docs/HOW_IT_WORKS.md` open in a second tab as a plain-English fallback if a question goes deep
@@ -29,7 +29,7 @@
 **Say:**
 > "Here's a small but representative Hybris store — deliberately built to exercise everything the tool does: multiple business domains that depend on each other, a real data model with dropdown-style fields and relationships, actual data records, a nightly scheduled job, and one piece of logic — a promotions engine — that's a trap for a naive tool, which we'll come back to."
 
-**Show:** `Testing/dummy-hybris-store/` in the Explorer:
+**Show:** `Testing/acme-commerce-hybris/` in the Explorer:
 - `CustomerDao.java`, `OrderDao.java`, `DefaultOrderService.java`, `OrderController.java` — a normal three-layer commerce module
 - `DefaultPromotionService.java` — discount/pricing logic (watch what the AI decides to do with this)
 - `OrderCleanupJob.java` + `store-jobs-spring.xml` — a nightly scheduled job
@@ -41,12 +41,12 @@
 **Say:**
 > "I'll run the full pipeline now. This uses our free 'mock' mode so it's instant and costs nothing to demo — the AI-writing-code part is what you'll see in the pre-generated real output next. What you're watching *right now* is the real system: the planning, the review, the schema handling, the data and job migration — all of that is 100% real, not simulated."
 
-**Do (extension):** right-click `dummy-hybris-store` → **H2A: Migrate to Apex** (with Provider = `mock`).
+**Do (extension):** right-click `acme-commerce-hybris` → **H2A: Migrate to Apex** (with Provider = `mock`).
 **Do (terminal, equivalent):**
 ```bash
 cd h2a-mvp && source .venv/bin/activate
 H2A_PROVIDER=mock H2A_INCREMENTAL=false python -m src.main agent-migrate \
-  --input ../Testing/dummy-hybris-store --output ../Testing/salesforce_dummy-hybris-store
+  --input ../Testing/acme-commerce-hybris --output ../Testing/salesforce_acme-commerce-hybris
 ```
 
 **Narrate as it runs:**
@@ -55,7 +55,7 @@ H2A_PROVIDER=mock H2A_INCREMENTAL=false python -m src.main agent-migrate \
 
 ## 4. The Planner's key decision (3 min) — the headline moment
 
-**Show:** open the freshly-generated `Testing/salesforce_dummy-hybris-store/MIGRATION_PLAN.md`.
+**Show:** open the freshly-generated `Testing/salesforce_acme-commerce-hybris/MIGRATION_PLAN.md`.
 
 **Say, pointing at the Plan table:**
 > "Four things got built as Apex — a Selector, a Service, a Controller, a Scheduler. But look at `PromotionService`: the AI recommended **Salesforce CPQ** instead of writing custom Apex, with a stated reason — 'discount/promo-code pricing rules are a textbook fit for Salesforce CPQ.' It didn't just translate blindly. It made the same call a senior Salesforce architect would make: don't hand-roll something Salesforce already does natively. That's the difference between a code translator and a migration platform."

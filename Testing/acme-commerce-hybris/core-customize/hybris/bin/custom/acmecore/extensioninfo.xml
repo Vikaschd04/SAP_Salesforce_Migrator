@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extensioninfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:noNamespaceSchemaLocation="extensioninfo.xsd">
+    <extension abstractclassprefix="Generated" classprefix="Acmecore"
+               managername="AcmecoreManager"
+               managersuperclass="de.hybris.platform.jalo.extension.Extension"
+               name="acmecore">
+        <requires-extension name="commerceservices"/>
+        <requires-extension name="basecommerce"/>
+        <requires-extension name="processing"/>
+        <coremodule generated="true"
+                    manager="de.hybris.platform.jalo.extension.GenericManager"
+                    packageroot="com.acme.core"/>
+        <meta key="extgen-template-name" value="yempty"/>
+    </extension>
+</extensioninfo>

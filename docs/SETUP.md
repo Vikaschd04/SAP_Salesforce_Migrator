@@ -79,7 +79,7 @@ cd h2a-web/backend
 ```
 
 Open **http://127.0.0.1:8733**. Keep **Provider = Mock** for a free, keyless run — it works
-immediately with no API key. Default input path `Testing/demo-commerce-suite` ships with the repo.
+immediately with no API key. Default input path `Testing/acme-commerce-hybris` ships with the repo.
 
 ## Using real AI (optional)
 

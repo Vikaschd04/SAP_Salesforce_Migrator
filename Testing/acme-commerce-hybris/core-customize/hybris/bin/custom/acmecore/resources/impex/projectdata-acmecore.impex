@@ -1,0 +1,15 @@
+# Project sample data — customers, loyalty accounts and historical orders.
+$productCatalog = acmeProductCatalog
+$catalogVersion = catalogVersion(catalog(id[default=$productCatalog]),version[default='Staged'])[unique=true,default=$productCatalog:Staged]
+
+INSERT_UPDATE Customer; uid[unique=true]       ; name              ; sessionLanguage(isocode)
+                      ; ada@acme.example       ; Ada Lovelace      ; en
+                      ; bob@acme.example       ; Bob Martin        ; en
+                      ; carol@acme.example     ; Carol Shaw        ; en
+                      ; dan@acme.example       ; Dan Ingalls       ; en
+
+INSERT_UPDATE LoyaltyAccount; code[unique=true]; tier(code); pointsBalance; lifetimeSpend; customer(uid)
+                            ; LA-0001          ; GOLD      ; 12500        ; 48210.55     ; ada@acme.example
+                            ; LA-0002          ; SILVER    ; 3100         ; 9820.00      ; bob@acme.example
+                            ; LA-0003          ; NONE      ; 0            ; 145.20       ; carol@acme.example
+                            ; LA-0004          ; PLATINUM  ; 41000        ; 132400.75    ; dan@acme.example

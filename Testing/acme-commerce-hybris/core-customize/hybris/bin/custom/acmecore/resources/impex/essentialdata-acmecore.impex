@@ -1,0 +1,29 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Essential data — imported on every system update.
+# ─────────────────────────────────────────────────────────────────────────────
+
+$lang = en
+
+# Cron trigger: nightly stale-cart cleanup at 02:00
+INSERT_UPDATE ServicelayerJob; code[unique=true]        ; springId
+                             ; staleCartCleanupJob      ; staleCartCleanupJob
+
+INSERT_UPDATE CronJob; code[unique=true]           ; job(code)           ; sessionLanguage(isocode)
+                     ; staleCartCleanupCronJob     ; staleCartCleanupJob ; $lang
+
+INSERT_UPDATE Trigger; cronJob(code)[unique=true]  ; cronExpression
+                     ; staleCartCleanupCronJob     ; 0 0 2 * * ?
+
+# Promotion rules
+INSERT_UPDATE AcmePromotionRule; code[unique=true]; minimumSpend; percentageOff; fixedAmountOff; requiredTier(code); stackable
+                               ; SPEND5000        ; 5000.00     ; 0.10         ;                ;                   ; false
+                               ; GOLDBONUS        ; 0.00        ; 0.12         ;                ; GOLD              ; true
+                               ; WELCOME10        ; 0.00        ;              ; 10.00          ;                   ; true
+                               ; SAVE25           ; 100.00      ;              ; 25.00          ;                   ; false
+                               ; VIP100           ; 1000.00     ;              ; 100.00         ; PLATINUM          ; false
+
+# Subscription plans
+INSERT_UPDATE SubscriptionPlan; code[unique=true]; interval(code); recurringPrice; trialDays; autoRenew
+                              ; ESSENTIALS       ; MONTHLY       ; 9.99          ; 14       ; true
+                              ; PRO              ; MONTHLY       ; 29.99         ; 14       ; true
+                              ; PRO_ANNUAL       ; ANNUAL        ; 299.00        ; 30       ; true

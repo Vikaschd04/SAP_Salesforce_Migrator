@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<items xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:noNamespaceSchemaLocation="items.xsd">
+
+    <enumtypes>
+        <enumtype code="LoyaltyTier" autocreate="true" generate="true" dynamic="true">
+            <value code="NONE"/>
+            <value code="BRONZE"/>
+            <value code="SILVER"/>
+            <value code="GOLD"/>
+            <value code="PLATINUM"/>
+        </enumtype>
+        <enumtype code="FulfilmentState" autocreate="true" generate="true">
+            <value code="PENDING"/>
+            <value code="ALLOCATED"/>
+            <value code="PICKED"/>
+            <value code="SHIPPED"/>
+            <value code="DELIVERED"/>
+            <value code="CANCELLED"/>
+        </enumtype>
+        <enumtype code="SubscriptionInterval" autocreate="true" generate="true">
+            <value code="WEEKLY"/>
+            <value code="MONTHLY"/>
+            <value code="QUARTERLY"/>
+            <value code="ANNUAL"/>
+        </enumtype>
+    </enumtypes>
+
+    <collectiontypes>
+        <collectiontype code="FulfilmentStateList" elementtype="FulfilmentState" autocreate="true" type="list"/>
+    </collectiontypes>
+
+    <maptypes>
+        <maptype code="LocalizedPromoMessageMap" argumenttype="Language" returntype="java.lang.String" autocreate="true"/>
+    </maptypes>
+
+    <relations>
+        <relation code="Order2FulfilmentEvent" localized="false" generate="true" autocreate="true">
+            <sourceElement type="Order" qualifier="order" cardinality="one">
+                <modifiers read="true" write="true" optional="false"/>
+            </sourceElement>
+            <targetElement type="FulfilmentEvent" qualifier="fulfilmentEvents" cardinality="many" collectiontype="list">
+                <modifiers read="true" write="true" partof="true"/>
+            </targetElement>
+        </relation>
+        <relation code="Customer2LoyaltyAccount" localized="false" generate="true" autocreate="true">
+            <sourceElement type="Customer" qualifier="customer" cardinality="one"/>
+            <targetElement type="LoyaltyAccount" qualifier="loyaltyAccount" cardinality="one"/>
+        </relation>
+        <relation code="PromotionRule2Product" localized="false" generate="true" autocreate="true">
+            <sourceElement type="AcmePromotionRule" qualifier="promotionRules" cardinality="many"/>
+            <targetElement type="Product" qualifier="eligibleProducts" cardinality="many"/>
+        </relation>
+    </relations>
+
+    <itemtypes>
+
+        <!-- Extends the out-of-the-box Order with fulfilment and loyalty attributes. -->
+        <itemtype code="Order" autocreate="false" generate="false">
+            <attributes>
+                <attribute qualifier="fulfilmentState" type="FulfilmentState">
+                    <description>Where this order sits in the fulfilment pipeline.</description>
+                    <modifiers optional="false" initial="false"/>
+                    <persistence type="property"/>
+                    <defaultvalue>em().getEnumerationValue("FulfilmentState","PENDING")</defaultvalue>
+                </attribute>
+                <attribute qualifier="expeditePriority" type="java.lang.Integer">
+                    <description>Orders at or above the configured threshold are expedited.</description>
+                    <modifiers optional="true"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="loyaltyPointsEarned" type="java.lang.Integer">
+                    <modifiers optional="true" write="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="appliedPromoCode" type="java.lang.String">
+                    <modifiers optional="true"/>
+                    <persistence type="property"/>
+                </attribute>
+            </attributes>
+            <indexes>
+                <index name="idx_order_fulfilmentState">
+                    <key attribute="fulfilmentState"/>
+                </index>
+            </indexes>
+        </itemtype>
+
+        <itemtype code="LoyaltyAccount" extends="GenericItem"
+                  jaloclass="com.acme.core.jalo.LoyaltyAccount" autocreate="true" generate="true">
+            <deployment table="AcmeLoyaltyAccount" typecode="14001"/>
+            <attributes>
+                <attribute qualifier="code" type="java.lang.String">
+                    <modifiers optional="false" unique="true" initial="true" write="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="tier" type="LoyaltyTier">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                    <defaultvalue>em().getEnumerationValue("LoyaltyTier","NONE")</defaultvalue>
+                </attribute>
+                <attribute qualifier="pointsBalance" type="java.lang.Integer">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                    <defaultvalue>Integer.valueOf(0)</defaultvalue>
+                </attribute>
+                <attribute qualifier="lifetimeSpend" type="java.math.BigDecimal">
+                    <modifiers optional="true"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="enrolledDate" type="java.util.Date">
+                    <modifiers optional="true"/>
+                    <persistence type="property"/>
+                </attribute>
+            </attributes>
+            <indexes>
+                <index name="idx_loyalty_code" unique="true">
+                    <key attribute="code"/>
+                </index>
+            </indexes>
+        </itemtype>
+
+        <itemtype code="FulfilmentEvent" extends="GenericItem"
+                  jaloclass="com.acme.core.jalo.FulfilmentEvent" autocreate="true" generate="true">
+            <deployment table="AcmeFulfilmentEvent" typecode="14002"/>
+            <attributes>
+                <attribute qualifier="state" type="FulfilmentState">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="occurredAt" type="java.util.Date">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="warehouseCode" type="java.lang.String">
+                    <modifiers optional="true"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="note" type="java.lang.String">
+                    <modifiers optional="true"/>
+                    <persistence type="property"/>
+                </attribute>
+            </attributes>
+        </itemtype>
+
+        <itemtype code="AcmePromotionRule" extends="GenericItem"
+                  jaloclass="com.acme.core.jalo.AcmePromotionRule" autocreate="true" generate="true">
+            <deployment table="AcmePromotionRule" typecode="14003"/>
+            <attributes>
+                <attribute qualifier="code" type="java.lang.String">
+                    <modifiers optional="false" unique="true" initial="true"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="minimumSpend" type="java.math.BigDecimal">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="percentageOff" type="java.math.BigDecimal">
+                    <modifiers optional="true"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="fixedAmountOff" type="java.math.BigDecimal">
+                    <modifiers optional="true"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="requiredTier" type="LoyaltyTier">
+                    <modifiers optional="true"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="stackable" type="java.lang.Boolean">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                    <defaultvalue>Boolean.FALSE</defaultvalue>
+                </attribute>
+                <attribute qualifier="validFrom" type="java.util.Date">
+                    <modifiers optional="true"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="validUntil" type="java.util.Date">
+                    <modifiers optional="true"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="localizedMessage" type="LocalizedPromoMessageMap">
+                    <modifiers optional="true"/>
+                    <persistence type="property"/>
+                </attribute>
+            </attributes>
+        </itemtype>
+
+        <itemtype code="SubscriptionPlan" extends="GenericItem"
+                  jaloclass="com.acme.core.jalo.SubscriptionPlan" autocreate="true" generate="true">
+            <deployment table="AcmeSubscriptionPlan" typecode="14004"/>
+            <attributes>
+                <attribute qualifier="code" type="java.lang.String">
+                    <modifiers optional="false" unique="true" initial="true"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="interval" type="SubscriptionInterval">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="recurringPrice" type="java.math.BigDecimal">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="trialDays" type="java.lang.Integer">
+                    <modifiers optional="true"/>
+                    <persistence type="property"/>
+                </attribute>
+                <attribute qualifier="autoRenew" type="java.lang.Boolean">
+                    <modifiers optional="false"/>
+                    <persistence type="property"/>
+                    <defaultvalue>Boolean.TRUE</defaultvalue>
+                </attribute>
+            </attributes>
+        </itemtype>
+
+    </itemtypes>
+</items>

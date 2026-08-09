@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extensioninfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:noNamespaceSchemaLocation="extensioninfo.xsd">
+    <extension abstractclassprefix="Generated" classprefix="Acmeoccaddon"
+               name="acmeoccaddon" usemaven="true">
+        <requires-extension name="acmefacades"/>
+        <requires-extension name="commercewebservices"/>
+        <webmodule jspcompile="false" webroot="/acmeocc"/>
+    </extension>
+</extensioninfo>

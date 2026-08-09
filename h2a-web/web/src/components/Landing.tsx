@@ -11,7 +11,7 @@ interface Props {
 
 export default function Landing({ hosted, defaultProvider, starting, error, onStart }: Props) {
   const [file, setFile] = useState<File | null>(null);
-  const [path, setPath] = useState('Testing/demo-commerce-suite');
+  const [path, setPath] = useState('Testing/acme-commerce-hybris');
   const [provider, setProvider] = useState(defaultProvider || 'mock');
   const [engine, setEngine] = useState('agentic');
   const [supervised, setSupervised] = useState(true);
@@ -23,7 +23,7 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
     const fd = new FormData();
     fd.append('provider', provider); fd.append('engine', engine);
     fd.append('supervised', String(supervised)); fd.append('verify', String(verify));
-    if (sample) fd.append('input_path', 'Testing/demo-commerce-suite');
+    if (sample) fd.append('input_path', 'Testing/acme-commerce-hybris');
     else if (file) fd.append('upload', file);
     else if (!hosted && path.trim()) fd.append('input_path', path.trim());
     return fd;

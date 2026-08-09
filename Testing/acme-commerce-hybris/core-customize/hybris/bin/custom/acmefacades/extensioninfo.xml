@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extensioninfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:noNamespaceSchemaLocation="extensioninfo.xsd">
+    <extension abstractclassprefix="Generated" classprefix="Acmefacades" name="acmefacades">
+        <requires-extension name="acmecore"/>
+        <requires-extension name="commercefacades"/>
+        <coremodule generated="true"
+                    manager="de.hybris.platform.jalo.extension.GenericManager"
+                    packageroot="com.acme.facades"/>
+    </extension>
+</extensioninfo>

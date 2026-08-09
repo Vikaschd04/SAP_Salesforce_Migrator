@@ -141,7 +141,7 @@ def test_the_session_cookie_is_httponly(api):
 # ── tenant isolation — the one that really matters ────────────────────────────
 
 def _start_run(c, api):
-    demo = str(REPO / "Testing" / "demo-hybris-ordermgmt" / "acmeordermanagement")
+    demo = str(REPO / "Testing" / "acme-commerce-hybris")
     r = c.post("/api/runs", data={"provider": "mock", "engine": "agentic", "input_path": demo})
     assert r.status_code == 200, r.text
     rid = r.json()["run_id"]

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hybrisconfig xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="../bin/platform/resources/schemas/extensions.xsd">
+    <extensions>
+        <path dir="${HYBRIS_BIN_DIR}"/>
+        <extension name="commerceservices"/>
+        <extension name="basecommerce"/>
+        <extension name="acceleratorservices"/>
+        <extension name="acmecore"/>
+        <extension name="acmefacades"/>
+        <extension name="acmeoccaddon"/>
+    </extensions>
+</hybrisconfig>

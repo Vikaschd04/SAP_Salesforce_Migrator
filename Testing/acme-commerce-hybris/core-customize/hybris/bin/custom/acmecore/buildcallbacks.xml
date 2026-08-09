@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="acmecore_buildcallbacks">
+    <macrodef name="acmecore_before_build">
+        <sequential>
+            <echo message="Building acmecore extension"/>
+        </sequential>
+    </macrodef>
+    <macrodef name="acmecore_after_clean">
+        <sequential>
+            <delete dir="${ext.acmecore.path}/classes" failonerror="false"/>
+        </sequential>
+    </macrodef>
+</project>

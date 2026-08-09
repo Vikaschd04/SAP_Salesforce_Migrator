@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+           http://www.springframework.org/schema/beans/spring-beans.xsd
+           http://www.springframework.org/schema/aop
+           http://www.springframework.org/schema/aop/spring-aop.xsd">
+
+    <!-- ── DAOs ─────────────────────────────────────────────────────────── -->
+    <alias name="defaultAcmeOrderDao" alias="acmeOrderDao"/>
+    <bean id="defaultAcmeOrderDao" class="com.acme.core.dao.impl.DefaultOrderDao">
+        <property name="flexibleSearchService" ref="flexibleSearchService"/>
+    </bean>
+
+    <!-- ── Services ─────────────────────────────────────────────────────── -->
+    <alias name="defaultAcmePricingService" alias="acmePricingService"/>
+    <bean id="defaultAcmePricingService" class="com.acme.core.service.impl.DefaultPricingService">
+        <property name="configurationService" ref="configurationService"/>
+    </bean>
+
+    <alias name="defaultAcmeOrderFulfilmentService" alias="acmeOrderFulfilmentService"/>
+    <bean id="defaultAcmeOrderFulfilmentService"
+          class="com.acme.core.service.impl.DefaultOrderFulfilmentService">
+        <property name="orderDao" ref="acmeOrderDao"/>
+        <property name="modelService" ref="modelService"/>
+        <property name="eventService" ref="eventService"/>
+    </bean>
+
+    <!-- Session-scoped basket context. Apex has no session scope, so this is one to
+         look at during migration. -->
+    <bean id="acmeCheckoutContext" class="com.acme.core.session.CheckoutContext"
+          scope="session">
+        <aop:scoped-proxy proxy-target-class="false"/>
+    </bean>
+
+    <!-- ── Interceptors ─────────────────────────────────────────────────── -->
+    <bean id="acmeOrderValidateInterceptor"
+          class="com.acme.core.interceptor.OrderValidateInterceptor"/>
+    <bean id="acmeOrderValidateInterceptorMapping"
+          class="de.hybris.platform.servicelayer.interceptor.impl.InterceptorMapping">
+        <property name="interceptor" ref="acmeOrderValidateInterceptor"/>
+        <property name="typeCode" value="Order"/>
+    </bean>
+
+    <!-- ── Cronjobs ─────────────────────────────────────────────────────── -->
+    <bean id="staleCartCleanupJob" class="com.acme.core.job.StaleCartCleanupJob"
+          parent="abstractJobPerformable">
+        <property name="orderDao" ref="acmeOrderDao"/>
+        <property name="staleDays" value="${acmecore.cart.stale.days}"/>
+    </bean>
+
+    <!-- ── Event listeners ──────────────────────────────────────────────── -->
+    <bean id="acmeOrderPlacedEventListener"
+          class="com.acme.core.event.OrderPlacedEventListener" parent="abstractEventListener">
+        <property name="modelService" ref="modelService"/>
+    </bean>
+</beans>

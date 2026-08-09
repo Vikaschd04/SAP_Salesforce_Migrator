@@ -58,7 +58,7 @@ Point the tool at a Hybris codebase. A team of AI agents — a Planner, a Builde
 # Free, keyless, instant — exercises the whole pipeline with placeholder code
 cd h2a-mvp && source .venv/bin/activate
 H2A_PROVIDER=mock python -m src.main agent-migrate \
-  --input ../Testing/dummy-hybris-store --output ../Testing/out
+  --input ../Testing/acme-commerce-hybris --output ../Testing/out
 ```
 
 Full instructions: [HOW_TO_USE.md](HOW_TO_USE.md).

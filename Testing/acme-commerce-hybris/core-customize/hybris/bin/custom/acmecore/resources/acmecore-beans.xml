@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:noNamespaceSchemaLocation="beans.xsd">
+
+    <bean class="com.acme.core.data.PricingBreakdownData">
+        <description>Line-by-line explanation of how an order total was reached.</description>
+        <property name="subtotal" type="java.math.BigDecimal"/>
+        <property name="spendDiscount" type="java.math.BigDecimal"/>
+        <property name="loyaltyDiscount" type="java.math.BigDecimal"/>
+        <property name="promoDiscount" type="java.math.BigDecimal"/>
+        <property name="total" type="java.math.BigDecimal"/>
+        <property name="appliedPromoCode" type="java.lang.String"/>
+    </bean>
+
+    <bean class="com.acme.core.data.FulfilmentSummaryData">
+        <property name="orderCode" type="java.lang.String"/>
+        <property name="state" type="java.lang.String"/>
+        <property name="lastEventAt" type="java.util.Date"/>
+        <property name="warehouseCode" type="java.lang.String"/>
+    </bean>
+</beans>

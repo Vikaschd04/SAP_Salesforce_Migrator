@@ -13,7 +13,7 @@ A [`render.yaml`](../render.yaml) Blueprint + [`Dockerfile`](../Dockerfile) make
    When the health check at `/api/health` passes, you get a URL like
    **`https://h2a-cockpit.onrender.com`** — open it.
 
-Keep **Provider = Mock** and hit **Start migration** (default sample `Testing/demo-commerce-suite`).
+Keep **Provider = Mock** and hit **Start migration** (default sample `Testing/acme-commerce-hybris`).
 It runs free, keyless, and deterministic.
 
 ## Manual (without the Blueprint)

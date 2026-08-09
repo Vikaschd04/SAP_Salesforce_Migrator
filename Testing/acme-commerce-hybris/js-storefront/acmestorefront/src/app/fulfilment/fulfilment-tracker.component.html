@@ -1,0 +1,4 @@
+<ol class="acme-tracker" *ngIf="!isCancelled">
+  <li *ngFor="let step of steps" [class.reached]="isReached(step)">{{ step }}</li>
+</ol>
+<p class="cancelled" *ngIf="isCancelled">This order was cancelled.</p>

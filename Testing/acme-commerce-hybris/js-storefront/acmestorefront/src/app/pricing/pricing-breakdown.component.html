@@ -1,0 +1,16 @@
+<div class="acme-breakdown" *ngIf="breakdown$ | async as b; else loading">
+  <h3>Order total</h3>
+  <dl>
+    <dt>Subtotal</dt><dd>{{ b.subtotal | currency }}</dd>
+    <dt *ngIf="b.spendDiscount > 0">Spend discount</dt>
+    <dd *ngIf="b.spendDiscount > 0">-{{ b.spendDiscount | currency }}</dd>
+    <dt *ngIf="b.loyaltyDiscount > 0">Loyalty discount</dt>
+    <dd *ngIf="b.loyaltyDiscount > 0">-{{ b.loyaltyDiscount | currency }}</dd>
+    <dt *ngIf="b.promoDiscount > 0">Promo {{ b.appliedPromoCode }}</dt>
+    <dd *ngIf="b.promoDiscount > 0">-{{ b.promoDiscount | currency }}</dd>
+  </dl>
+  <p class="total"><strong>{{ b.total | currency }}</strong></p>
+  <p class="saving" *ngIf="savingsOf(b) > 0">You saved {{ savingsOf(b) | currency }}</p>
+</div>
+<ng-template #loading><p>Pricing your order…</p></ng-template>
+<p class="error" *ngIf="error">{{ error }}</p>

@@ -1,9 +1,0 @@
-# ImpEx: seed customer master data
-# Columns map 1:1 to the Customer item type declared in acmeordermanagement-items.xml
-
-INSERT_UPDATE Customer;uid[unique=true];name;email;phone;loyaltyTier(code)
-;cust-1001;Aisha Rahman;aisha.rahman@example.com;+91-98200-11001;GOLD
-;cust-1002;Daniel Okoro;daniel.okoro@example.com;+44-7700-900002;SILVER
-;cust-1003;Mei Ling Tan;mei.tan@example.com;+65-8100-0003;BRONZE
-;cust-1004;Carlos Mendes;carlos.mendes@example.com;+55-11-99000-0004;SILVER
-;cust-1005;Priya Nair;priya.nair@example.com;+91-98450-11005;GOLD
