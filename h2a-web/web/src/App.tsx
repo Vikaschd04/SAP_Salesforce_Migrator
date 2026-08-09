@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRun, STAGES } from './useRun';
-import { health, startRun, cancelRun, getConfig } from './api';
+import { health, startRun, cancelRun, getConfig, me as fetchMe, logout } from './api';
+import type { Me } from './api';
 import Detail from './components/Detail';
 import Gate from './components/Gate';
 import Copilot from './components/Copilot';
 import Landing from './components/Landing';
 import History from './components/History';
 import Logo from './components/Logo';
+import SignIn from './components/SignIn';
 
 export default function App() {
   const { state, begin, reset, closeGate, injectEvents } = useRun();
@@ -18,11 +20,13 @@ export default function App() {
   const [errDismissed, setErrDismissed] = useState(false);
   const [hosted, setHosted] = useState(false);
   const [defaultProvider, setDefaultProvider] = useState('mock');
+  const [me, setMe] = useState<Me | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     health().then(setEngineUp);
     getConfig().then((c) => { setHosted(c.hosted); setDefaultProvider(c.default_provider); });
+    fetchMe().then(setMe);
   }, []);
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme); localStorage.setItem('h2a-theme', theme); }, [theme]);
   useEffect(() => { if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight; }, [state.feed]);
@@ -41,6 +45,13 @@ export default function App() {
   const statusText = running ? `running · ${state.elapsed}` : state.status === 'complete' ? 'complete'
     : state.status === 'error' ? 'error' : (engineUp === null ? 'connecting…' : engineUp ? 'ready' : 'offline');
 
+  if (me === null) return null;                       // avoid flashing the app pre-auth
+  if (me.required && !me.user) {
+    return <SignIn me={me} onIn={(user) => setMe({ ...me, user, has_users: true })} />;
+  }
+
+  const signOut = async () => { await logout(); reset(); setMe({ ...me, user: null }); };
+
   return (
     <div className="app">
       <header className="topbar">
@@ -57,6 +68,12 @@ export default function App() {
           {!showLanding && !running && <button className="btn ghost" onClick={reset}>+ New migration</button>}
           {state.runId && <button className={`btn ghost ${cpOpen ? 'primary' : ''}`} onClick={() => setCpOpen((v) => !v)}>✦ Copilot</button>}
           <button className="icon-btn" title="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? '☀' : '☾'}</button>
+          {me.user && (
+            <div className="acct" title={me.user.email}>
+              <span className="acct-badge">{me.user.name.slice(0, 1).toUpperCase()}</span>
+              <button className="acct-out" onClick={signOut}>Sign out</button>
+            </div>
+          )}
         </div>
       </header>
 

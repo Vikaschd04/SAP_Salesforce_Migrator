@@ -55,7 +55,11 @@ def _connect() -> sqlite3.Connection | None:
                        started REAL, finished REAL, status TEXT,
                        provider TEXT, engine TEXT, verify INTEGER, supervised INTEGER,
                        input_dir TEXT, output_dir TEXT, error TEXT,
-                       summary TEXT, events TEXT)""")
+                       summary TEXT, events TEXT, owner TEXT)""")
+        # Added after the first release; existing databases need the column.
+        if "owner" not in {r[1] for r in c.execute("PRAGMA table_info(runs)")}:
+            c.execute("ALTER TABLE runs ADD COLUMN owner TEXT")
+        c.execute("CREATE INDEX IF NOT EXISTS runs_owner ON runs(owner)")
         c.execute("CREATE INDEX IF NOT EXISTS runs_started ON runs(started DESC)")
         c.commit()
         _conn = c
@@ -83,11 +87,12 @@ def save(run) -> None:
             c.execute(
                 "INSERT OR REPLACE INTO runs "
                 "(id, started, finished, status, provider, engine, verify, supervised, "
-                " input_dir, output_dir, error, summary, events) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " input_dir, output_dir, error, summary, events, owner) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (run.id, run.started, run.finished, run.status, run.provider, run.engine,
                  int(bool(run.verify)), int(bool(run.supervised)), run.input_dir,
-                 run.output_dir, run.error, json.dumps(s), json.dumps(events)))
+                 run.output_dir, run.error, json.dumps(s), json.dumps(events),
+                 getattr(run, "owner", None)))
             c.commit()
     except Exception:
         pass                                    # history is a convenience, never a blocker
@@ -107,18 +112,39 @@ def _row(summary_json: str, status: str, error: str | None) -> dict:
     return s
 
 
-def load_all(limit: int = 100) -> list[dict]:
-    """Past runs, newest first — including ones from before the last restart."""
+def load_all(limit: int = 100, owner: str | None = None) -> list[dict]:
+    """Past runs, newest first — including ones from before the last restart.
+
+    `owner` scoping is applied in SQL rather than filtered afterwards: a user must not
+    be able to see another tenant's migrations, and the safest place to enforce that is
+    the query, not the caller.
+    """
     c = _connect()
     if c is None:
         return []
     try:
         with _lock:
-            rows = c.execute("SELECT summary, status, error FROM runs "
-                             "ORDER BY started DESC LIMIT ?", (limit,)).fetchall()
+            if owner is None:
+                rows = c.execute("SELECT summary, status, error FROM runs "
+                                 "ORDER BY started DESC LIMIT ?", (limit,)).fetchall()
+            else:
+                rows = c.execute("SELECT summary, status, error FROM runs WHERE owner = ? "
+                                 "ORDER BY started DESC LIMIT ?", (owner, limit)).fetchall()
         return [_row(*r) for r in rows if r and r[0]]
     except Exception:
         return []
+
+
+def owner_of(run_id: str) -> str | None:
+    c = _connect()
+    if c is None:
+        return None
+    try:
+        with _lock:
+            row = c.execute("SELECT owner FROM runs WHERE id = ?", (run_id,)).fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
 
 
 def load_events(run_id: str) -> list[dict]:

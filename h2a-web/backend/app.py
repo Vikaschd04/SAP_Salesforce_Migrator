@@ -20,11 +20,12 @@ import zipfile
 from pathlib import Path
 
 import markdown as md
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, PlainTextResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from run_manager import start_run, get_run, get_run_record, list_runs, ENGINE_ROOT
+from run_manager import start_run, get_run, get_run_record, list_runs, owns, ENGINE_ROOT
+import auth
 
 WEB_DIST = Path(__file__).resolve().parents[1] / "web" / "dist"        # built React cockpit
 LEGACY_FRONTEND = Path(__file__).resolve().parents[1] / "frontend"     # no-build fallback
@@ -39,6 +40,83 @@ STATE_ROOT.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="H2A Migration Dashboard", version="0.1.0")
 
+# ── authentication ────────────────────────────────────────────────────────────
+# Enforced in middleware rather than per-route on purpose: a route added later is
+# protected by default. Opting a path OUT is a visible, deliberate edit; forgetting a
+# decorator would silently expose someone's uploaded source code.
+
+_PUBLIC = ("/api/health", "/api/config", "/api/auth/login", "/api/auth/signup",
+           "/api/auth/me", "/api/auth/logout")
+_RUN_PATH = re.compile(r"^/api/runs/([^/]+)")
+
+
+def _current_user(request) -> dict | None:
+    return auth.user_for_token(request.cookies.get(auth.SESSION_COOKIE))
+
+
+@app.middleware("http")
+async def _guard(request, call_next):
+    path = request.url.path
+    request.state.user = _current_user(request)
+
+    if not auth.auth_required() or not path.startswith("/api/") or path in _PUBLIC:
+        return await call_next(request)
+
+    user = request.state.user
+    if user is None:
+        return JSONResponse({"detail": "Sign in to continue."}, status_code=401)
+
+    # A valid session for the wrong tenant must not read another tenant's migration.
+    m = _RUN_PATH.match(path)
+    if m and not owns(m.group(1), user["id"]):
+        return JSONResponse({"detail": "Not found."}, status_code=404)
+    return await call_next(request)
+
+
+def _set_session(resp, token: str):
+    resp.set_cookie(
+        auth.SESSION_COOKIE, token, httponly=True, samesite="lax",
+        # Secure only off-localhost: forcing it in local dev would silently drop the
+        # cookie over plain http and make login look broken.
+        secure=os.environ.get("H2A_HOSTED") == "1",
+        max_age=auth.SESSION_TTL, path="/")
+    return resp
+
+
+@app.post("/api/auth/signup")
+async def api_signup(body: dict):
+    if not auth.signup_open():
+        raise HTTPException(403, "Registration is closed on this instance.")
+    try:
+        user = auth.create_user(body.get("email", ""), body.get("password", ""),
+                                body.get("name", ""))
+    except auth.AuthError as e:
+        raise HTTPException(400, str(e))
+    return _set_session(JSONResponse({"user": user}), auth.create_session(user["id"]))
+
+
+@app.post("/api/auth/login")
+async def api_login(body: dict):
+    try:
+        user = auth.verify_user(body.get("email", ""), body.get("password", ""))
+    except auth.AuthError as e:
+        raise HTTPException(401, str(e))
+    return _set_session(JSONResponse({"user": user}), auth.create_session(user["id"]))
+
+
+@app.post("/api/auth/logout")
+async def api_logout(request: Request):
+    auth.destroy_session(request.cookies.get(auth.SESSION_COOKIE))
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth.SESSION_COOKIE, path="/")
+    return resp
+
+
+@app.get("/api/auth/me")
+async def api_me(request: Request):
+    return {"required": auth.auth_required(), "signup_open": auth.signup_open(),
+            "has_users": auth.user_count() > 0, "user": _current_user(request)}
+
 # Report files at the output root that the dashboard surfaces.
 _REPORT_FILES = ["MIGRATION_PLAN.md", "BUSINESS_RULES.md", "CHARACTERIZATION.md",
                  "FEASIBILITY_REPORT.md", "PARITY.md", "DATA_MIGRATION.md",
@@ -49,6 +127,7 @@ _REPORT_FILES = ["MIGRATION_PLAN.md", "BUSINESS_RULES.md", "CHARACTERIZATION.md"
 
 @app.post("/api/runs")
 async def create_run(
+    request: Request,
     provider: str = Form("mock"),
     engine: str = Form("agentic"),
     verify: bool = Form(False),
@@ -64,9 +143,11 @@ async def create_run(
     else:
         raise HTTPException(400, "Provide input_path or upload a .zip")
 
+    user = getattr(request.state, "user", None)
     run = start_run(input_dir, str(OUTPUT_ROOT / _new_out_name(input_dir)),
                     provider=provider, engine=engine, verify=verify, supervised=supervised,
-                    state_dir=_state_dir_for(input_dir))
+                    state_dir=_state_dir_for(input_dir),
+                    owner=(user or {}).get("id"))
     return {"run_id": run.id, "status": run.status}
 
 
@@ -148,8 +229,9 @@ def _new_out_name(input_dir: str) -> str:
 # ── run status + live events ──────────────────────────────────────────────────
 
 @app.get("/api/runs")
-async def api_list_runs():
-    return {"runs": list_runs()}
+async def api_list_runs(request: Request):
+    user = getattr(request.state, "user", None)
+    return {"runs": list_runs(owner=(user or {}).get("id"))}
 
 
 @app.get("/api/runs/{run_id}")

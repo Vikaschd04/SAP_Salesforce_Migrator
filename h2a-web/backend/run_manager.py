@@ -30,8 +30,9 @@ if str(ENGINE_ROOT) not in sys.path:
 
 class Run:
     def __init__(self, run_id: str, input_dir: str, output_dir: str, provider: str,
-                 engine: str, verify: bool):
+                 engine: str, verify: bool, owner: str | None = None):
         self.id = run_id
+        self.owner = owner              # user id; None when auth is off
         self.input_dir = input_dir
         self.output_dir = output_dir
         self.provider = provider
@@ -98,6 +99,7 @@ class Run:
             "elapsed": round((self.finished or time.time()) - self.started, 2),
             "result": self.result, "event_count": len(self.events),
             "supervised": self.supervised, "awaiting_gate": self.awaiting_gate,
+            "owner": self.owner,
         }
 
     # ── human-in-the-loop gate (blocks the engine thread until a decision arrives) ──
@@ -148,11 +150,25 @@ def _sweep_interrupted() -> None:
 _sweep_interrupted()
 
 
-def list_runs() -> list[dict]:
-    """Live runs first, then history from disk — so a restart no longer erases it."""
-    live = {r.id: r.summary() for r in _runs.values()}
-    history = [s for s in store.load_all() if s.get("id") not in live]
+def list_runs(owner: str | None = None) -> list[dict]:
+    """Live runs first, then history from disk — so a restart no longer erases it.
+
+    With `owner` set, only that user's runs are returned. Live runs are filtered here
+    and history is filtered in SQL; both must hold or a tenant could see another's work.
+    """
+    live = {r.id: r.summary() for r in _runs.values()
+            if owner is None or r.owner == owner}
+    history = [s for s in store.load_all(owner=owner) if s.get("id") not in live]
     return sorted(live.values(), key=lambda s: s.get("started", 0), reverse=True) + history
+
+
+def owns(run_id: str, owner: str | None) -> bool:
+    """Is this run visible to this user? Unowned runs (auth off) are visible to all."""
+    if owner is None:
+        return True
+    run = _runs.get(run_id)
+    holder = run.owner if run else store.owner_of(run_id)
+    return holder is None or holder == owner
 
 
 def cancel_active_runs() -> int:
@@ -169,10 +185,10 @@ def cancel_active_runs() -> int:
 
 def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
               engine: str = "agentic", verify: bool = False, supervised: bool = False,
-              state_dir: str | None = None) -> Run:
+              state_dir: str | None = None, owner: str | None = None) -> Run:
     """Start a migration. Runs are independent — starting one no longer cancels another."""
     run_id = uuid.uuid4().hex[:12]
-    run = Run(run_id, input_dir, output_dir, provider, engine, verify)
+    run = Run(run_id, input_dir, output_dir, provider, engine, verify, owner=owner)
     run.supervised = supervised
     _runs[run_id] = run
 

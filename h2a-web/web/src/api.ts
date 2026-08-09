@@ -117,3 +117,37 @@ export async function listRuns(): Promise<RunSummary[]> {
   if (!r.ok) return [];
   return (await r.json()).runs || [];
 }
+
+
+// ── accounts ──────────────────────────────────────────────────────────────────
+
+export interface Me {
+  required: boolean;
+  signup_open: boolean;
+  has_users: boolean;
+  user: { id: string; email: string; name: string; role: string } | null;
+}
+
+async function post(path: string, body: unknown) {
+  const r = await fetch(path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || 'Request failed');
+  return data;
+}
+
+export async function me(): Promise<Me> {
+  const r = await fetch('/api/auth/me');
+  if (!r.ok) return { required: false, signup_open: false, has_users: false, user: null };
+  return r.json();
+}
+
+export const login = (email: string, password: string) =>
+  post('/api/auth/login', { email, password }).then((d) => d.user);
+
+export const signup = (email: string, password: string) =>
+  post('/api/auth/signup', { email, password }).then((d) => d.user);
+
+export const logout = () => post('/api/auth/logout', {});

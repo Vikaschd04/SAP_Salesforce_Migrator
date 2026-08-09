@@ -14,6 +14,11 @@ services:
         value: mock
       - key: H2A_HOSTED         # restrict input paths to bundled samples / uploads
         value: "1"
+      # H2A_HOSTED=1 also turns authentication on. The first person to reach the URL
+      # creates the admin account; registration then closes. To let colleagues sign up,
+      # set H2A_ALLOW_SIGNUP=1 — do not leave it on for a public URL.
+      - key: H2A_DB_PATH        # accounts + run history; point at a disk to keep them
+        value: /var/data/h2a/runs.db
       # To enable real AI on the hosted app, add ONE of these in the Render dashboard
       # (Environment tab) and set H2A_PROVIDER accordingly — note: anyone with the URL
       # would then spend your credits, so prefer keeping it on mock or adding auth.
