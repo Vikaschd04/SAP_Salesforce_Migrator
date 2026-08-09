@@ -515,7 +515,12 @@ def build_adapters(planned: list[dict], *, offline: bool = False, model: str | N
                 ADAPTER_SCHEMA, 4000, offline=offline, model=model,
                 system_prompt=_ADAPTER_SYSTEM,
             )
-            bridges = {b.get("id"): b for b in ((res.get("parsed") or {}).get("bridges") or [])}
+            parsed = res.get("parsed")
+            raw = (parsed or {}).get("bridges") if isinstance(parsed, dict) else None
+            # A provider can return anything — the mock stub returns placeholder shapes
+            # that are nothing like this schema. Only dict rows with an id are usable.
+            bridges = {b["id"]: b for b in (raw or [])
+                       if isinstance(b, dict) and b.get("id")}
         except Exception as e:
             for r in rows:
                 r["reason"] = f"{r['reason']} (bridging unavailable: {e})"

@@ -176,12 +176,20 @@ _KEY_PLACEHOLDERS = {
 
 
 def _get_provider(config: dict) -> str:
-    return (os.environ.get("H2A_PROVIDER") or config.get("provider") or "anthropic").lower()
+    """Per-run override wins, then the environment, then config.yaml.
+
+    The override exists so concurrent web runs can each choose a provider without
+    writing to os.environ, which they share. CLI/extension set no override and are
+    unaffected."""
+    from src.runctx import provider_override
+    return (provider_override() or os.environ.get("H2A_PROVIDER")
+            or config.get("provider") or "anthropic").lower()
 
 
 def _get_model(config: dict, provider: str = "anthropic") -> str:
     """Resolve the model for the active provider (H2A_CUSTOM_MODEL always wins)."""
-    custom = os.environ.get("H2A_CUSTOM_MODEL")
+    from src.runctx import model_override
+    custom = model_override() or os.environ.get("H2A_CUSTOM_MODEL")
     if custom:
         return custom
     if provider == "openrouter":

@@ -11,7 +11,6 @@ second implementation.
 
 from __future__ import annotations
 
-import os
 import sys
 import threading
 import time
@@ -19,13 +18,12 @@ import uuid
 import traceback
 from pathlib import Path
 
-# Make the existing engine importable and run with its own root as cwd (so config.yaml
-# / mappings resolve exactly as they do for the CLI and the extension).
+# Make the existing engine importable. It resolves config.yaml, mappings/ and cache/
+# against its own package root, so it needs no particular cwd — verified by running a
+# migration from an unrelated directory and diffing the output.
 ENGINE_ROOT = Path(__file__).resolve().parents[2] / "h2a-mvp"
 if str(ENGINE_ROOT) not in sys.path:
     sys.path.insert(0, str(ENGINE_ROOT))
-
-_RUN_LOCK = threading.Lock()   # engine uses process-global cwd + H2A_PROVIDER env → one at a time
 
 
 class Run:
@@ -133,8 +131,9 @@ _runs: dict[str, Run] = {}
 
 
 def cancel_active_runs() -> int:
-    """Stop any run that's still queued/running (e.g. one abandoned at a gate) so the
-    global lock is released and a new migration can start."""
+    """Stop every queued/running migration. Runs are independent now, so this is an
+    explicit operator action (shutdown, "stop everything") rather than something a new
+    run does to its predecessor."""
     n = 0
     for r in list(_runs.values()):
         if r.status in ("queued", "running"):
@@ -146,55 +145,51 @@ def cancel_active_runs() -> int:
 def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
               engine: str = "agentic", verify: bool = False, supervised: bool = False,
               state_dir: str | None = None) -> Run:
-    # Free any prior run still holding the single-run lock before starting a new one.
-    cancel_active_runs()
+    """Start a migration. Runs are independent — starting one no longer cancels another."""
     run_id = uuid.uuid4().hex[:12]
     run = Run(run_id, input_dir, output_dir, provider, engine, verify)
     run.supervised = supervised
     _runs[run_id] = run
 
     def worker():
-        with _RUN_LOCK:
-            run.status = "running"
-            prev_provider = os.environ.get("H2A_PROVIDER")
-            os.environ["H2A_PROVIDER"] = provider
-            try:
-                os.chdir(ENGINE_ROOT)
-                if engine == "linear":
-                    from src.pipeline_driver import run_repo_migration
-                    run.emit({"type": "run_started", "input": input_dir, "note": "linear engine"})
-                    run_repo_migration(input_dir, output_dir, verify=verify or None)
-                    run.emit({"type": "run_complete", "note": "linear run finished"})
-                else:
-                    from src.agentic.orchestrator import run_agentic_migration
-                    run.bb = run_agentic_migration(
-                        input_dir, output_dir, verify=verify or None,
-                        on_event=run.emit,
-                        gate=(run.gate_cb if run.supervised else None),
-                        should_cancel=lambda: run.cancelled,
-                        # available immediately, so the UI can view code and regenerate a
-                        # single file while the run is paused at a review gate
-                        on_blackboard=lambda b: setattr(run, "bb", b),
-                        # per-run output dirs keep history; incremental state is keyed to
-                        # the codebase so a re-run of the same repo still reuses results
-                        state_dir=state_dir)
-                run.status = "cancelled" if run.cancelled else "complete"
-            except Exception as e:
-                if run.cancelled:                 # RunCancelled (or any error after a cancel)
-                    run.status = "cancelled"
-                    run.emit({"type": "cancelled", "message": "run stopped"})
-                else:
-                    run.error = f"{e}\n{traceback.format_exc()}"
-                    run.status = "error"
-                    run.emit({"type": "error", "message": str(e)})
-            finally:
-                run.finished = time.time()
-                if prev_provider is None:
-                    os.environ.pop("H2A_PROVIDER", None)
-                else:
-                    os.environ["H2A_PROVIDER"] = prev_provider
-                with run._cond:
-                    run._cond.notify_all()
+        run.status = "running"
+        # Per-run provider, not os.environ. Two concurrent runs previously raced over
+        # one process-global variable — a mock run could inherit another run's real
+        # provider and start making live API calls.
+        from src.runctx import set_overrides
+        set_overrides(provider=provider)
+        try:
+            if engine == "linear":
+                from src.pipeline_driver import run_repo_migration
+                run.emit({"type": "run_started", "input": input_dir, "note": "linear engine"})
+                run_repo_migration(input_dir, output_dir, verify=verify or None)
+                run.emit({"type": "run_complete", "note": "linear run finished"})
+            else:
+                from src.agentic.orchestrator import run_agentic_migration
+                run.bb = run_agentic_migration(
+                    input_dir, output_dir, verify=verify or None,
+                    on_event=run.emit,
+                    gate=(run.gate_cb if run.supervised else None),
+                    should_cancel=lambda: run.cancelled,
+                    # available immediately, so the UI can view code and regenerate a
+                    # single file while the run is paused at a review gate
+                    on_blackboard=lambda b: setattr(run, "bb", b),
+                    # per-run output dirs keep history; incremental state is keyed to
+                    # the codebase so a re-run of the same repo still reuses results
+                    state_dir=state_dir)
+            run.status = "cancelled" if run.cancelled else "complete"
+        except Exception as e:
+            if run.cancelled:                 # RunCancelled (or any error after a cancel)
+                run.status = "cancelled"
+                run.emit({"type": "cancelled", "message": "run stopped"})
+            else:
+                run.error = f"{e}\n{traceback.format_exc()}"
+                run.status = "error"
+                run.emit({"type": "error", "message": str(e)})
+        finally:
+            run.finished = time.time()
+            with run._cond:
+                run._cond.notify_all()
 
     threading.Thread(target=worker, daemon=True).start()
     return run

@@ -191,8 +191,11 @@ def _map_parallel(fn, items: list, workers: int) -> list:
     workers<=1 or a single item."""
     if workers <= 1 or len(items) <= 1:
         return [fn(x) for x in items]
+    # Pool workers do not inherit the caller's context, so per-run overrides
+    # (provider/model) would be invisible to every parallel LLM call without this.
+    from src.runctx import propagate
     with ThreadPoolExecutor(max_workers=min(workers, len(items))) as pool:
-        return list(pool.map(fn, items))
+        return list(pool.map(propagate(fn), items))
 
 
 def _domain_levels(schedule: list, adjacency: dict) -> list:
@@ -255,10 +258,11 @@ def _characterize(bb, output_dir: str, *, offline: bool, config: dict) -> dict |
 
         # Most real behaviours land in `adapter`, because the migration deliberately
         # reshapes calls (single-record → bulk). Bridging is where the coverage is.
-        if not offline:
+        # Mock can't write a bridge — it returns placeholder shapes — so don't ask it.
+        if not offline and _get_provider(config) != "mock":
             apex_of = {a.target_name: (a.main_class or "") for a in bb.artifacts}
             planned = build_adapters(planned, offline=offline,
-                                     model=route_model("generate", config), apex_of=apex_of)
+                                     model=route_model(config, "generate"), apex_of=apex_of)
         apex = generate_apex(planned)
 
         classes_dir = Path(output_dir) / "force-app" / "main" / "default" / "classes"

@@ -284,3 +284,36 @@ def test_a_model_failure_never_breaks_the_run(monkeypatch):
     out = build_adapters(planned, apex_of={"PromotionService": BULK})
     assert all("bridge" not in r for r in out)
     assert any("bridging unavailable" in r["reason"] for r in out)
+
+
+# ── orchestrator wiring ───────────────────────────────────────────────────────
+
+def test_characterize_wiring_actually_produces_a_summary(tmp_path, monkeypatch):
+    """_characterize contains a broad except so evidence-gathering can never break a
+    migration — which also means a plain programming error inside it shows up only as
+    'characterization skipped'. This asserts the happy path really works."""
+    import src.agentic.orchestrator as O
+    import src.llm as llm
+    from src.agentic.blackboard import Blackboard
+
+    monkeypatch.setattr(llm, "call_structured", lambda *a, **k: {"parsed": {"bridges": []}})
+    bb = Blackboard("in", str(tmp_path))
+    bb.test_classes = [{"class_name": "DefaultPromotionServiceTest", "source": JUNIT}]
+    bb.artifacts = [_art()]
+
+    out = O._characterize(bb, str(tmp_path), offline=False,
+                          config={"provider": "anthropic", "agentic": {"routing": {"enabled": True,
+                                  "models": {"cheap": "c", "frontier": "f"},
+                                  "tiers": {"generate": "frontier"}}}})
+    assert out is not None, "characterization was skipped when it should have run"
+    assert out["summary"]["total"] == 5 and out["summary"]["direct"] == 4
+    assert (tmp_path / "CHARACTERIZATION.md").exists()
+    assert (tmp_path / "force-app/main/default/classes/"
+            "PromotionServiceCharacterizationTest.cls").exists()
+
+
+def test_characterize_is_a_no_op_without_junit(tmp_path):
+    import src.agentic.orchestrator as O
+    from src.agentic.blackboard import Blackboard
+    assert O._characterize(Blackboard("in", "out"), str(tmp_path),
+                           offline=False, config={}) is None
