@@ -73,7 +73,11 @@ def lwc_name(class_name: str) -> str:
 def plan_targets(classes: list[dict]) -> list[dict]:
     """Plan which target Apex artifacts to generate from ingested classes."""
     targets = []
-    facade_class = next((c for c in classes if c["layer"] == "Facade"), None)
+    # ALL of them, not the first. A Hybris facade is always an interface plus a
+    # `Default*` implementation, so `next(...)` here silently dropped one of every
+    # pair — it never reached a target's source_classes and surfaced downstream as
+    # an `unaccounted` row in the completeness ledger on a perfectly normal codebase.
+    facade_classes = [c for c in classes if c["layer"] == "Facade"]
 
     for cls in classes:
         if cls["layer"] in _SKIP_LAYERS:
@@ -95,15 +99,51 @@ def plan_targets(classes: list[dict]) -> list[dict]:
             continue
 
         source_classes = [cls]
-        if cls["layer"] == "Service" and facade_class:
-            source_classes.append(facade_class)
+        if cls["layer"] == "Service" and facade_classes:
+            source_classes.extend(facade_classes)
 
         targets.append({
             "target_name": target_name,
             "layer": cls["layer"],
             "source_classes": source_classes,
         })
-    return targets
+
+    # A domain can hold facades with no service to fold them into (a facade over a
+    # DAO, or over another extension's service). Without this they would vanish the
+    # same way, just less often — so give them a target of their own.
+    if facade_classes and not any(t["layer"] == "Service" for t in targets):
+        domain = _get_domain(facade_classes[0]["class_name"])
+        targets.append({
+            "target_name": f"{domain}Service",
+            "layer": "Service",
+            "source_classes": list(facade_classes),
+        })
+
+    return _merge_by_name(targets)
+
+
+def _merge_by_name(targets: list[dict]) -> list[dict]:
+    """Collapse targets that resolve to the same Apex class into one.
+
+    Names are derived from the domain and layer, so `PricingService` (the interface) and
+    `DefaultPricingService` (its implementation) both resolve to `PricingService` — the
+    universal Hybris idiom. Emitting them as two targets meant generating the same class
+    twice and letting the second write win, quietly discarding the first. They are one
+    artifact built from both sources, which is also what the LLM needs to see: an
+    interface without its implementation is a signature with no behaviour.
+    """
+    merged: dict[str, dict] = {}
+    for t in targets:
+        cur = merged.get(t["target_name"])
+        if cur is None:
+            merged[t["target_name"]] = {**t, "source_classes": list(t["source_classes"])}
+            continue
+        seen = {c.get("class_name") for c in cur["source_classes"]}
+        for c in t["source_classes"]:
+            if c.get("class_name") not in seen:
+                cur["source_classes"].append(c)
+                seen.add(c.get("class_name"))
+    return list(merged.values())
 
 
 def prepend_review_flag(code: str, native_alt: str, rationale: str = "") -> str:

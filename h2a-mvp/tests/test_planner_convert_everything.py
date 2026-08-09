@@ -116,3 +116,74 @@ def test_planner_maps_convert_and_skip_from_llm_decisions(monkeypatch):
     assert promo.target_kind == "Convert" and promo.is_code       # pricing still built
     assert promo.native_recommendation == "Salesforce CPQ"        # …and flagged
     assert dto.target_kind == "Skip" and not dto.is_code          # genuine DTO skipped
+
+
+# ── interface + Default* impl: the universal Hybris idiom ─────────────────────
+
+def _names(targets):
+    return {c["class_name"] for t in targets for c in t["source_classes"]}
+
+
+def test_both_halves_of_a_facade_pair_are_planned():
+    """Every Hybris facade is an interface plus a Default* implementation. Picking one
+    with next(...) dropped the other silently — it reached no target, and surfaced much
+    later as an `unaccounted` row on a perfectly ordinary codebase."""
+    from src.generate import plan_targets
+    classes = [
+        {"class_name": "PricingService", "layer": "Service"},
+        {"class_name": "DefaultPricingService", "layer": "Service"},
+        {"class_name": "PricingFacade", "layer": "Facade"},
+        {"class_name": "DefaultPricingFacade", "layer": "Facade"},
+    ]
+    assert _names(plan_targets(classes)) == {c["class_name"] for c in classes}
+
+
+def test_two_classes_that_resolve_to_one_apex_class_become_one_target():
+    """The interface and its implementation both derive the same target name. Emitting
+    two targets meant generating the class twice and letting the second write win —
+    silently discarding the first artifact and the tokens spent on it."""
+    from src.generate import plan_targets
+    targets = plan_targets([
+        {"class_name": "PricingService", "layer": "Service"},
+        {"class_name": "DefaultPricingService", "layer": "Service"},
+    ])
+    assert len(targets) == 1, "the same Apex class was planned twice"
+    assert _names(targets) == {"PricingService", "DefaultPricingService"}
+
+
+def test_facades_with_no_service_still_reach_a_target():
+    """A facade over a DAO, or over another extension's service, has nothing to fold
+    into — it must not vanish for want of a host."""
+    from src.generate import plan_targets
+    targets = plan_targets([
+        {"class_name": "PricingFacade", "layer": "Facade"},
+        {"class_name": "DefaultPricingFacade", "layer": "Facade"},
+    ])
+    assert _names(targets) == {"PricingFacade", "DefaultPricingFacade"}
+
+
+def test_dao_pairs_merge_too():
+    from src.generate import plan_targets
+    targets = plan_targets([
+        {"class_name": "OrderDao", "layer": "DAO"},
+        {"class_name": "DefaultOrderDao", "layer": "DAO"},
+    ])
+    assert len(targets) == 1 and targets[0]["target_name"] == "OrderSelector"
+    assert _names(targets) == {"OrderDao", "DefaultOrderDao"}
+
+
+def test_the_realistic_corpus_leaves_nothing_unaccounted():
+    """The end-to-end guarantee: every ingested class reaches a target."""
+    from src.ingest import ingest
+    from src.repo_analyzer import build_dependency_graph
+    from src.generate import plan_targets
+
+    D = "../Testing/acme-commerce-hybris"
+    _, domains = build_dependency_graph(D)
+    all_classes = ingest(D)["classes"]
+    covered = set()
+    for names in ({c["class_name"] for c in lst} for lst in domains.values()):
+        covered |= _names(plan_targets([c for c in all_classes if c["class_name"] in names]))
+
+    backend = {c["class_name"] for c in all_classes if c.get("layer") not in ("Component", "Model")}
+    assert backend - covered == set(), f"unplanned: {sorted(backend - covered)}"
