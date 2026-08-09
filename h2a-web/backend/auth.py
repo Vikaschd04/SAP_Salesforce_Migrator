@@ -166,10 +166,11 @@ def user_for_token(token: str | None) -> dict | None:
         return None
     with _lock:
         row = c.execute(
-            "SELECT u.id, u.email, u.name, u.role FROM sessions s JOIN users u ON u.id = s.user_id "
-            "WHERE s.token_hash = ? AND s.expires > ?",
+            "SELECT u.id, u.email, u.name, u.role, u.created FROM sessions s "
+            "JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires > ?",
             (hashlib.sha256(token.encode()).hexdigest(), time.time())).fetchone()
-    return None if row is None else {"id": row[0], "email": row[1], "name": row[2], "role": row[3]}
+    return None if row is None else {"id": row[0], "email": row[1], "name": row[2],
+                                     "role": row[3], "created": row[4]}
 
 
 def destroy_session(token: str | None) -> None:

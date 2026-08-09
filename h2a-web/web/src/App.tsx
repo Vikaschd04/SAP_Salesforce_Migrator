@@ -10,6 +10,7 @@ import History from './components/History';
 import Logo from './components/Logo';
 import SignIn from './components/SignIn';
 import Keys from './components/Keys';
+import AccountMenu from './components/AccountMenu';
 
 export default function App() {
   const { state, begin, reset, rejoin, closeGate, injectEvents } = useRun();
@@ -78,11 +79,7 @@ export default function App() {
           <button className="btn ghost" onClick={() => setHistOpen(true)}>⟲ History</button>
           <button className="icon-btn" title="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? '☀' : '☾'}</button>
           {me.user && (
-            <div className="acct" title={me.user.email}>
-              <span className="acct-badge">{me.user.name.slice(0, 1).toUpperCase()}</span>
-              <button className="acct-out" onClick={() => setKeysOpen(true)}>Keys</button>
-              <button className="acct-out" onClick={signOut}>Sign out</button>
-            </div>
+            <AccountMenu user={me.user} onKeys={() => setKeysOpen(true)} onSignOut={signOut} />
           )}
         </div>
       </header>

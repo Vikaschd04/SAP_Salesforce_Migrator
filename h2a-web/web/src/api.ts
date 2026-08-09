@@ -128,7 +128,7 @@ export interface Me {
   required: boolean;
   signup_open: boolean;
   has_users: boolean;
-  user: { id: string; email: string; name: string; role: string } | null;
+  user: { id: string; email: string; name: string; role: string; created?: number } | null;
 }
 
 async function post(path: string, body: unknown) {
@@ -158,11 +158,15 @@ export const logout = () => post('/api/auth/logout', {});
 // ── provider credentials ──────────────────────────────────────────────────────
 
 export interface StoredKey { provider: string; hint: string; updated: number; }
-export interface KeyState { available: boolean; reason: string; keys: StoredKey[]; }
+export interface KeyState {
+  available: boolean; reason: string;
+  server: Record<string, boolean>;   // providers the server itself can fall back to
+  keys: StoredKey[];
+}
 
 export async function fetchKeys(): Promise<KeyState> {
   const r = await fetch('/api/keys');
-  if (!r.ok) return { available: false, reason: '', keys: [] };
+  if (!r.ok) return { available: false, reason: '', server: {}, keys: [] };
   return r.json();
 }
 

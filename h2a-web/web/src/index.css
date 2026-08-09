@@ -504,13 +504,38 @@ textarea:focus { outline: none; border-color: var(--accent); }
   .auth-show { display: none; }
 }
 
-/* account chip in the topbar */
-.acct { display: flex; align-items: center; gap: 8px; padding-left: 10px;
-  border-left: 1px solid var(--border); }
+/* ── Account menu ──
+   Sign out is destructive and used rarely; keeping it behind the avatar stops it
+   sitting one stray click from the controls people press all day. */
+.acct { position: relative; padding-left: 10px; border-left: 1px solid var(--border); }
+.acct-btn { display: flex; align-items: center; gap: 5px; background: transparent;
+  border: 1px solid transparent; border-radius: 20px; padding: 3px 7px 3px 3px; transition: .16s; }
+.acct-btn:hover, .acct-btn.open { border-color: var(--border-strong); background: var(--panel-hover); }
 .acct-badge { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--grad); color: var(--ink-on-accent); font-weight: 800; font-size: 12px; }
-.acct-out { background: none; border: none; color: var(--text-dim); font-size: 12px; padding: 2px; }
-.acct-out:hover { color: var(--text); text-decoration: underline; }
+  background: var(--grad); color: var(--ink-on-accent); font-weight: 800; font-size: 12px; flex: none; }
+.acct-badge.lg { width: 38px; height: 38px; font-size: 15px; }
+.acct-chev { font-size: 9px; color: var(--text-faint); }
+
+.acct-menu { position: absolute; right: 0; top: calc(100% + 9px); width: 270px; z-index: 50;
+  border: 1px solid var(--border-strong); border-radius: var(--r); background: var(--panel);
+  box-shadow: var(--shadow); padding: 6px; animation: rise .16s cubic-bezier(.2,.7,.2,1); }
+.acct-id { display: flex; align-items: center; gap: 11px; padding: 11px 11px 10px; }
+.acct-id-txt { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.acct-id-txt b { font-size: 13.5px; }
+.acct-id-txt span { font-size: 11.5px; color: var(--text-dim); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.acct-facts { margin: 0; padding: 0 11px 10px; display: flex; flex-direction: column; gap: 5px; }
+.acct-facts > div { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; }
+.acct-facts dt { color: var(--text-faint); margin: 0; }
+.acct-facts dd { margin: 0; color: var(--text-dim); }
+.acct-sep { height: 1px; background: var(--border); margin: 4px 0; }
+.acct-item { display: grid; grid-template-columns: 18px 1fr; gap: 4px 9px; width: 100%;
+  text-align: left; background: none; border: none; border-radius: var(--r-sm);
+  padding: 9px 11px; color: var(--text); font-size: 13px; transition: .14s; }
+.acct-item:hover { background: var(--panel-hover); }
+.acct-item-sub { grid-column: 2; font-size: 11px; color: var(--text-faint); }
+.acct-item.danger { color: var(--danger); }
+.acct-item.danger:hover { background: var(--danger-bg); }
 
 /* ── Modal shell ── */
 .modal-back { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
@@ -532,6 +557,15 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .btn-mini:disabled { opacity: .4; cursor: default; }
 
 /* ── API keys ── */
+.key-set { display: flex; align-items: center; gap: 8px; }
+.key-set input { flex: 1; padding: 9px 12px; border-radius: var(--r-sm);
+  border: 1px solid var(--border); background: var(--panel-3); color: var(--text-dim);
+  font-family: var(--mono); letter-spacing: .12em; cursor: default; }
+.key-hint { font-family: var(--mono); font-size: 11.5px; color: var(--text-faint); flex: none; }
+.btn-mini.danger { color: var(--danger); }
+.key-warn { margin-top: 8px; font-size: 11.5px; color: var(--warn); line-height: 1.5; }
+.note-inline.warn { color: var(--warn); background: var(--warn-bg); }
+.chip.hist-status.error { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
 .key-row { padding: 14px 0; border-bottom: 1px solid var(--border); }
 .key-row:last-of-type { border-bottom: none; }
 .key-head { display: flex; align-items: center; gap: 10px; }

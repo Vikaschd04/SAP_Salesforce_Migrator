@@ -123,6 +123,17 @@ def get_key(user_id: str | None, provider: str) -> str | None:
         return None
 
 
+# Which providers the server itself can fall back to. Reported as a boolean only — the
+# server's own credential is never exposed, not even masked, since it is not the user's.
+_SERVER_ENV = {"anthropic": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
+
+
+def server_fallbacks() -> dict:
+    """So the UI can say 'runs will work without your own key' rather than leaving the
+    user guessing whether a migration is about to fail for want of a credential."""
+    return {p: bool(os.environ.get(v)) for p, v in _SERVER_ENV.items()}
+
+
 def list_keys(user_id: str) -> list[dict]:
     c = _conn()
     if c is None:

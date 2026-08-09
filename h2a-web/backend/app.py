@@ -121,6 +121,7 @@ async def api_keys(request: Request):
     """What this tenant has stored. Masked hints only — plaintext never leaves here."""
     user = getattr(request.state, "user", None)
     return {"available": keyvault.available(), "reason": keyvault.why_unavailable(),
+            "server": keyvault.server_fallbacks(),
             "keys": keyvault.list_keys(user["id"]) if user else []}
 
 
