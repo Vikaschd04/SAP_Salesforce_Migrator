@@ -435,29 +435,74 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .rule-caveat { margin-top: 14px; font-size: 11.5px; line-height: 1.6; color: var(--text-dim);
   border-left: 2px solid var(--border-strong); padding-left: 11px; }
 
-/* ── Sign in ──
-   Single-purpose screen: no marketing, nothing competing with the one action. */
-.signin { min-height: 100vh; display: grid; place-items: center; padding: 32px 20px; }
-.signin-card { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 14px;
-  padding: 30px 30px 26px; border: 1px solid var(--border); border-radius: var(--r-lg);
-  background: var(--glass); backdrop-filter: blur(14px) saturate(1.2); box-shadow: var(--shadow); }
-.signin-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 2px; }
+/* ── Auth (sign in / register) ──
+   Two panels: a showcase that says why the login exists (people are about to upload
+   proprietary source), and the form. Showcase drops away below 860px rather than
+   pushing the form off-screen. */
+.auth { min-height: 100vh; display: grid; place-items: center; padding: 28px 20px; }
+.auth-card { width: 100%; max-width: 940px; display: grid; grid-template-columns: 1.05fr 1fr;
+  border: 1px solid var(--border); border-radius: var(--r-xl); overflow: hidden;
+  background: var(--glass); backdrop-filter: blur(16px) saturate(1.2); box-shadow: var(--shadow);
+  animation: rise .45s cubic-bezier(.2,.7,.2,1); }
+
+.auth-show { position: relative; padding: 34px 32px 28px; display: flex; flex-direction: column;
+  justify-content: space-between; gap: 26px; background: var(--grad-soft);
+  border-right: 1px solid var(--border); overflow: hidden; }
+.auth-show::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(520px 300px at 110% -10%, var(--glow), transparent 62%),
+              radial-gradient(420px 300px at -20% 115%, var(--glow-2), transparent 60%); }
+.auth-show > * { position: relative; z-index: 1; }
+.signin-brand { display: flex; align-items: center; gap: 12px; }
 .signin-brand h1 { font-size: 19px; letter-spacing: -0.02em; }
 .signin-brand .sub { font-size: 11.5px; color: var(--text-dim); margin-top: 1px; }
-.signin-title { font-size: 21px; letter-spacing: -0.02em; margin-top: 6px; }
-.signin-sub { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; margin: -8px 0 4px; }
-.fld { display: flex; flex-direction: column; gap: 5px; }
+.auth-tag { margin-top: 20px; font-size: 22px; line-height: 1.28; letter-spacing: -0.02em;
+  font-weight: 680; text-wrap: balance; }
+.auth-points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 13px; }
+.auth-points li { position: relative; padding-left: 20px; font-size: 13px; line-height: 1.55;
+  color: var(--text-dim); }
+.auth-points li::before { content: ""; position: absolute; left: 0; top: 7px; width: 7px; height: 7px;
+  border-radius: 2px; background: var(--grad); }
+.auth-points b { color: var(--text); font-weight: 650; }
+.auth-foot { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-faint);
+  font-family: var(--mono); }
+.auth-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+
+.auth-form { padding: 34px 32px 30px; display: flex; flex-direction: column; gap: 15px;
+  background: var(--panel); }
+.auth-form-head h2 { font-size: 23px; letter-spacing: -0.02em; }
+.auth-form-head p { margin: 6px 0 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
+.fld { display: flex; flex-direction: column; gap: 6px; }
 .fld > span { font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
   color: var(--text-faint); font-weight: 700; }
-.fld input { padding: 11px 13px; border-radius: var(--r-sm); border: 1px solid var(--border);
-  background: var(--panel-2); color: var(--text); font-size: 14px; transition: .16s; }
+.fld input { width: 100%; padding: 12px 13px; border-radius: var(--r-sm);
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  font-size: 14px; transition: .16s; }
+.fld input::placeholder { color: var(--text-faint); }
 .fld input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow); }
+.fld input:disabled { opacity: .6; }
+.fld-wrap { position: relative; display: flex; }
+.fld-wrap input { padding-right: 42px; }
+.fld-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; font-size: 14px; padding: 6px 8px; opacity: .7; line-height: 1; }
+.fld-eye:hover { opacity: 1; }
+.fld-hint { font-size: 11.5px; color: var(--text-faint); }
+.fld-hint.ok { color: var(--good); }
 .signin-err { font-size: 12.5px; color: var(--danger); background: var(--danger-bg);
-  padding: 9px 12px; border-radius: 8px; line-height: 1.5; }
-.signin-alt { background: none; border: none; color: var(--text-dim); font-size: 12.5px;
-  padding: 4px; text-decoration: underline; }
-.signin-alt:hover { color: var(--text); }
+  padding: 10px 12px; border-radius: 8px; line-height: 1.5; }
+.auth-submit { justify-content: center; margin-top: 4px; }
+.auth-submit:disabled { cursor: not-allowed; }
+.spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid currentColor;
+  border-top-color: transparent; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.auth-swap { margin: 2px 0 0; font-size: 12.5px; color: var(--text-dim); text-align: center; }
+.auth-swap button { background: none; border: none; color: var(--accent); font-size: 12.5px;
+  font-weight: 600; padding: 0; text-decoration: underline; }
 .signin-note { font-size: 11.5px; color: var(--text-faint); line-height: 1.5; text-align: center; margin: 0; }
+
+@media (max-width: 860px) {
+  .auth-card { grid-template-columns: 1fr; max-width: 420px; }
+  .auth-show { display: none; }
+}
 
 /* account chip in the topbar */
 .acct { display: flex; align-items: center; gap: 8px; padding-left: 10px;
@@ -467,9 +512,27 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .acct-out { background: none; border: none; color: var(--text-dim); font-size: 12px; padding: 2px; }
 .acct-out:hover { color: var(--text); text-decoration: underline; }
 
+/* ── Modal shell ── */
+.modal-back { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
+  padding: 24px; background: rgba(4, 7, 12, .62); backdrop-filter: blur(4px);
+  animation: fade .18s ease; }
+@keyframes fade { from { opacity: 0; } }
+.modal { width: 100%; max-width: 720px; display: flex; flex-direction: column;
+  border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--panel);
+  box-shadow: var(--shadow); animation: rise .24s cubic-bezier(.2,.7,.2,1); overflow: hidden; }
+.modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 20px 22px 16px; border-bottom: 1px solid var(--border); }
+.modal-head h2 { font-size: 17px; letter-spacing: -0.015em; }
+.modal-head p { margin: 4px 0 0; font-size: 12px; color: var(--text-dim); }
+.modal-body { padding: 16px 22px; min-height: 220px; }
+.modal-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 22px; border-top: 1px solid var(--border); font-size: 12px; }
+.pager { display: flex; align-items: center; gap: 10px; }
+.pager-n { font-size: 11.5px; color: var(--text-dim); font-family: var(--mono); }
+.btn-mini:disabled { opacity: .4; cursor: default; }
+
 /* ── Run history ── */
-.hist { max-width: 860px; margin: 0 auto 64px; padding: 0 24px; width: 100%; }
-.hist-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+.hist-modal { max-width: 780px; }
 .hist-list { display: flex; flex-direction: column; gap: 6px; }
 .hist-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
   padding: 11px 14px; border: 1px solid var(--border); border-radius: var(--r-sm);
@@ -480,15 +543,18 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .hist-dot.running, .hist-dot.queued { background: var(--accent); animation: pulse 1.6s infinite; }
 .hist-dot.error { background: var(--danger); }
 .hist-dot.interrupted { background: var(--warn); }
-.hist-name { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-name { font-weight: 600; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+  overflow: hidden; }
+.hist-id { font-size: 10.5px; color: var(--text-faint); font-weight: 400; }
 .chip.hist-status { font-size: 10.5px; padding: 2px 9px; }
 .chip.hist-status.complete { background: var(--good-bg); color: var(--good); border-color: transparent; }
 .chip.hist-status.error { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
 .chip.hist-status.interrupted { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
 .chip.hist-status.running, .chip.hist-status.queued { background: var(--accent-bg); color: var(--accent); border-color: transparent; }
 .hist-meta { font-size: 11.5px; color: var(--text-dim); flex: none; }
-.hist-note { margin-top: 12px; font-size: 11.5px; line-height: 1.6; color: var(--text-faint);
-  border-left: 2px solid var(--border-strong); padding-left: 11px; }
+.hist-note { margin: 0; padding: 12px 22px 16px; font-size: 11.5px; line-height: 1.6;
+  color: var(--text-faint); border-top: 1px solid var(--border); }
+.hist-note b { color: var(--warn); }
 
 /* ── Characterization (golden-master parity) ──
    Evidence strength is the primary axis, so it gets its own colour ramp: green =

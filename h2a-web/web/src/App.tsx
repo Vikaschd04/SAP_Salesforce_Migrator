@@ -21,6 +21,7 @@ export default function App() {
   const [hosted, setHosted] = useState(false);
   const [defaultProvider, setDefaultProvider] = useState('mock');
   const [me, setMe] = useState<Me | null>(null);
+  const [histOpen, setHistOpen] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,6 +68,7 @@ export default function App() {
           {running && <button className="btn stop" onClick={stop}>■ Stop</button>}
           {!showLanding && !running && <button className="btn ghost" onClick={reset}>+ New migration</button>}
           {state.runId && <button className={`btn ghost ${cpOpen ? 'primary' : ''}`} onClick={() => setCpOpen((v) => !v)}>✦ Copilot</button>}
+          <button className="btn ghost" onClick={() => setHistOpen(true)}>⟲ History</button>
           <button className="icon-btn" title="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? '☀' : '☾'}</button>
           {me.user && (
             <div className="acct" title={me.user.email}>
@@ -78,10 +80,7 @@ export default function App() {
       </header>
 
       {showLanding ? (
-        <>
-          <Landing hosted={hosted} defaultProvider={defaultProvider} starting={starting} error={error} onStart={start} />
-          <History onOpen={begin} />
-        </>
+        <Landing hosted={hosted} defaultProvider={defaultProvider} starting={starting} error={error} onStart={start} />
       ) : (
         <>
           {state.errorMsg && !errDismissed && (
@@ -135,6 +134,7 @@ export default function App() {
         </>
       )}
 
+      <History open={histOpen} onClose={() => setHistOpen(false)} onOpen={begin} />
       {state.gate && state.runId && <Gate runId={state.runId} gate={state.gate} onClosed={closeGate} />}
       <Copilot runId={state.runId} open={cpOpen} onClose={() => setCpOpen(false)} onEvents={injectEvents} />
     </div>
