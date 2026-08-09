@@ -18,6 +18,8 @@ import uuid
 import traceback
 from pathlib import Path
 
+import store
+
 # Make the existing engine importable. It resolves config.yaml, mappings/ and cache/
 # against its own package root, so it needs no particular cwd — verified by running a
 # migration from an unrelated directory and diffing the output.
@@ -92,6 +94,7 @@ class Run:
             "id": self.id, "status": self.status, "provider": self.provider,
             "engine": self.engine, "verify": self.verify, "error": self.error,
             "input_dir": self.input_dir, "output_dir": self.output_dir,
+            "started": self.started,
             "elapsed": round((self.finished or time.time()) - self.started, 2),
             "result": self.result, "event_count": len(self.events),
             "supervised": self.supervised, "awaiting_gate": self.awaiting_gate,
@@ -127,7 +130,29 @@ class Run:
             self._cond.notify_all()
 
 
-_runs: dict[str, Run] = {}
+_runs: dict[str, Run] = {}          # live, in-process runs
+
+
+def _sweep_interrupted() -> None:
+    """Anything recorded as in-flight died with the previous process.
+
+    Deliberately at import, before a single run can exist. Doing it lazily on first
+    read would let a run started earlier in this process be marked interrupted while
+    it is still happily running.
+    """
+    n = store.mark_interrupted()
+    if n:
+        print(f"  · marked {n} interrupted run(s) from a previous process")
+
+
+_sweep_interrupted()
+
+
+def list_runs() -> list[dict]:
+    """Live runs first, then history from disk — so a restart no longer erases it."""
+    live = {r.id: r.summary() for r in _runs.values()}
+    history = [s for s in store.load_all() if s.get("id") not in live]
+    return sorted(live.values(), key=lambda s: s.get("started", 0), reverse=True) + history
 
 
 def cancel_active_runs() -> int:
@@ -153,6 +178,7 @@ def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
 
     def worker():
         run.status = "running"
+        store.save(run)
         # Per-run provider, not os.environ. Two concurrent runs previously raced over
         # one process-global variable — a mock run could inherit another run's real
         # provider and start making live API calls.
@@ -188,6 +214,7 @@ def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
                 run.emit({"type": "error", "message": str(e)})
         finally:
             run.finished = time.time()
+            store.save(run)          # the run's permanent record
             with run._cond:
                 run._cond.notify_all()
 
@@ -199,5 +226,12 @@ def get_run(run_id: str) -> Run | None:
     return _runs.get(run_id)
 
 
-def list_runs() -> list[dict]:
-    return [r.summary() for r in sorted(_runs.values(), key=lambda r: r.started, reverse=True)]
+def get_run_record(run_id: str) -> dict | None:
+    """A finished run's stored summary + events, for one that is no longer in memory."""
+    rec = store.load_one(run_id)
+    if rec is None:
+        return None
+    return {**rec, "events": store.load_events(run_id)}
+
+
+

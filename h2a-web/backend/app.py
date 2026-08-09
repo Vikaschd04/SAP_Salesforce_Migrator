@@ -24,7 +24,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, PlainTextResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from run_manager import start_run, get_run, list_runs, ENGINE_ROOT
+from run_manager import start_run, get_run, get_run_record, list_runs, ENGINE_ROOT
 
 WEB_DIST = Path(__file__).resolve().parents[1] / "web" / "dist"        # built React cockpit
 LEGACY_FRONTEND = Path(__file__).resolve().parents[1] / "frontend"     # no-build fallback
@@ -154,9 +154,15 @@ async def api_list_runs():
 @app.get("/api/runs/{run_id}")
 async def api_run(run_id: str):
     run = get_run(run_id)
-    if not run:
+    if run:
+        return {**run.summary(), "events": run.events}
+    # Not in memory: either a run from before the last restart, or an unknown id.
+    # Serving it from disk is what makes a completed migration's report outlive the
+    # process that produced it.
+    rec = get_run_record(run_id)
+    if rec is None:
         raise HTTPException(404, "run not found")
-    return {**run.summary(), "events": run.events}
+    return rec
 
 
 @app.get("/api/runs/{run_id}/stream")
