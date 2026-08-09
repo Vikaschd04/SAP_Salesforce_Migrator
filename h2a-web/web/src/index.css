@@ -504,6 +504,44 @@ textarea:focus { outline: none; border-color: var(--accent); }
   .auth-show { display: none; }
 }
 
+/* ── Preflight ──
+   Verdict-first: the border and icon carry it, so the state is legible before a word
+   is read. Three tones only — accepted, accepted-with-concerns, refused. */
+.pf { border: 1px solid var(--border); border-left-width: 3px; border-radius: var(--r-sm);
+  background: var(--panel-2); padding: 14px 16px; margin-bottom: 14px; }
+.pf.good { border-left-color: var(--good); }
+.pf.warn { border-left-color: var(--warn); }
+.pf.bad  { border-left-color: var(--danger); }
+.pf-head { display: flex; gap: 11px; align-items: flex-start; }
+.pf-head b { font-size: 13.5px; line-height: 1.5; }
+.pf-icon { width: 20px; height: 20px; border-radius: 50%; flex: none; display: grid;
+  place-items: center; font-size: 11px; font-weight: 800; margin-top: 1px; }
+.pf.good .pf-icon { background: var(--good-bg); color: var(--good); }
+.pf.warn .pf-icon { background: var(--warn-bg); color: var(--warn); }
+.pf.bad  .pf-icon { background: var(--danger-bg); color: var(--danger); }
+.pf-bar { height: 4px; border-radius: 3px; background: var(--panel-3); margin-top: 8px;
+  max-width: 220px; overflow: hidden; }
+.pf-bar span { display: block; height: 100%; background: var(--grad); }
+.pf-list { margin: 11px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.55; }
+.pf-list.bad li { color: var(--danger); }
+.pf-list.warn li { color: var(--warn); }
+.pf-list code { font-size: 11.5px; background: var(--panel-3); padding: 1px 5px; border-radius: 4px; }
+.pf-block { margin-top: 13px; }
+.pf-note { margin: 7px 0 0; font-size: 11.5px; color: var(--text-faint); line-height: 1.55; }
+.pf-facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.pf-fact { border: 1px solid var(--border); border-radius: 7px; padding: 6px 11px;
+  display: flex; flex-direction: column; gap: 1px; background: var(--panel); }
+.pf-fact span { font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-faint); font-weight: 700; }
+.pf-fact b { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.pf-sig { list-style: none; margin: 6px 0 0; padding: 0; display: flex;
+  flex-direction: column; gap: 5px; }
+.pf-sig li { display: flex; justify-content: space-between; gap: 14px; font-size: 12px;
+  color: var(--text-dim); }
+.pf-sig code { font-size: 11px; color: var(--text-faint); }
+.pf-reject { max-width: 720px; margin: 0 auto 56px; padding: 0 24px; width: 100%;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+
 /* ── Account menu ──
    Sign out is destructive and used rarely; keeping it behind the avatar stops it
    sitting one stray click from the controls people press all day. */

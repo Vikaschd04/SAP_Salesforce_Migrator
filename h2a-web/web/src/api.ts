@@ -1,8 +1,19 @@
 import type { RunSummary, Ev } from './types';
 
+/** Thrown when preflight refuses the upload — carries the report so the UI can explain. */
+export class PreflightError extends Error {
+  report: any;
+  constructor(message: string, report: any) { super(message); this.report = report; }
+}
+
 export async function startRun(form: FormData): Promise<string> {
   const res = await fetch('/api/runs', { method: 'POST', body: form });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const d = body?.detail;
+    if (res.status === 422 && d?.preflight) throw new PreflightError(d.message, d.preflight);
+    throw new Error(typeof d === 'string' ? d : JSON.stringify(d ?? 'Could not start the migration.'));
+  }
   return (await res.json()).run_id as string;
 }
 

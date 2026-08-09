@@ -237,3 +237,80 @@ def test_a_slot_is_released_even_when_a_run_fails(fresh, tmp_path, monkeypatch):
     good = fresh.start_run(DEMO, str(tmp_path / "good"), provider="mock")
     assert _await(good) == "complete", "the failed run leaked its slot"
     assert fresh.queue_state()["active"] == 0
+
+
+# ── preflight: refuse the wrong input before spending anything ────────────────
+
+def test_a_random_upload_is_refused_before_a_run_exists(fresh, tmp_path):
+    """Previously any folder started a migration and walked you through three review
+    gates to report that it had found nothing."""
+    from fastapi.testclient import TestClient
+    import app as appmod
+    junk = tmp_path / "holiday"
+    junk.mkdir()
+    (junk / "photo.txt").write_text("not code")
+
+    before = len(fresh.list_runs())
+    r = TestClient(appmod.app).post("/api/runs", data={"provider": "mock",
+                                                      "input_path": str(junk)})
+    assert r.status_code == 422
+    assert "nothing to migrate" in r.text
+    assert len(fresh.list_runs()) == before, "a run was created for a rejected upload"
+
+
+def test_a_plain_java_project_is_not_mistaken_for_hybris(tmp_path):
+    from src.preflight import inspect
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "App.java").write_text("public class App { void go() {} }")
+    r = inspect(str(tmp_path))
+    assert r["verdict"] == "reject" and not r["is_hybris"]
+    assert "does not look like a SAP Commerce" in r["blockers"][0]
+
+
+def test_a_real_hybris_extension_is_accepted_with_its_details(tmp_path):
+    from src.preflight import inspect
+    r = inspect(DEMO)
+    assert r["verdict"] in ("ok", "warn") and r["is_hybris"]
+    assert r["confidence"] >= 60
+    assert "acmeordermanagement" in r["project"]["extensions"]
+    assert r["project"]["java_files"] > 0
+
+
+def test_a_spartacus_storefront_is_accepted_too(tmp_path):
+    """It has no Java at all, but LWC migration is a supported path — rejecting it would
+    turn a supported input into an error."""
+    from src.preflight import inspect
+    r = inspect(str(REPO / "Testing" / "demo-spartacus-storefront"))
+    assert r["verdict"] in ("ok", "warn") and r["is_hybris"]
+    assert r["project"]["components"] == 3
+
+
+def test_credentials_in_the_upload_are_reported(tmp_path):
+    """Hybris extensions routinely ship local.properties with real database passwords."""
+    from src.preflight import inspect
+    ext = tmp_path / "myext"
+    (ext / "resources").mkdir(parents=True)
+    (ext / "extensioninfo.xml").write_text('<extensioninfo><extension name="myext"/></extensioninfo>')
+    (ext / "resources" / "myext-items.xml").write_text("<items/>")
+    (ext / "src").mkdir()
+    (ext / "src" / "S.java").write_text("import de.hybris.platform.core.Registry; class S {}")
+    (ext / "local.properties").write_text("db.url=jdbc:mysql://prod\ndb.password=Sup3rSecret!\n")
+    (ext / "keys.pem").write_text("-----BEGIN RSA PRIVATE KEY-----\nAAAA\n")
+
+    r = inspect(str(tmp_path))
+    assert r["verdict"] == "warn", "secrets must not be silently accepted"
+    what = {s["what"] for s in r["secrets"]}
+    assert "a database password" in what
+    assert "a private key" in what
+    assert all("Sup3rSecret" not in str(s) for s in r["secrets"]), "the secret was echoed back"
+
+
+def test_placeholders_are_not_reported_as_secrets(tmp_path):
+    """A warning that fires on every run is a warning people learn to ignore."""
+    from src.preflight import inspect
+    ext = tmp_path / "myext"
+    ext.mkdir()
+    (ext / "extensioninfo.xml").write_text('<extensioninfo><extension name="x"/></extensioninfo>')
+    (ext / "local.properties").write_text("db.password=\ndb.pass=${env.DB_PASS}\napi_key=\n")
+    assert inspect(str(tmp_path))["secrets"] == []

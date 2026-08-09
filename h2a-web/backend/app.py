@@ -180,6 +180,13 @@ async def create_run(
     else:
         raise HTTPException(400, "Provide input_path or upload a .zip")
 
+    # Refuse before creating a run at all, so a wrong upload is an error message rather
+    # than a migration that walks you through three gates to say it found nothing.
+    from src.preflight import inspect as preflight_inspect
+    report = preflight_inspect(input_dir)
+    if report["verdict"] == "reject":
+        raise HTTPException(422, {"message": report["summary"], "preflight": report})
+
     user = getattr(request.state, "user", None)
     uid = (user or {}).get("id")
     run = start_run(input_dir, str(OUTPUT_ROOT / _new_out_name(input_dir)),
@@ -188,7 +195,7 @@ async def create_run(
                     # The tenant's own credential when they have stored one; otherwise
                     # None, which falls back to the server's shared key.
                     api_key=keyvault.get_key(uid, provider))
-    return {"run_id": run.id, "status": run.status}
+    return {"run_id": run.id, "status": run.status, "preflight": report}
 
 
 def _state_dir_for(input_dir: str) -> str:
@@ -199,6 +206,13 @@ def _state_dir_for(input_dir: str) -> str:
     d = STATE_ROOT / key
     d.mkdir(parents=True, exist_ok=True)
     return str(d)
+
+
+@app.post("/api/preflight")
+async def api_preflight(body: dict):
+    """Inspect a codebase without starting a migration."""
+    from src.preflight import inspect as preflight_inspect
+    return preflight_inspect(_resolve_input_path((body.get("input_path") or "").strip()))
 
 
 @app.post("/api/runs/{run_id}/gate")

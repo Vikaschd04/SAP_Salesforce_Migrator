@@ -102,6 +102,8 @@ class Blackboard:
     # JUnit tests found in the source. Never migrated — they are the recorded
     # behaviour that characterization testing replays against the generated Apex.
     test_classes: list = field(default_factory=list)
+    # Preflight verdict: what this codebase is, and anything alarming in it.
+    preflight: dict = field(default_factory=dict)
 
     # Agent products
     comprehensions: dict = field(default_factory=dict)     # class_name -> understanding

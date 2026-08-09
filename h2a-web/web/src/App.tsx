@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRun, STAGES } from './useRun';
-import { health, startRun, cancelRun, getConfig, me as fetchMe, logout } from './api';
+import { health, startRun, cancelRun, getConfig, me as fetchMe, logout, PreflightError } from './api';
 import type { Me } from './api';
 import Detail from './components/Detail';
 import Gate from './components/Gate';
 import Copilot from './components/Copilot';
 import Landing from './components/Landing';
+import Preflight from './components/Preflight';
 import History from './components/History';
 import Logo from './components/Logo';
 import SignIn from './components/SignIn';
@@ -18,6 +19,7 @@ export default function App() {
   const [theme, setTheme] = useState(localStorage.getItem('h2a-theme') || 'dark');
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
+  const [rejected, setRejected] = useState<any>(null);
   const [cpOpen, setCpOpen] = useState(false);
   const [errDismissed, setErrDismissed] = useState(false);
   const [hosted, setHosted] = useState(false);
@@ -44,9 +46,14 @@ export default function App() {
   const showLanding = state.status === 'idle';
 
   const start = async (fd: FormData) => {
-    setStarting(true); setError(''); setErrDismissed(false);
+    setStarting(true); setError(''); setRejected(null); setErrDismissed(false);
     try { begin(await startRun(fd)); }
-    catch (e: any) { setError(e.message || 'failed to start'); }
+    catch (e: any) {
+      // A refused upload is not an error to apologise for — it is a finding, and the
+      // report explains it far better than a message can.
+      if (e instanceof PreflightError) { setRejected(e.report); setError(''); }
+      else setError(e.message || 'failed to start');
+    }
     finally { setStarting(false); }
   };
   const stop = async () => { if (state.runId) await cancelRun(state.runId); reset(); };
@@ -85,7 +92,15 @@ export default function App() {
       </header>
 
       {showLanding ? (
-        <Landing hosted={hosted} defaultProvider={defaultProvider} starting={starting} error={error} onStart={start} />
+        <>
+          <Landing hosted={hosted} defaultProvider={defaultProvider} starting={starting} error={error} onStart={start} />
+          {rejected && (
+            <div className="pf-reject">
+              <Preflight r={rejected} />
+              <button className="btn ghost" onClick={() => setRejected(null)}>Dismiss</button>
+            </div>
+          )}
+        </>
       ) : (
         <>
           {state.errorMsg && !errDismissed && (

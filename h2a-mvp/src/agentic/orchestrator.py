@@ -161,6 +161,8 @@ def _discovery_payload(bb) -> dict:
         "schedule": list(bb.schedule or []),
         "schema": schema,
         "skipped": list(bb.frontend_skipped or []),
+        # What we established about the codebase before spending anything on it.
+        "preflight": getattr(bb, "preflight", None),
     }
 
 
@@ -441,6 +443,20 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
 
     print("=== Agentic Migration (Phase 1) ===")
     emit("stage", name="analyze", status="start")
+
+    # Before anything else: is this even a SAP Commerce codebase? Walking three review
+    # gates to discover there was nothing to migrate is a poor use of anyone's time, and
+    # with a real provider it is a poor use of their money.
+    from src.preflight import inspect as _preflight
+    pre = _preflight(input_dir)
+    bb.preflight = pre
+    emit("preflight", **pre)
+    print(f"  Preflight: {pre['summary']}")
+    if pre["secrets"]:
+        print(f"  ⚠ {len(pre['secrets'])} file(s) appear to contain credentials")
+    if pre["verdict"] == "reject":
+        raise ValueError("Preflight failed — " + " ".join(pre["blockers"]))
+
     bb.schedule = get_translation_schedule(input_dir)
     bb.adjacency, bb.domains = build_dependency_graph(input_dir)
     print(f"  Domains: {list(bb.domains.keys())}  |  order: {bb.schedule}")

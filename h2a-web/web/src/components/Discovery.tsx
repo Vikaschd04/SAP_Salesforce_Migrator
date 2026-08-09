@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import Preflight from './Preflight';
 
 export interface DiscoveryData {
   summary: { files_scanned: number; classes: number; components: number; objects: number; domains: number; total_loc: number };
@@ -38,6 +39,7 @@ export default function Discovery({ d }: { d: DiscoveryData }) {
   };
 
   const s = d.summary || ({} as DiscoveryData['summary']);
+  const pf = (d as any).preflight;
   const totalLayer = Object.values(d.layers || {}).reduce((a, b) => a + b, 0) || 1;
 
   const classes = useMemo(() => {
@@ -53,6 +55,9 @@ export default function Discovery({ d }: { d: DiscoveryData }) {
 
   return (
     <div className="disc">
+      {/* What we established before spending anything — the reviewer's first question
+          is "did it even understand what I gave it", so it is answered first. */}
+      {pf && <Preflight r={pf} compact />}
       <div className="stat-row">
         <Stat n={s.files_scanned} l="files scanned" />
         <Stat n={s.classes} l="backend classes" />
