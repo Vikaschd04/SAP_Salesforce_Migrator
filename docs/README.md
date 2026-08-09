@@ -16,6 +16,8 @@ This folder is the single home for every project document. Start with whichever 
 | **Present the architecture to engineers** | `ARCHITECTURE_DECK.pptx` (10 slides) + `architecture-diagram.png` (the diagram on its own) |
 | **Run the software live during a demo** | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) |
 | **Install and run it myself** | [HOW_TO_USE.md](HOW_TO_USE.md) |
+| **Run it for a team (accounts, keys, queue)** | [SETUP.md](SETUP.md) — the server-settings table |
+| **Know what's shipped vs still open** | [ROADMAP_INDUSTRIAL.md](ROADMAP_INDUSTRIAL.md) · [DIFFERENTIATORS.md](DIFFERENTIATORS.md) |
 
 ## The full document set
 

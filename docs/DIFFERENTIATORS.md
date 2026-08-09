@@ -61,7 +61,7 @@ risk before the reassurance.
 > it is now the highest-value thing left to build, because the ledger has made the gap
 > legible and put a number on it.
 
-### 3. Characterization testing (golden-master parity)
+### 3. Characterization testing (golden-master parity) — ✅ **SHIPPED**
 Mine the customer's **existing JUnit tests** for input→output pairs, then replay those exact
 cases against the generated Apex in a scratch org.
 
@@ -70,6 +70,27 @@ cases against the generated Apex in a scratch org.
   That is the artifact that gets a migration signed off. Nobody else will do this because it's
   unglamorous plumbing.
 - **Build:** you already run Apex tests during Verify — this extends the harness, not replaces it.
+
+**How it shipped** (`src/characterize.py`, Parity tab, `CHARACTERIZATION.md`): every
+`@Test` is mined into a recorded input→output fact and graded by how strong the evidence
+actually is.
+
+| Mode | Meaning | Trust |
+|---|---|---|
+| `direct` | The signature survived; the replay calls the same method with the same recorded values | **Strong** — a failure is a real behavioural difference |
+| `adapter` | The migration reshaped the call, so generated bridging code arranges the inputs | Medium — the expected value is still a recorded fact, the plumbing is not |
+| `manual` | Mocks, object graphs, or a target that failed to build | None |
+
+> **The finding that shaped the design:** on our own demo, **0 of 18** behaviours were
+> `direct`, because the migration deliberately bulkifies —
+> `placeOrder(customer, entries)` becomes `createOrders(List<OrderRequest>)` and the old
+> method names are simply gone. Deterministic replay alone cannot carry a real migration.
+> Bridging took it to 56%.
+>
+> The constraint that keeps a bridged test *evidence* rather than a second opinion: the
+> model arranges and acts, and **never asserts**. It is never sent the expected value and
+> its output is never trusted to supply one — the assertion is written by the framework
+> from the recorded fact. A bridge containing `System.assert*` is rejected outright.
 
 ### 4. Hybris-specific anti-pattern radar
 Generic Apex linting is commoditized. **Hybris→Salesforce failure modes** are not:
@@ -153,14 +174,21 @@ branch/compare alternative migration strategies instead of re-running from zero.
 
 ## What I'd build next, in order
 
-1. ~~**Business-rule ledger** (#2)~~ — ✅ shipped. It reframed the metric *and* exposed the
-   next gap: the ledger can say "a test plausibly covers this", never "this behaves the same".
-2. **Characterization tests** (#3) — promoted to next. The ledger created the demand for it:
-   every `implemented` row is a rule with no proof, and this is what turns those into
-   `asserted` for real. It's also the proof artifact that closes enterprise deals.
-3. **Line-level provenance** (#1) — unlocks review, audit, and impact analysis together.
-4. **Anti-pattern radar** (#4) — fastest credibility win in a demo with a real architect.
-5. **Risk-ranked triage** (#6) — what makes it survive a 400-class repo.
+1. ~~**Business-rule ledger** (#2)~~ — ✅ shipped.
+2. ~~**Characterization tests** (#3)~~ — ✅ shipped, including the adapter bridge that
+   makes it work against bulkified output.
+3. **Anti-pattern radar** (#4) — **next.** Promoted above provenance because the preflight
+   work (`src/preflight.py`) already walks the source tree doing static analysis, so the
+   radar extends machinery that exists rather than building new. No model calls, no org
+   needed, and it is the fastest credibility win with a real Hybris architect.
+4. **Risk-ranked triage** (#6) — pairs directly with the radar, which produces the signal
+   it ranks on. Together they turn "read 400 files" into "these 12 need you".
+5. **Line-level provenance** (#1) — the largest of the three, and independent of them.
+
+> **Also shipped, though not on this list:** a source-side preflight that refuses a
+> non-Hybris upload before a run exists and reports credentials found in the archive.
+> Note that #5 (*pre-flight target-org fit*) is a different thing — that one inspects the
+> destination org so the migration reuses objects the customer already has.
 
 > **The one-line pitch to aim at:** *"Every other tool converts your code. H2A proves it still
 > behaves the same — rule by rule, line by line, against your own org."*

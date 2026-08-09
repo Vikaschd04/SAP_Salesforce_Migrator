@@ -1,6 +1,6 @@
 # How It All Works — A Plain-English Guide
 
-**Version:** 0.9.2 · No technical background required
+**Version:** 0.9.3 · No technical background required
 
 This explains the whole project simply, as if you've never seen the code.
 
@@ -80,9 +80,34 @@ At any gate you can approve, reject with written feedback, or stop entirely. The
 
 If you'd rather it just run start to finish, turn supervised mode off and it will.
 
+## Before anything else: is this even the right code?
+
+Point the tool at a folder of holiday photos and it used to start a migration, find
+nothing, and walk you through three review screens to tell you so.
+
+Now it looks first, and it does that without using any AI at all:
+
+- **Is this a SAP Commerce project?** It looks for the things only Hybris produces — the
+  extension descriptor, the type-system files, ImpEx data, `de.hybris` references in the
+  code, or a Spartacus storefront.
+- **What is it?** Version, extension names, how much of each kind of file.
+- **Is there anything that stops us?** No source to migrate, or none of the markers.
+- **Is there anything here that shouldn't have been sent?** Hybris extensions routinely
+  ship config files containing **live database passwords and API tokens**. Uploading one
+  copies those secrets onto someone else's machine.
+
+If it isn't the right kind of project, you get told immediately and **nothing runs and
+nothing is charged**. If it is, but something looks off — credentials in the archive, a
+missing data model — you get told that too, at the first review screen, still before any
+AI is used.
+
+> **On the credentials check:** it reports the file and line and what kind of secret it
+> looks like. It never shows the value, never stores it, and never sends it anywhere. If
+> it finds something real, rotate it.
+
 ## The journey of your code, step by step
 
-**1. Sort & schedule.** It finds every source file, groups them by business topic (Order, Customer, Product…), figures out which topics depend on which, and translates dependencies first — so a class that needs another class already has it ready. *No AI is used here; it's ordinary code reading.* → **you review this**
+**1. Check & sort.** It confirms the codebase is what you say it is (above), then finds every source file, groups them by business topic (Order, Customer, Product…), figures out which topics depend on which, and translates dependencies first — so a class that needs another class already has it ready. Test files are set aside here, not migrated. *No AI is used in this whole step.* → **you review this**
 
 **2. Understand.** For each piece of code, the AI reads it and writes a short summary: what it does, what business rules it enforces (e.g. "an order total must be positive"), what could go wrong in migration, and how hard it will be.
 
@@ -251,6 +276,15 @@ A demo migrates 6 files. A real Hybris estate has hundreds. The machinery descri
 | **Re-runs** | Change nothing and it skips **100%** of the AI work — near-instant, and free. Change one class and it redoes one class. |
 | **Failures** | One class failing costs you that class, not the run. An interrupted run resumes instead of restarting. |
 | **Cost** | Reported per run and per AI model, so there's never a surprise bill |
+
+And when more than one person uses it:
+
+| | |
+|---|---|
+| **Accounts** | Everyone signs in. Your migrations — and the source code you uploaded — are visible only to you. Nobody else can list them, open them, or download them. |
+| **Your own AI key** | You can store your own, so your runs bill your account rather than a shared one. It is encrypted, and the tool will never show it back to you — you can replace it, not read it. |
+| **A queue** | Only so many migrations run at once. The rest wait in line and tell you your position. Each migration is memory-hungry, so an unbounded free-for-all would take the whole thing down. |
+| **Nothing is lost** | Close the tab, lose your connection, restart the server — you rejoin the run where you left it, and finished runs stay in your history. |
 
 The re-run number is the one people underestimate. Migrations are never one-shot — you'll run it again and again as you fix things, adjust the plan, and re-review. A tool that charges you full price every time is a tool you use twice and abandon.
 

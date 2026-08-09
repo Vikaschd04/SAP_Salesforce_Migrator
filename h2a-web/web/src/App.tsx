@@ -6,7 +6,7 @@ import Detail from './components/Detail';
 import Gate from './components/Gate';
 import Copilot from './components/Copilot';
 import Landing from './components/Landing';
-import Preflight from './components/Preflight';
+import PreflightModal from './components/PreflightModal';
 import History from './components/History';
 import Logo from './components/Logo';
 import SignIn from './components/SignIn';
@@ -92,15 +92,7 @@ export default function App() {
       </header>
 
       {showLanding ? (
-        <>
-          <Landing hosted={hosted} defaultProvider={defaultProvider} starting={starting} error={error} onStart={start} />
-          {rejected && (
-            <div className="pf-reject">
-              <Preflight r={rejected} />
-              <button className="btn ghost" onClick={() => setRejected(null)}>Dismiss</button>
-            </div>
-          )}
-        </>
+        <Landing hosted={hosted} defaultProvider={defaultProvider} starting={starting} error={error} onStart={start} />
       ) : (
         <>
           {state.errorMsg && !errDismissed && (
@@ -154,6 +146,7 @@ export default function App() {
         </>
       )}
 
+      <PreflightModal report={rejected} onClose={() => setRejected(null)} />
       <Keys open={keysOpen} onClose={() => setKeysOpen(false)} />
       <History open={histOpen} onClose={() => setHistOpen(false)} onOpen={begin} />
       {state.gate && state.runId && <Gate runId={state.runId} gate={state.gate} onClosed={closeGate} />}

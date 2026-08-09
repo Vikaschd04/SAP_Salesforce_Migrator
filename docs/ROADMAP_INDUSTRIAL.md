@@ -25,9 +25,13 @@ a tool a team runs *during a meeting* and one they run *overnight and hope*.
 
 ---
 
-## Phase 6 — Performance & scale ⭐ *(start here)*
+> **Status, kept honest.** Phases 6, 7 and 8's first two items have shipped. What each
+> actually delivered — measured, not targeted — is recorded inline below. Anything without
+> a ✅ is still open.
 
-### 6A. Concurrency — the single biggest win (target: **5–8× faster**)
+## Phase 6 — Performance & scale · ✅ **shipped** (bar two items)
+
+### 6A. Concurrency · ✅ — **measured 7× at concurrency 8**, byte-identical output
 The workload is far more parallel than the current code assumes:
 
 - **Comprehend is embarrassingly parallel.** Every class is analyzed independently — there is
@@ -46,44 +50,64 @@ Implementation notes that keep it safe:
 
 **Expected: ~2 hours → ~15–20 minutes** on a 300-class repo.
 
-### 6B. Incremental / delta migration (target: **10–50× on re-runs**)
+### 6B. Incremental / delta migration · ✅ — **100% of AI work skipped** on an unchanged re-run
 `state_ledger.py` and `incremental: true` exist but the **agentic path never consults them**.
 Hash each source file; on re-run, skip classes whose hash and dependencies are unchanged and
 reuse the prior artifact. Real migrations are iterative — the second run should take a minute,
 not the full two hours.
 
-### 6C. Cost engineering (target: **50–70% cheaper**)
+### 6C. Cost engineering · ⚠️ **partial** — routing measured ~20%, not the 50–70% targeted
 - **Turn model routing on by default** — comprehension/planning on the cheap tier, generation
   and criticism on the frontier tier. The routing layer is already written and unused.
-- **Prompt slimming** — stop sending whole-file source for large classes; send the extracted
-  signature + relevant regions (the ingest already parses methods/fields).
-- **Per-run cost cap + live spend meter**, surfaced in the cockpit before and during a run.
+- ✅ **Model routing on by default** — cheap tier for comprehend/plan, frontier for
+  generate/critic. Measured ~20%: generation and critique carry most of the tokens and
+  stay on the frontier tier, so routing alone is a trim, not a halving.
+- ✅ **Per-model cost accounting + live spend meter** in the cockpit.
+- ⬜ **Prompt slimming** — still open, and now the largest unclaimed cost lever. Whole-file
+  source is still sent even though ingest already parses methods and fields.
+- ⬜ **Per-run cost cap.**
 
-### 6D. Resilience at scale
+### 6D. Resilience at scale · ✅
 At 900 calls, rare failures become certainties:
 - App-level **retry with jittered backoff** on 429/5xx (SDK defaults are not enough at this volume).
 - **Partial-failure resume** — a failed class is already contained; make the *run* resumable so
   you re-do 3 classes, not 300.
-- **Streaming progress persistence** so a browser refresh (or a proxy drop) never loses a run.
+- ✅ **Streaming progress persistence** — the client stores the run id and rejoins on
+  mount, so a refresh, a dropped connection or a closed tab no longer orphans a run.
 
 ---
 
-## Phase 7 — Multi-user platform
-Turn a single-user tool into a service:
-- **Job queue + workers** (replace the process-global lock + `os.chdir`; make the engine
-  cwd-independent so runs can be concurrent *and* isolated).
-- **Postgres-backed run store** + Blackboard checkpoints per phase → durable, resumable,
-  shareable runs and real run history.
-- **Auth, orgs/projects, RBAC**, per-run audit trail (the decisions log is already the content).
-- **Sandboxed uploads**, per-tenant key vault, cost metering per tenant.
+## Phase 7 — Multi-user platform · ✅ **shipped**
+- ✅ **cwd-independent engine** — the `os.chdir` turned out to be unnecessary; config,
+  mappings and cache already resolve against the engine's own root.
+- ✅ **Concurrent, isolated runs** — the process-global `H2A_PROVIDER` write was a real
+  race (a mock run could inherit another run's live provider). Replaced with a ContextVar
+  propagated into pool workers.
+- ✅ **Bounded admission** — FIFO queue with a visible position, capped by
+  `H2A_MAX_CONCURRENT_RUNS`. Removing the lock without this traded "one user at a time"
+  for "ten users exhaust the box".
+- ✅ **Durable run store** — SQLite rather than Postgres, deliberately: the same code runs
+  on a laptop and in an extension host, where requiring a database server would make the
+  product worse. Behind an interface, so swapping it later touches one file.
+- ✅ **Accounts, sessions, tenant isolation** — scrypt passwords, hashed session tokens,
+  isolation enforced in SQL *and* middleware. A second tenant gets 404, not 403, so the
+  existence of a migration is not disclosed either.
+- ✅ **Per-tenant key vault** — Fernet-encrypted under a secret held outside the database.
+- ⬜ **Postgres**, org/project hierarchy, RBAC beyond admin/member, per-tenant cost metering.
 
-## Phase 8 — Proof & correctness (the moat)
-Sequenced from [DIFFERENTIATORS.md](DIFFERENTIATORS.md), highest leverage first:
-1. **Business-rule ledger** — completeness measured in *rules preserved*, not files converted.
-2. **Line-level provenance** — every Apex line traceable to its Java origin.
-3. **Hybris anti-pattern radar** — FlexibleSearch-in-loop, `@Transactional`, interceptors, ImpEx volume.
-4. **Risk-ranked review triage** — what makes human review survive 400 classes.
-5. **Characterization tests** — replay their own JUnit cases against generated Apex in a scratch org.
+## Phase 8 — Proof & correctness (the moat) · 🔶 2 of 5
+1. ✅ **Business-rule ledger** — completeness measured in *rules preserved*, not files converted.
+2. ✅ **Characterization tests** — the customer's own JUnit cases replayed against the
+   generated Apex, each graded by evidence strength. The adapter bridge is what makes it
+   work against deliberately bulkified output (0% → 56% on our own demo).
+3. ⬜ **Hybris anti-pattern radar** — **next.** Extends `src/preflight.py`, which already
+   walks the source tree doing static analysis. No model calls, no org required.
+4. ⬜ **Risk-ranked review triage** — pairs with the radar, which produces the signal it ranks on.
+5. ⬜ **Line-level provenance** — the largest of the three and independent of them.
+
+> Also shipped, outside the original list: **source preflight** — a non-Hybris upload is
+> refused before a run object exists, and credentials found in the archive are reported by
+> file and line (never by value).
 
 ## Phase 9 — Enterprise readiness
 Observability (metrics/tracing/error tracking), SSO, **deterministic replay for audit**,
@@ -95,12 +119,14 @@ signed sign-off contract export, security review, on-prem/VPC packaging, load te
 
 | Order | Work | Why now |
 |---|---|---|
-| **1** | 6A concurrency | Unblocks *every* demo on a real repo. Biggest visible win per unit of effort. |
-| **2** | 6B incremental | Makes iteration usable; migrations are never one-shot. |
-| **3** | 6C cost + 6D resilience | Both become mandatory the moment runs are big and real. |
-| **4** | Phase 8 (rule ledger → provenance) | The differentiation that wins the deal, once runs are fast enough to iterate on. |
-| **5** | Phase 7 platform | Needed for multi-user/SaaS, but no customer cares until 1–4 are true. |
-| **6** | Phase 9 | Procurement gates, not product gates. |
+| ~~1~~ | ~~6A concurrency~~ | ✅ done — 7× measured |
+| ~~2~~ | ~~6B incremental~~ | ✅ done — 100% skip on unchanged re-runs |
+| ~~3~~ | ~~6C/6D~~ | ✅ resilience; 6C partial — prompt slimming still open |
+| ~~4~~ | ~~Phase 7 platform~~ | ✅ done, and moved ahead of Phase 8 in practice: concurrency made isolation and admission control urgent |
+| **5** | **Anti-pattern radar → risk triage** | **Next.** Reuses the preflight static-analysis walk; no model calls, no org, demos on a locked-down laptop |
+| **6** | Line-level provenance | Unlocks review, audit and impact analysis together |
+| **7** | Prompt slimming | The largest unclaimed cost lever |
+| **8** | Phase 9 | Procurement gates, not product gates |
 
 > **The one metric to lead with:** *"A 300-class Hybris extension, fully migrated, reviewed,
 > and org-verified — in under 20 minutes, for under $X, with every business rule accounted for."*

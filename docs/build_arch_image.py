@@ -146,7 +146,7 @@ y = TOP
 y += band(y, "LAYER 1 · SURFACES", "three clients, one engine", BLUE, [
     ("CLI", "python -m src.main agent-migrate — direct in-process call", BLUE),
     ("VS Code extension", "TypeScript webview; spawns the CLI as a child process", BLUE),
-    ("Web cockpit", "React SPA + FastAPI; imports the engine on a worker thread", BLUE),
+    ("Web cockpit", "React SPA + FastAPI; accounts, per-tenant isolation, queued runs", BLUE),
 ])
 y += conn(y, "run_agentic_migration(input, output, *, on_event, gate, "
              "should_cancel, on_blackboard, state_dir)")
@@ -157,7 +157,8 @@ y += band(y, "LAYER 2 · ORCHESTRATION", "agentic/orchestrator.py — the only s
               ("Wavefronts", "Dependency levels that can safely run in parallel", GDEEP),
               ("Human gates", "Blocks the worker thread until a verdict arrives", COPPER),
               ("Containment", "A failed class becomes a flagged stub, not an aborted run", GDEEP),
-          ], cols=4)
+              ("Admission", "FIFO queue caps how many migrations run at once", GDEEP),
+          ], cols=5)
 y += conn(y, "reads / writes the shared Blackboard")
 
 y += band(y, "LAYER 3 · AGENTS", "blackboard pattern — agents never call each other", GDEEP, [
@@ -171,7 +172,8 @@ y += band(y, "LAYER 3 · AGENTS", "blackboard pattern — agents never call each
 y += conn(y, "capability modules — stateless functions over the Blackboard")
 
 y += band(y, "LAYER 4 · CAPABILITIES", "independently testable; shared by both pipelines", GRAY, [
-    ("ingest", "Hybris Java via javalang AST + layer classification", GRAY),
+    ("preflight", "Is this SAP Commerce? Blockers, version, leaked secrets", COPPER),
+    ("ingest", "Hybris Java via javalang AST; JUnit held aside", GRAY),
     ("frontend_ingest", "Spartacus / Angular components", GRAY),
     ("schema", "items.xml → SObject model", GRAY),
     ("comprehend", "Purpose, business rules, risks, complexity", GRAY),
@@ -179,6 +181,7 @@ y += band(y, "LAYER 4 · CAPABILITIES", "independently testable; shared by both 
     ("validate · _lwc", "Static checks → LLM repair loop", GRAY),
     ("verify", "sf CLI dry-run deploy with self-heal", GRAY),
     ("rule_ledger", "Every rule traced source → artifact → test", GREEN),
+    ("characterize", "Replays the customer's JUnit against the Apex", GREEN),
     ("impex · cronjob", "Data records; cronjobs → Scheduled Apex", GRAY),
     ("report · pricing", "Feasibility, completeness ledger, cost", GRAY),
 ], cols=5, tag_bg=GRAY)
