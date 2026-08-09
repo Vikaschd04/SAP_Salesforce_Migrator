@@ -44,3 +44,29 @@ export interface RuleLedger {
 }
 
 export type StageStatus = 'pending' | 'active' | 'done' | 'error';
+
+/** One recorded behaviour from the customer's JUnit suite, followed to the Apex. */
+export type CharMode = 'direct' | 'adapter' | 'manual';
+export interface CharRow {
+  id: string; label: string; source_class: string; target_method: string;
+  target: string | null; mode: CharMode; reason: string;
+  expects_exception?: string | null;
+  args?: { java: string }[];
+  expected?: { java: string } | null;
+  bridge?: { setup: string; result_expr: string; note: string } | null;
+}
+export interface Characterization {
+  summary: {
+    total: number; direct: number; adapter: number; manual: number;
+    bridged: number; runnable: number; replayable_pct: number | null;
+  };
+  behaviors: CharRow[];
+  classes: string[];
+}
+
+/** A past run, from the durable store — survives a server restart. */
+export interface RunSummary {
+  id: string; status: string; provider: string; engine: string;
+  started?: number; elapsed: number; error?: string | null;
+  input_dir: string; supervised?: boolean;
+}

@@ -5,6 +5,7 @@ import Detail from './components/Detail';
 import Gate from './components/Gate';
 import Copilot from './components/Copilot';
 import Landing from './components/Landing';
+import History from './components/History';
 import Logo from './components/Logo';
 
 export default function App() {
@@ -60,7 +61,10 @@ export default function App() {
       </header>
 
       {showLanding ? (
-        <Landing hosted={hosted} defaultProvider={defaultProvider} starting={starting} error={error} onStart={start} />
+        <>
+          <Landing hosted={hosted} defaultProvider={defaultProvider} starting={starting} error={error} onStart={start} />
+          <History onOpen={begin} />
+        </>
       ) : (
         <>
           {state.errorMsg && !errDismissed && (
@@ -108,7 +112,7 @@ export default function App() {
             <Detail runId={state.runId} status={state.status} stages={state.stages} plan={state.plan}
               comprehensions={state.comprehensions} artifacts={state.artifacts} decisions={state.decisions}
               ledger={state.ledger} ledgerSummary={state.ledgerSummary} discovery={state.discovery}
-              ruleLedger={state.ruleLedger}
+              ruleLedger={state.ruleLedger} characterization={state.characterization}
               cost={state.cost} tokens={state.tokens} />
           </main>
         </>

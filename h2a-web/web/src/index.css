@@ -435,6 +435,59 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .rule-caveat { margin-top: 14px; font-size: 11.5px; line-height: 1.6; color: var(--text-dim);
   border-left: 2px solid var(--border-strong); padding-left: 11px; }
 
+/* ── Run history ── */
+.hist { max-width: 860px; margin: 0 auto 64px; padding: 0 24px; width: 100%; }
+.hist-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+.hist-list { display: flex; flex-direction: column; gap: 6px; }
+.hist-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 11px 14px; border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--panel); color: var(--text); font-size: 13px; transition: .16s; }
+.hist-row:hover { border-color: var(--border-strong); background: var(--panel-hover); }
+.hist-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); flex: none; }
+.hist-dot.complete { background: var(--good); }
+.hist-dot.running, .hist-dot.queued { background: var(--accent); animation: pulse 1.6s infinite; }
+.hist-dot.error { background: var(--danger); }
+.hist-dot.interrupted { background: var(--warn); }
+.hist-name { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip.hist-status { font-size: 10.5px; padding: 2px 9px; }
+.chip.hist-status.complete { background: var(--good-bg); color: var(--good); border-color: transparent; }
+.chip.hist-status.error { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
+.chip.hist-status.interrupted { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.chip.hist-status.running, .chip.hist-status.queued { background: var(--accent-bg); color: var(--accent); border-color: transparent; }
+.hist-meta { font-size: 11.5px; color: var(--text-dim); flex: none; }
+.hist-note { margin-top: 12px; font-size: 11.5px; line-height: 1.6; color: var(--text-faint);
+  border-left: 2px solid var(--border-strong); padding-left: 11px; }
+
+/* ── Characterization (golden-master parity) ──
+   Evidence strength is the primary axis, so it gets its own colour ramp: green =
+   proof, amber = bridged, neutral = a human's problem. */
+.rb.ch-direct { background: var(--good); }
+.rb.ch-adapter { background: var(--warn); }
+.rb.ch-manual { background: var(--text-faint); opacity: .5; }
+.chip.rule.ch-direct { background: var(--good-bg); color: var(--good); border-color: transparent; }
+.chip.rule.ch-adapter { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.chip.rule.ch-manual { background: var(--panel-3); color: var(--text-dim); }
+.btn-mini.ch-f.direct { color: var(--good); }
+.btn-mini.ch-f.adapter { color: var(--warn); }
+.btn-mini.ch-f.manual { color: var(--text-dim); }
+.ch-trust { display: block; margin-top: 4px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--text-faint); font-weight: 700; }
+.rule-row.ch-direct td:first-child { box-shadow: inset 2px 0 0 var(--good); }
+.rule-row.ch-adapter td:first-child { box-shadow: inset 2px 0 0 var(--warn); }
+.ch-call { max-width: 26em; }
+.ch-call code { font-size: 11.5px; word-break: break-word; }
+.ch-arrow { display: block; margin-top: 3px; color: var(--text-faint); font-size: 11.5px; }
+.ch-peek { display: block; margin-top: 6px; background: none; border: none; padding: 0;
+  color: var(--blue); font-size: 11.5px; cursor: pointer; text-decoration: underline; }
+.ch-bridge-row td { padding: 0 10px 10px; }
+.ch-bridge { margin: 0; padding: 11px 13px; background: var(--panel-3); border-radius: 8px;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.55; overflow-x: auto;
+  border-left: 2px solid var(--warn); color: var(--text); }
+.note-inline { font-size: 12.5px; line-height: 1.55; padding: 9px 12px; border-radius: 8px;
+  margin-bottom: 12px; background: var(--panel-2); color: var(--text-dim); }
+.note-inline.good { background: var(--good-bg); color: var(--good); }
+.note-inline code { background: transparent; border: none; padding: 0; color: inherit; font-weight: 600; }
+
 /* ── Discovery (repository understanding review) ── */
 .disc-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0 14px; }
 .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; }

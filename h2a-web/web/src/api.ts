@@ -1,4 +1,4 @@
-import type { Ev } from './types';
+import type { RunSummary, Ev } from './types';
 
 export async function startRun(form: FormData): Promise<string> {
   const res = await fetch('/api/runs', { method: 'POST', body: form });
@@ -110,3 +110,10 @@ export async function getConfig(): Promise<ClientConfig> {
   try { return await (await fetch('/api/config')).json(); } catch { return { hosted: false, default_provider: 'mock' }; }
 }
 export function packageUrl(runId: string): string { return `/api/runs/${runId}/package`; }
+
+/** Past runs, newest first — live ones plus history recovered from disk. */
+export async function listRuns(): Promise<RunSummary[]> {
+  const r = await fetch('/api/runs');
+  if (!r.ok) return [];
+  return (await r.json()).runs || [];
+}
