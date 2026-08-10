@@ -167,7 +167,7 @@ async def api_me(request: Request):
 
 # Report files at the output root that the dashboard surfaces.
 _REPORT_FILES = ["MIGRATION_PLAN.md", "BUSINESS_RULES.md", "CHARACTERIZATION.md",
-                 "FEASIBILITY_REPORT.md", "ANTI_PATTERNS.md", "TRIAGE.md", "PROVENANCE.md", "ORG_FIT.md", "PARITY.md", "DATA_MIGRATION.md",
+                 "FEASIBILITY_REPORT.md", "ANTI_PATTERNS.md", "TRIAGE.md", "PROVENANCE.md", "ORG_FIT.md", "FORECAST.md", "PARITY.md", "DATA_MIGRATION.md",
                  "CRON_JOBS.md", "MAPPING.md"]
 
 

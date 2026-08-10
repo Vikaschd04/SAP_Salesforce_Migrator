@@ -196,9 +196,25 @@ any decision show the prompt, model, and grounding docs that produced it.
 - **Why it wins:** in regulated enterprises, *"prove why the AI did that in March"* is a
   procurement requirement. This turns your cache into a compliance feature.
 
-### 10. Cost + duration forecast before you press start
+### 10. Cost + duration forecast before you press start — ✅ **SHIPPED**
 From the scan alone: class count × complexity → estimated tokens, spend, wall-clock, and
 reviewer-hours. Enterprises need a number **before** approval, not a surprise bill after.
+
+**How it shipped** (`src/forecast.py`, `FORECAST.md`): produced at the Discovery gate — the
+last moment before the first billable token — with no model calls of its own. Per-call
+sizes are *measured* from instrumented runs over the reference corpus rather than assumed,
+and they live as constants in one file so drift is visible.
+
+> **It reports a range, deliberately.** A single figure implies a precision that does not
+> exist: output length varies with how much the model decides to say, repair loops fire
+> unpredictably, and provider latency is not ours to control. A point estimate would be
+> wrong in a way that looks *authoritative*, so both bounds are shown with the assumptions
+> listed beside them.
+
+It also prices the levers honestly: routing shows the cheap tier on comprehension and the
+frontier tier on generation; concurrency compresses wall-clock and explicitly **not** spend;
+and an incremental re-run bills only what changed — a 425-class estate at $29–$68 becomes
+$3–$7 when 90% is unchanged, with review hours scaled to match.
 
 ---
 

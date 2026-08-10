@@ -165,6 +165,7 @@ def _discovery_payload(bb) -> dict:
         "preflight": getattr(bb, "preflight", None),
         "radar": getattr(bb, "radar", None),
         "orgfit": getattr(bb, "orgfit", None),
+        "forecast": getattr(bb, "forecast", None),
     }
 
 
@@ -490,6 +491,18 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     bb.unreadable = ingest_result.get("unreadable", [])
     bb.schema = build_schema(bb.item_types, bb.relations, bb.enum_types)
     bb.source_corpus = "\n".join(c.get("source", "") for c in bb.all_classes)
+
+    # A number before the first billable token. The Discovery gate is the last moment
+    # this is still true, which is exactly why it belongs here.
+    try:
+        from src.forecast import forecast as _forecast, headline as _fc_headline
+        already = len(getattr(bb, "_reused_targets", []) or [])
+        bb.forecast = _forecast(bb.all_classes, targets=len(bb.all_classes),
+                                config=config, already_done=already,
+                                provider=_get_provider(config))
+        print(f"  Forecast: {_fc_headline(bb.forecast)}")
+    except Exception as e:                              # advisory, never a blocker
+        print(f"  ⚠ forecast skipped: {e}")
 
     # Read the DESTINATION as well as the source. Placed here because the schema now
     # exists and nothing has been generated yet, so a name collision costs a rename
@@ -941,6 +954,10 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # appearance, so its verdicts are the strongest evidence the run produces.
     characterization = _characterize(bb, output_dir, offline=offline, config=config)
 
+    if getattr(bb, "forecast", None):
+        from src.forecast import write_forecast_md
+        write_forecast_md(output_dir, bb.forecast)
+
     if getattr(bb, "orgfit", None):
         from src.orgfit import write_orgfit_md, headline as _oh
         write_orgfit_md(output_dir, bb.orgfit)
@@ -1017,6 +1034,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
          provenance=provenance,
          # What the destination org already contains, reconciled against the plan.
          orgfit=getattr(bb, "orgfit", None),
+         # What this was estimated to cost, before it was run.
+         forecast=getattr(bb, "forecast", None),
          # Golden-master parity from the customer's own JUnit suite — behaviour, not looks.
          characterization=characterization,
          providers=acct.get("providers", {}), requests=acct.get("requests", 0),

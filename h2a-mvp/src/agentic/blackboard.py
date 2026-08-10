@@ -111,6 +111,8 @@ class Blackboard:
     radar: dict = field(default_factory=dict)
     # What the destination Salesforce org already contains (src/orgfit.py).
     orgfit: dict = field(default_factory=dict)
+    # Estimated cost/duration, produced before the first billable token.
+    forecast: dict = field(default_factory=dict)
 
     # Agent products
     comprehensions: dict = field(default_factory=dict)     # class_name -> understanding
