@@ -9,12 +9,13 @@ import Rules from './Rules';
 import Triage from './Triage';
 import Alignment from './Alignment';
 import Provenance from './Provenance';
+import DecisionRecord from './DecisionRecord';
 import CharacterizationView from './Characterization';
 import type { StageStatus } from '../types';
 
 const Diff = lazy(() => import('./Diff'));
 
-type Tab = 'flow' | 'discovery' | 'plan' | 'understanding' | 'artifacts' | 'triage' | 'alignment' | 'rules' | 'parity' | 'provenance' | 'diff' | 'files' | 'reports' | 'audit';
+type Tab = 'flow' | 'discovery' | 'plan' | 'understanding' | 'artifacts' | 'triage' | 'alignment' | 'rules' | 'parity' | 'provenance' | 'diff' | 'files' | 'reports' | 'decisions' | 'audit';
 
 interface Props {
   runId: string | null; status: string;
@@ -26,6 +27,8 @@ interface Props {
   triage: any | null;
   alignment: any | null;
   provenance: any | null;
+  blast: any | null;
+  replay: any | null;
   discovery: any | null;
   cost: any | null;
   tokens: { input: number; output: number; cache_read: number } | null;
@@ -77,7 +80,7 @@ export default function Detail(p: Props) {
       tabs: [['triage', 'Triage'], ['rules', 'Rules'], ['alignment', 'Alignment'],
              ['parity', 'Parity'], ['provenance', 'Origin']] },
     { id: 'records', label: 'Records', hint: 'the paper trail',
-      tabs: [['reports', 'Reports'], ['audit', 'Audit']] },
+      tabs: [['reports', 'Reports'], ['decisions', 'Decisions'], ['audit', 'Audit']] },
   ];
   const group = GROUPS.find((g) => g.tabs.some(([id]) => id === tab)) || GROUPS[0];
 
@@ -155,7 +158,8 @@ export default function Detail(p: Props) {
           {p.artifacts.length === 0
             ? <p className="empty">Generated Apex + LWC appear here. Open any file to see the code, compare it with the SAP source, read the Critic findings — and regenerate it if it looks wrong.</p>
             : p.artifacts.map((a) => (
-              <ArtifactReview key={a.target_name} runId={p.runId!} art={a} />
+              <ArtifactReview key={a.target_name} runId={p.runId!} art={a}
+                blast={(p.blast || {})[a.target_name]} />
             ))}
         </div>
       )}
@@ -240,6 +244,8 @@ export default function Detail(p: Props) {
           {reportHtml ? <div className="md" dangerouslySetInnerHTML={{ __html: reportHtml }} /> : <p className="empty">Reports appear when the run completes. Pick one above.</p>}
         </div>
       )}
+
+      {tab === 'decisions' && <DecisionRecord r={p.replay} />}
 
       {tab === 'audit' && (
         <div className="tabpanel">

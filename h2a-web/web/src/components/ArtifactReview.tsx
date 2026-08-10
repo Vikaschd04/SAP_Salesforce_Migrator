@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { fetchDiff, regenerateArtifact, type DiffPayload } from '../api';
+import BlastRadius, { type BlastData } from './BlastRadius';
 
 type Pane = 'generated' | 'compare' | 'findings' | 'details';
 
@@ -8,8 +9,8 @@ type Pane = 'generated' | 'compare' | 'findings' | 'details';
  * original SAP source, every Critic finding with its suggested fix, and what the Builder
  * mapped — plus the ability to regenerate just this file (no full re-run).
  */
-export default function ArtifactReview({ runId, art, onUpdated }:
-  { runId: string; art: any; onUpdated?: (a: any) => void }) {
+export default function ArtifactReview({ runId, art, onUpdated , blast }:
+  { runId: string; art: any; blast?: BlastData | null; onUpdated?: (a: any) => void }) {
   const [open, setOpen] = useState(false);
   const [pane, setPane] = useState<Pane>('generated');
   const [diff, setDiff] = useState<DiffPayload | null>(null);
@@ -135,7 +136,8 @@ export default function ArtifactReview({ runId, art, onUpdated }:
             </>
           )}
 
-          <div className="regen">
+          <BlastRadius b={blast} />
+            <div className="regen">
             <input className="inp" placeholder="Optional: tell the Builder what to change (e.g. “use an fflib Selector and add FLS checks”)…"
               value={instruction} disabled={busy}
               onChange={(e) => setInstruction(e.target.value)}

@@ -94,7 +94,8 @@ export default function Gate({ runId, gate, onClosed }: { runId: string; gate: G
               )}
 
               {arts.map((a) => (
-                <ArtifactReview key={a.target_name} runId={runId} art={a} onUpdated={onUpdated} />
+                <ArtifactReview key={a.target_name} runId={runId} art={a} onUpdated={onUpdated}
+                  blast={(gate.blast || {})[a.target_name]} />
               ))}
             </>
           )}

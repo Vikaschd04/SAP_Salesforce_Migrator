@@ -719,6 +719,39 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .note-inline.good { background: var(--good-bg); color: var(--good); }
 .note-inline code { background: transparent; border: none; padding: 0; color: inherit; font-weight: 600; }
 
+/* ── Blast radius (shown beside the regenerate control) ── */
+.bl { border: 1px solid var(--warn); border-radius: 8px; background: var(--warn-bg);
+  margin-bottom: 10px; font-size: 12.5px; }
+.bl.none { border-color: var(--border); background: var(--good-bg); color: var(--good);
+  padding: 9px 12px; line-height: 1.5; }
+.bl > summary { display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+  cursor: pointer; color: var(--warn); list-style: none; line-height: 1.5; }
+.bl > summary::-webkit-details-marker { display: none; }
+.bl-icon { font-weight: 700; }
+.bl-body { padding: 0 12px 12px; }
+.bl-grp { margin-top: 11px; }
+.bl-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; padding: 5px 0;
+  color: var(--text-dim); }
+.bl-row.dim { opacity: .75; }
+.bl-rules { font-size: 11px; color: var(--warn); }
+.bl-via { font-size: 10.5px; color: var(--text-faint); }
+.bl-note { margin: 4px 0 7px; font-size: 11.5px; line-height: 1.55; color: var(--text-dim); }
+
+/* ── Decision record ── */
+.dr-head { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 16px 0 8px; }
+.dr-list { display: flex; flex-direction: column; gap: 3px; }
+.dr-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--panel);
+  font-size: 12px; }
+.dr-seq { width: 30px; color: var(--text-faint); font-size: 11px; flex: none; }
+.dr-stage { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.dr-key { font-size: 10.5px; color: var(--text-faint); flex: none; }
+.chip.dr-src { font-size: 9.5px; padding: 1px 7px; flex: none; }
+.chip.dr-src.cache { background: var(--panel-3); color: var(--text-dim); }
+.chip.dr-src.live { background: var(--violet-bg); color: var(--violet); border-color: transparent; }
+
 /* ── Sub-navigation ──
    Two levels: five groups that stay scannable, and the views inside the open one. The
    count on a group is a promise that there is more behind it. */

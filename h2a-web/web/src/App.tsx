@@ -142,6 +142,7 @@ export default function App() {
               ledger={state.ledger} ledgerSummary={state.ledgerSummary} discovery={state.discovery}
               ruleLedger={state.ruleLedger} characterization={state.characterization}
               triage={state.triage} alignment={state.alignment} provenance={state.provenance}
+              blast={state.blast} replay={state.replay}
               cost={state.cost} tokens={state.tokens} />
           </main>
         </>

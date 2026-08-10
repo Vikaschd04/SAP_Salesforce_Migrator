@@ -14,7 +14,8 @@ export const STAGES = [
 const LAST_RUN = 'h2a-last-run';
 
 export interface FeedItem { id: number; ts: string; agent: string; msg: string; kind: string; }
-export interface GateState { gate: 'discovery' | 'plan' | 'build'; items?: PlanItem[]; artifacts?: any[]; discovery?: any; }
+export interface GateState { gate: 'discovery' | 'plan' | 'build'; items?: PlanItem[];
+  artifacts?: any[]; blast?: any; discovery?: any; }
 
 export interface RunState {
   runId: string | null;
@@ -36,6 +37,8 @@ export interface RunState {
   alignment: any | null;
   forecast: any | null;
   orgfit: any | null;
+  blast: any | null;
+  replay: any | null;
   gate: GateState | null;
   discovery: any | null;
   errorMsg: string;
@@ -46,7 +49,7 @@ export interface RunState {
 const initial = (): RunState => ({
   runId: null, status: 'idle', elapsed: '', stages: {}, feed: [], plan: [],
   comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, ruleLedger: null, characterization: null, radar: null, triage: null, provenance: null,
-  alignment: null, forecast: null, orgfit: null, gate: null,
+  alignment: null, forecast: null, orgfit: null, blast: null, replay: null, gate: null,
   discovery: null, errorMsg: '', cost: null, tokens: null,
 });
 
@@ -124,7 +127,8 @@ export function useRun() {
             + `${sum.components ?? 0} components · ${sum.objects ?? 0} data objects across ${sum.domains ?? 0} domains`, 'plan');
         }
         case 'gate_open':
-          return { ...s, gate: { gate: ev.gate, items: ev.items, artifacts: ev.artifacts, discovery: ev } };
+          return { ...s, gate: { gate: ev.gate, items: ev.items, artifacts: ev.artifacts,
+                                blast: ev.blast || s.blast, discovery: ev } };
         case 'gate_closed':
           s = { ...s, gate: null };
           return feed(s, 'Reviewer', `gate ${ev.gate} → ${ev.action}`, 'system');
@@ -135,7 +139,8 @@ export function useRun() {
             characterization: ev.characterization || null,
             radar: ev.radar || s.radar, triage: ev.triage || null,
             provenance: ev.provenance || null, alignment: ev.alignment || null,
-            forecast: ev.forecast || s.forecast, orgfit: ev.orgfit || s.orgfit };
+            forecast: ev.forecast || s.forecast, orgfit: ev.orgfit || s.orgfit,
+            blast: ev.blast || null, replay: ev.replay || null };
         case 'cancelled':
           return feed({ ...s, status: 'idle' }, 'system', 'Run stopped', 'system');
         case 'error':
