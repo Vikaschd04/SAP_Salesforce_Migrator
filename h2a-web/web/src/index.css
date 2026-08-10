@@ -726,12 +726,18 @@ textarea:focus { outline: none; border-color: var(--accent); }
   background: var(--panel-3); color: var(--text-faint); font-size: 9.5px; font-weight: 700;
   vertical-align: middle; }
 .tab.active .tab-n { background: var(--accent-bg); color: var(--accent); }
-.subtabs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
-  padding: 9px 0 2px; margin-bottom: 6px; border-bottom: 1px solid var(--border); }
-.subtabs-hint { font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
-  color: var(--text-faint); font-weight: 700; margin-right: 8px; }
-.subtab { background: none; border: 1px solid transparent; border-radius: 20px;
-  padding: 4px 12px; font-size: 12.5px; color: var(--text-dim); transition: .14s; }
+.subtabs { display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
+  /* Same horizontal padding as .tabs (12px). With .subtab's 13px inset that puts the
+     first sub-tab's text on the same x as the first tab's — the row was previously
+     flush to the panel edge and read as belonging to something else. */
+  padding: 7px 12px; background: var(--panel-2);
+  border-bottom: 1px solid var(--border); }
+.subtabs-hint { order: 2; margin-left: auto; padding-left: 12px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--text-faint); font-weight: 700; }
+.subtab { order: 1; background: none; border: 1px solid transparent; border-radius: 20px;
+  /* 13px matches .tab's horizontal padding, so the labels line up vertically. */
+  padding: 5px 13px; font-size: 12.5px; color: var(--text-dim); transition: .14s; }
 .subtab:hover { background: var(--panel-hover); color: var(--text); }
 .subtab.active { background: var(--accent-bg); color: var(--accent); font-weight: 600;
   border-color: transparent; }
