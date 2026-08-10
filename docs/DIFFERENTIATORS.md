@@ -139,7 +139,7 @@ Java is one change; fixing the SOQL-in-loop it becomes is two.
 > is not reported as unbounded. Nine of the twenty-three tests assert that a rule does *not*
 > fire.
 
-### 5. Pre-flight target-org fit analysis
+### 5. Pre-flight target-org fit analysis — ✅ **SHIPPED**
 Every competitor reads only the **source**. Read the **destination** too: connect the org first
 and reconcile *before* generating.
 
@@ -148,6 +148,21 @@ and reconcile *before* generating.
   present → strengthen that flag).
 - **Why it wins:** it's the difference between "here's a package" and "here's a package that
   will actually deploy into *your* org." Prevents the classic day-one deploy failure.
+
+**How it shipped** (`src/orgfit.py`, `ORG_FIT.md`): reads the destination org after the
+schema is derived and before anything is generated, so a collision costs a rename rather
+than a deploy. Four finding kinds — name collision, a standard object that already covers
+it, an installed package that already owns the domain (CPQ present turns the Planner's
+"consider CPQ" into "you already own this"), and custom-object/field headroom.
+
+> **Via the `sf` CLI, not a browser OAuth flow.** Anyone who can deploy has already
+> authorised a CLI org, so this needs no new credentials, no consent screen and stores
+> nothing. With no CLI or no authorised org it says so and the migration proceeds
+> unchanged — an advisory that blocks a run when it cannot reach an org would be worse
+> than no advisory.
+
+Verified against a real org rather than a fixture: it correctly flagged the planned
+`Order__c` as duplicating standard `Order`.
 
 ---
 
@@ -213,8 +228,7 @@ branch/compare alternative migration strategies instead of re-running from zero.
 4. ~~**Risk-ranked triage** (#6)~~ — ✅ shipped, on the signal the radar produces.
 5. ~~**Line-level provenance** (#1)~~ — ✅ shipped.
 
-> **Tier 1 is complete** apart from #5 (pre-flight target-org fit), which needs an
-> authenticated org connection and so pairs with the OAuth work rather than standing alone.
+> **Tier 1 is complete.** All six items shipped.
 
 > **Also shipped, though not on this list:** a source-side preflight that refuses a
 > non-Hybris upload before a run exists and reports credentials found in the archive.

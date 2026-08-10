@@ -164,6 +164,7 @@ def _discovery_payload(bb) -> dict:
         # What we established about the codebase before spending anything on it.
         "preflight": getattr(bb, "preflight", None),
         "radar": getattr(bb, "radar", None),
+        "orgfit": getattr(bb, "orgfit", None),
     }
 
 
@@ -489,6 +490,18 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     bb.unreadable = ingest_result.get("unreadable", [])
     bb.schema = build_schema(bb.item_types, bb.relations, bb.enum_types)
     bb.source_corpus = "\n".join(c.get("source", "") for c in bb.all_classes)
+
+    # Read the DESTINATION as well as the source. Placed here because the schema now
+    # exists and nothing has been generated yet, so a name collision costs a rename
+    # rather than a failed deploy.
+    try:
+        from src.orgfit import read_org, assess as _org_assess, headline as _org_headline
+        cfg_org = ((config.get("verify") or {}).get("target_org") or "")
+        bb.orgfit = _org_assess(bb.schema, read_org(cfg_org))
+        if bb.orgfit["connected"]:
+            print(f"  Target org: {_org_headline(bb.orgfit)}")
+    except Exception as e:                              # advisory, never a blocker
+        print(f"  ⚠ target-org check skipped: {e}")
 
     # repo_analyzer only sees Java; make sure every ingested class (incl. frontend
     # Components) has a domain and a slot in the build schedule so it gets built.
@@ -928,6 +941,12 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # appearance, so its verdicts are the strongest evidence the run produces.
     characterization = _characterize(bb, output_dir, offline=offline, config=config)
 
+    if getattr(bb, "orgfit", None):
+        from src.orgfit import write_orgfit_md, headline as _oh
+        write_orgfit_md(output_dir, bb.orgfit)
+        if bb.orgfit["connected"] and bb.orgfit["summary"]["total"]:
+            bb.record("OrgFit", "reconciled", _oh(bb.orgfit))
+
     from src.provenance import build_provenance, write_provenance_md, headline as _ph
     provenance = build_provenance(bb)
     if provenance["summary"]["methods"]:
@@ -996,6 +1015,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
          triage=triage,
          # Every generated method traced back to the Java that produced it.
          provenance=provenance,
+         # What the destination org already contains, reconciled against the plan.
+         orgfit=getattr(bb, "orgfit", None),
          # Golden-master parity from the customer's own JUnit suite — behaviour, not looks.
          characterization=characterization,
          providers=acct.get("providers", {}), requests=acct.get("requests", 0),

@@ -109,6 +109,8 @@ class Blackboard:
     unreadable: list = field(default_factory=list)
     # Hybris patterns that become hazards on Salesforce (src/radar.py).
     radar: dict = field(default_factory=dict)
+    # What the destination Salesforce org already contains (src/orgfit.py).
+    orgfit: dict = field(default_factory=dict)
 
     # Agent products
     comprehensions: dict = field(default_factory=dict)     # class_name -> understanding
