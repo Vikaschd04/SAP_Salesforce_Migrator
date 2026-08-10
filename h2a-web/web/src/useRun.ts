@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Artifact, Comprehension, Decision, Ev, LedgerRow, PlanItem, RuleLedger, Characterization, StageStatus } from './types';
+import type { SignOffData } from './components/SignOff';
 import { openStream } from './api';
 
 export const STAGES = [
@@ -30,6 +31,7 @@ export interface RunState {
   ledger: LedgerRow[];
   ledgerSummary: Record<string, number>;
   ruleLedger: RuleLedger | null;
+  signoff: SignOffData | null;
   characterization: Characterization | null;
   radar: any | null;
   triage: any | null;
@@ -48,7 +50,7 @@ export interface RunState {
 
 const initial = (): RunState => ({
   runId: null, status: 'idle', elapsed: '', stages: {}, feed: [], plan: [],
-  comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, ruleLedger: null, characterization: null, radar: null, triage: null, provenance: null,
+  comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, ruleLedger: null, signoff: null, characterization: null, radar: null, triage: null, provenance: null,
   alignment: null, forecast: null, orgfit: null, blast: null, replay: null, gate: null,
   discovery: null, errorMsg: '', cost: null, tokens: null,
 });
@@ -136,6 +138,7 @@ export function useRun() {
           return { ...s, status: 'complete', ledger: ev.ledger || [], ledgerSummary: ev.ledger_summary || {},
             decisions: ev.decisions || s.decisions, cost: ev.cost || null, tokens: ev.tokens || null,
             ruleLedger: ev.rule_ledger || null,
+            signoff: ev.signoff || null,
             characterization: ev.characterization || null,
             radar: ev.radar || s.radar, triage: ev.triage || null,
             provenance: ev.provenance || null, alignment: ev.alignment || null,

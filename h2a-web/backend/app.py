@@ -166,7 +166,7 @@ async def api_me(request: Request):
             "user": _current_user(request)}
 
 # Report files at the output root that the dashboard surfaces.
-_REPORT_FILES = ["MIGRATION_PLAN.md", "BUSINESS_RULES.md", "CHARACTERIZATION.md",
+_REPORT_FILES = ["SIGN_OFF.md", "MIGRATION_PLAN.md", "BUSINESS_RULES.md", "CHARACTERIZATION.md",
                  "FEASIBILITY_REPORT.md", "ANTI_PATTERNS.md", "TRIAGE.md", "PROVENANCE.md", "ORG_FIT.md", "FORECAST.md", "ALIGNMENT.md", "DECISION_RECORD.md", "PARITY.md", "DATA_MIGRATION.md",
                  "CRON_JOBS.md", "MAPPING.md"]
 
@@ -231,12 +231,18 @@ async def api_preflight(body: dict):
 
 
 @app.post("/api/runs/{run_id}/gate")
-async def api_gate(run_id: str, decision: dict):
+async def api_gate(run_id: str, decision: dict, request: Request):
     """Submit a review-gate decision (approve / plan overrides / rework feedback),
     which unblocks the paused engine thread and lets the migration continue."""
     run = get_run(run_id)
     if not run:
         raise HTTPException(404, "run not found")
+    # Who approved comes from the session, never from the request body. The sign-off
+    # contract is only worth signing if the name on it is one the server established;
+    # a client-supplied actor would let the document certify anyone.
+    user = getattr(request.state, "user", None)
+    decision = dict(decision or {})
+    decision["actor"] = (user or {}).get("email") or (user or {}).get("id") or None
     if not run.submit_gate(decision):
         raise HTTPException(409, "no gate is currently open for this run")
     return {"ok": True}

@@ -116,6 +116,10 @@ class Blackboard:
     # Late-stage joins, kept on the board so alignment can read them.
     characterization: dict = field(default_factory=dict)
     rule_ledger: dict = field(default_factory=dict)
+    # Who approved which gate, when, and what they were looking at. The audit a migration
+    # ends in is only worth signing if it records the human, and an unsupervised run has
+    # no human to record — which is exactly what these entries have to be able to say.
+    approvals: list = field(default_factory=list)
 
     # Agent products
     comprehensions: dict = field(default_factory=dict)     # class_name -> understanding

@@ -12,10 +12,11 @@ import Provenance from './Provenance';
 import DecisionRecord from './DecisionRecord';
 import CharacterizationView from './Characterization';
 import type { StageStatus } from '../types';
+import SignOff, { type SignOffData } from './SignOff';
 
 const Diff = lazy(() => import('./Diff'));
 
-type Tab = 'flow' | 'discovery' | 'plan' | 'understanding' | 'artifacts' | 'triage' | 'alignment' | 'rules' | 'parity' | 'provenance' | 'diff' | 'files' | 'reports' | 'decisions' | 'audit';
+type Tab = 'flow' | 'discovery' | 'plan' | 'understanding' | 'artifacts' | 'triage' | 'alignment' | 'rules' | 'parity' | 'provenance' | 'diff' | 'files' | 'reports' | 'decisions' | 'audit' | 'signoff';
 
 interface Props {
   runId: string | null; status: string;
@@ -23,6 +24,7 @@ interface Props {
   plan: PlanItem[]; comprehensions: Comprehension[]; artifacts: Artifact[];
   decisions: Decision[]; ledger: LedgerRow[]; ledgerSummary: Record<string, number>;
   ruleLedger: RuleLedger | null;
+  signoff: SignOffData | null;
   characterization: Characterization | null;
   triage: any | null;
   alignment: any | null;
@@ -80,7 +82,8 @@ export default function Detail(p: Props) {
       tabs: [['triage', 'Triage'], ['rules', 'Rules'], ['alignment', 'Alignment'],
              ['parity', 'Parity'], ['provenance', 'Origin']] },
     { id: 'records', label: 'Records', hint: 'the paper trail',
-      tabs: [['reports', 'Reports'], ['decisions', 'Decisions'], ['audit', 'Audit']] },
+      tabs: [['signoff', 'Sign-off'], ['reports', 'Reports'], ['decisions', 'Decisions'],
+             ['audit', 'Audit']] },
   ];
   const group = GROUPS.find((g) => g.tabs.some(([id]) => id === tab)) || GROUPS[0];
 
@@ -246,6 +249,10 @@ export default function Detail(p: Props) {
       )}
 
       {tab === 'decisions' && <DecisionRecord r={p.replay} />}
+
+      {tab === 'signoff' && (
+        <div className="tabpanel"><SignOff s={p.signoff} /></div>
+      )}
 
       {tab === 'audit' && (
         <div className="tabpanel">

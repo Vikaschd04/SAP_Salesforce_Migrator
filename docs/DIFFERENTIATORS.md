@@ -257,9 +257,20 @@ Every reviewer correction becomes a few-shot exemplar; ingest the customer's **e
 to learn their naming, security posture, and patterns. Migration #2 for the same client is
 visibly better than #1 — a switching cost no competitor inherits.
 
-### 12. The sign-off contract as a deliverable
+### 12. The sign-off contract as a deliverable — ✅ **SHIPPED**
 Export a signed artifact: who approved which phase, when, with what evidence, plus the rule
 coverage and org-verification results. Migrations end in an audit; **make the audit a button.**
+
+**How it shipped** (`src/signoff.py`, Records → Sign-off, `SIGN_OFF.md`): every gate outcome
+is recorded on the Blackboard with actor and timestamp — and the actor is stamped from the
+session server-side, never from the request body, or the document would certify whoever the
+client claimed to be. What makes it worth signing is what it refuses to say: an unattended
+run is reported as *unreviewed* rather than approved (`gate=None` approving automatically is
+a convenience, not a decision); coverage figures carry the basis that produced them; and
+everything unproven is listed under *what this does not certify*, in the same document, at
+the same size. A reader who only skims should come away with the **less** confident reading.
+The contract id hashes the facts certified, not the prose, so re-running the same migration
+with the same outcome reproduces it.
 
 ### 13. Named checkpoints ("restore to before I approved the plan")
 The Blackboard is already one serializable object — snapshot it per phase and let reviewers
