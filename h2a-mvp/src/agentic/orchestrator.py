@@ -928,6 +928,13 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # appearance, so its verdicts are the strongest evidence the run produces.
     characterization = _characterize(bb, output_dir, offline=offline, config=config)
 
+    from src.provenance import build_provenance, write_provenance_md, headline as _ph
+    provenance = build_provenance(bb)
+    if provenance["summary"]["methods"]:
+        write_provenance_md(output_dir, provenance)
+        bb.record("Provenance", "traced", _ph(provenance["summary"]))
+        print(f"  Provenance: {_ph(provenance['summary'])}")
+
     from src.triage import build_triage, write_triage_md, headline as _th
     triage = build_triage(bb)
     if triage["summary"]["total"]:
@@ -987,6 +994,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
          radar=getattr(bb, "radar", None),
          # Which artifacts actually need a person, and why.
          triage=triage,
+         # Every generated method traced back to the Java that produced it.
+         provenance=provenance,
          # Golden-master parity from the customer's own JUnit suite — behaviour, not looks.
          characterization=characterization,
          providers=acct.get("providers", {}), requests=acct.get("requests", 0),

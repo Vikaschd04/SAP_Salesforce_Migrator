@@ -109,7 +109,9 @@ At 900 calls, rare failures become certainties:
 4. ✅ **Risk-ranked review triage** — every artifact ranked into must-review / worth a
    look / routine, from radar hazards + Critic severity + complexity + rules carried.
    Each item lists the reasons that produced its rank; the score is never shown alone.
-5. ⬜ **Line-level provenance** — **next**, and the largest remaining moat item.
+5. ✅ **Line-level provenance** — every generated method traced to its Java origin with
+   exact line ranges, plus the two residues that matter: Apex with no origin, and Java
+   with no counterpart. Symbol-based, not model-reported line numbers.
 
 > Also shipped, outside the original list: **source preflight** — a non-Hybris upload is
 > refused before a run object exists, and credentials found in the archive are reported by

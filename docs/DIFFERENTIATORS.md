@@ -13,7 +13,7 @@ in production." Own *proof* and the category is yours.
 
 ## Tier 1 — the moat (build these)
 
-### 1. Line-level provenance ("migration source maps")
+### 1. Line-level provenance ("migration source maps") — ✅ **SHIPPED**
 Every generated Apex line traceable to the exact Java line(s) that produced it — click Apex
 line 42, the Java that caused it highlights, and vice-versa.
 
@@ -25,6 +25,21 @@ line 42, the Java that caused it highlights, and vice-versa.
   array alongside the code (structured-output field). Render as linked gutters in the existing
   Monaco diff.
 - **Compounding:** provenance also powers *impact analysis*, *audit*, and *selective re-generation*.
+
+**How it shipped** (`src/provenance.py`, `PROVENANCE.md`): every generated method traced to
+the Java that produced it, with exact line ranges on both sides.
+
+> **The build note above turned out to be wrong, and it matters.** Emitting
+> `provenance: [{apex_lines, java_lines}]` as a structured-output field does not work —
+> models are fluent about structure and unreliable about arithmetic on text they are not
+> looking at, so the ranges come back plausible and wrong. A provenance map that is
+> confidently wrong is worse than none, because it gets trusted. The mapping is instead
+> built by locating *symbols* in both texts deterministically, which models are reliable
+> about; the line numbers are then facts. Exact-name matches are labelled a fact,
+> normalised matches (a bulkified `placeOrder` → `createOrders`) a strong inference.
+
+The residue is half the value: **Apex with no Java origin** (scaffolding, or invention) and
+**Java with no Apex counterpart** (logic that may simply not have been carried over).
 
 ### 2. Business-rule coverage as the completeness metric — ✅ **SHIPPED**
 Today's ledger proves every **class** is accounted for. That's the wrong unit. The real
@@ -196,7 +211,10 @@ branch/compare alternative migration strategies instead of re-running from zero.
    makes it work against bulkified output.
 3. ~~**Anti-pattern radar** (#4)~~ — ✅ shipped.
 4. ~~**Risk-ranked triage** (#6)~~ — ✅ shipped, on the signal the radar produces.
-5. **Line-level provenance** (#1) — **next**, and the largest remaining moat item.
+5. ~~**Line-level provenance** (#1)~~ — ✅ shipped.
+
+> **Tier 1 is complete** apart from #5 (pre-flight target-org fit), which needs an
+> authenticated org connection and so pairs with the OAuth work rather than standing alone.
 
 > **Also shipped, though not on this list:** a source-side preflight that refuses a
 > non-Hybris upload before a run exists and reports credentials found in the archive.
