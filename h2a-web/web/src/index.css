@@ -793,6 +793,13 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .fc-assume { margin: 10px 0 0; padding-left: 18px; font-size: 11.5px; line-height: 1.6; color: var(--text-faint); }
 .fc-note { margin: 11px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--text-faint); }
 
+/* The cap is enforced mid-run; the Discovery gate is the one screen where raising it is
+   still a cheap decision, so this reads as a warning rather than a footnote. */
+.fc-cap { margin: 12px 0 0; padding: 10px 13px; border-radius: var(--r-sm);
+  font-size: 12px; line-height: 1.55; border-left: 3px solid; }
+.fc-cap.warn { background: var(--warn-bg); border-color: var(--warn); color: var(--text); }
+.fc-cap.bad { background: var(--danger-bg); border-color: var(--danger); color: var(--text); }
+
 /* ── Target org fit ── */
 .of, .of-none { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 13px 15px;
   margin-bottom: 14px; font-size: 12.5px; line-height: 1.55; }

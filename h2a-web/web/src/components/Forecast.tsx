@@ -12,6 +12,7 @@ export interface ForecastData {
   stages: { stage: string; model: string; calls: number; tokens_in: number;
             usd_low: number | null; usd_high: number | null }[];
   assumptions: string[];
+  budget: { cap: number; will_exceed: boolean; may_exceed: boolean } | null;
 }
 
 const usd = (v: number) => (v === 0 ? '$0' : v < 0.01 ? `$${v.toFixed(4)}` : `$${v.toFixed(2)}`);
@@ -32,6 +33,18 @@ export default function Forecast({ f }: { f: ForecastData | null }) {
           <Metric label="Reused" value={`${f.reused}`} sub="unchanged, not re-billed" good />
         )}
       </div>
+
+      {f.budget && (f.budget.will_exceed || f.budget.may_exceed) && (
+        <p className={`fc-cap ${f.budget.will_exceed ? 'bad' : 'warn'}`}>
+          {f.budget.will_exceed
+            ? <>This run is forecast to cost more than its <b>{usd(f.budget.cap)}</b> cap
+                and will be stopped part-way. Raise the cap, or narrow the scope at the
+                plan gate — whatever finishes first is kept and reused, so stopping costs
+                progress rather than money.</>
+            : <>The high end of this estimate reaches the <b>{usd(f.budget.cap)}</b> cap,
+                so the run may stop before finishing.</>}
+        </p>
+      )}
 
       {f.stages.length > 0 && !f.free && (
         <details className="fc-more">

@@ -1040,6 +1040,14 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         print(f"  Characterization: {_char_headline(characterization['summary'])}")
     if any(r["outcome"] == "unaccounted" for r in ledger):
         print("  ⚠ some inputs are UNACCOUNTED for — see the completeness ledger in MIGRATION_PLAN.md")
+    _collisions = bb.output_collisions()
+    if _collisions:
+        # Louder than "unaccounted", because the ledger's own check passes here: every
+        # input found an artifact, and the output still lost one.
+        print(f"  ⚠ {len(_collisions)} output file(s) were written by MORE THAN ONE "
+              "artifact — logic was overwritten. See the completeness ledger.")
+        for _p, _arts in sorted(_collisions.items()):
+            print(f"      {_p} ← {', '.join(sorted(a.target_name for a in _arts))}")
     print(f"  provider(s)={acct.get('providers', {})}  requests={acct['requests']}"
           + (f"  retries={acct['retries']}" if acct.get("retries") else ""))
     if cost["by_model"]:
@@ -1121,6 +1129,13 @@ def _write_plan_doc(bb) -> str:
               f"**Summary: {summary}.**", ""]
     if any(r["outcome"] == "unaccounted" for r in ledger):
         lines += ["> ⚠️ **Some inputs are unaccounted for — investigate before relying on this run.**", ""]
+    _coll = bb.output_collisions()
+    if _coll:
+        lines += ["> 🚨 **More than one artifact wrote the same file, so logic was "
+                  "overwritten.** Every input below found an artifact — the loss happened "
+                  "at the write, which is why an input-side check cannot see it:", ""]
+        lines += [f"> - `{p}` ← " + ", ".join(sorted(a.target_name for a in arts))
+                  for p, arts in sorted(_coll.items())] + [""]
     lines += ["| Source class | Layer | Outcome | Target | Note |", "|---|---|---|---|---|"]
     for r in ledger:
         lines.append(f"| `{r['source']}` | {r['layer']} | {r['outcome']} | {r['target']} | {r['note'] or '—'} |")

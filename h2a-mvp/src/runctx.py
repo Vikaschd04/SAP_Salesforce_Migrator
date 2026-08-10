@@ -25,17 +25,23 @@ _provider: contextvars.ContextVar[str | None] = contextvars.ContextVar("h2a_prov
 _model: contextvars.ContextVar[str | None] = contextvars.ContextVar("h2a_model", default=None)
 # A tenant's own provider credential, so concurrent runs bill their own accounts.
 _api_key: contextvars.ContextVar[str | None] = contextvars.ContextVar("h2a_api_key", default=None)
+# A spend ceiling for this run alone. Per-run rather than global because concurrent runs
+# belong to different tenants, and one tenant's budget must not throttle another's.
+_cost_cap: contextvars.ContextVar[float | None] = contextvars.ContextVar("h2a_cost_cap", default=None)
 
 
 def set_overrides(*, provider: str | None = None, model: str | None = None,
-                  api_key: str | None = None) -> None:
-    """Pin provider/model/credential for this run (and anything it spawns via propagate)."""
+                  api_key: str | None = None, cost_cap: float | None = None) -> None:
+    """Pin provider/model/credential/budget for this run (and anything it spawns via
+    propagate)."""
     if provider:
         _provider.set(provider)
     if model:
         _model.set(model)
     if api_key:
         _api_key.set(api_key)
+    if cost_cap is not None:
+        _cost_cap.set(float(cost_cap))
 
 
 def provider_override() -> str | None:
@@ -48,6 +54,10 @@ def model_override() -> str | None:
 
 def api_key_override() -> str | None:
     return _api_key.get()
+
+
+def cost_cap_override() -> float | None:
+    return _cost_cap.get()
 
 
 def propagate(fn):

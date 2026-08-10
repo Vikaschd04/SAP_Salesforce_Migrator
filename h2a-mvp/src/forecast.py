@@ -142,9 +142,26 @@ def forecast(classes: list[dict], targets: int, config: dict,
     rev_hi = (routine * _REVIEW_MINS_ROUTINE[1] + involved * _REVIEW_MINS_INVOLVED[1]) / 60
 
     free = provider == "mock"
+
+    # The cap is enforced mid-run, which is the worst moment to first learn about it: the
+    # money is spent and the estate is half-converted. Comparing the two numbers here puts
+    # that on the one screen where raising the cap is still a cheap decision.
+    from src.llm import _cost_cap
+    cap = 0.0 if free else _cost_cap(config)
+    budget = None
+    if cap:
+        budget = {
+            "cap": round(cap, 2),
+            # Against the high bound: the cheap comparison would use the low one and
+            # would be reassuring far more often than it would be right.
+            "will_exceed": round(hi_usd, 2) > cap,
+            "may_exceed": round(lo_usd, 2) <= cap < round(hi_usd, 2),
+        }
+
     return {
         "provider": provider,
         "free": free,
+        "budget": budget,
         "classes": len(classes), "targets": targets, "reused": already_done,
         "stages": stages,
         "calls": sum(s["calls"] for s in stages),
@@ -186,8 +203,14 @@ def headline(f: dict) -> str:
     c = f["cost"]
     money = (f"{pricing.fmt(c['low'])}–{pricing.fmt(c['high'])}"
              if (c["low"] or c["high"]) else "cost unknown")
-    return (f"Estimated {money} · {f['minutes']['low']}–{f['minutes']['high']} min of runtime · "
+    line = (f"Estimated {money} · {f['minutes']['low']}–{f['minutes']['high']} min of runtime · "
             f"{f['review_hours']['low']}–{f['review_hours']['high']} h of review")
+    b = f.get("budget") or {}
+    if b.get("will_exceed"):
+        line += f" · ⚠ exceeds the {pricing.fmt(b['cap'])} cap — this run will be stopped"
+    elif b.get("may_exceed"):
+        line += f" · ⚠ may reach the {pricing.fmt(b['cap'])} cap"
+    return line
 
 
 def write_forecast_md(output_dir: str, f: dict) -> str:
@@ -208,6 +231,16 @@ def write_forecast_md(output_dir: str, f: dict) -> str:
             out.append(f"| {s['stage']} | `{s['model']}` | {s['calls']} | "
                        f"{s['tokens_in']:,} | {money} |")
         out.append("")
+
+    b = f.get("budget") or {}
+    if b.get("will_exceed"):
+        out += [f"> 🚨 **This run is forecast to cost more than its {pricing.fmt(b['cap'])} "
+                "cap and will be stopped part-way.** Raise `cost_cap.usd`, or narrow the "
+                "scope at the plan gate. Whatever completes first is kept and reused, so "
+                "stopping costs progress rather than money.", ""]
+    elif b.get("may_exceed"):
+        out += [f"> ⚠️ The high end of this estimate reaches the {pricing.fmt(b['cap'])} "
+                "cap. The run may stop before finishing.", ""]
 
     if f["cost"].get("unpriced"):
         out += [f"> No published rate for {', '.join(f['cost']['unpriced'])} — those stages are "

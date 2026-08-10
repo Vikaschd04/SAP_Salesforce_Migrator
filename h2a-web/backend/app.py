@@ -180,6 +180,7 @@ async def create_run(
     engine: str = Form("agentic"),
     verify: bool = Form(False),
     supervised: bool = Form(False),
+    cost_cap: float | None = Form(None),
     input_path: str = Form(""),
     upload: UploadFile | None = File(None),
 ):
@@ -205,7 +206,10 @@ async def create_run(
                     state_dir=_state_dir_for(input_dir), owner=uid,
                     # The tenant's own credential when they have stored one; otherwise
                     # None, which falls back to the server's shared key.
-                    api_key=keyvault.get_key(uid, provider))
+                    api_key=keyvault.get_key(uid, provider),
+                    # None leaves the configured default in force; an explicit 0 means
+                    # the operator asked for no ceiling and gets one.
+                    cost_cap=cost_cap)
     return {"run_id": run.id, "status": run.status, "preflight": report}
 
 

@@ -184,6 +184,14 @@ def generate_report(output_dir: str, validation_results: dict = None,
                 "> ⚠️ **Some inputs are unaccounted for — investigate before relying on this run.**",
                 "",
             ])
+        if any(r["outcome"] == "overwritten" for r in ledger):
+            sections.extend([
+                "> 🚨 **`overwritten` means two artifacts wrote the same file and only one "
+                "survived.** The class is listed as reaching an artifact because it did — "
+                "the loss happened at the write, so treat its logic as missing until you "
+                "have checked the generated file.",
+                "",
+            ])
         sections.extend([
             "| Source Class | Layer | Outcome | Target | Note |",
             "|---|---|---|---|---|",

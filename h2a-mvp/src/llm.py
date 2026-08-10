@@ -141,6 +141,7 @@ def _with_retry(fn, *, stage: str, config: dict):
     last = None
     for attempt in range(cfg["max_attempts"]):
         check_fatal()          # a sibling worker already proved this cannot succeed
+        check_budget(config, stage)
         try:
             return fn()
         except Exception as exc:                       # noqa: BLE001 — re-raised below
@@ -295,6 +296,71 @@ def reset_fatal() -> None:
     global _fatal
     with _STATE_LOCK:
         _fatal = None
+
+
+class CostCapExceeded(RuntimeError):
+    """This run reached its spend ceiling and was stopped.
+
+    Everything downstream of the Discovery gate is priced as a range, and a range is not
+    a limit: a repair loop that will not converge, or an estate larger than the sample the
+    constants were measured on, spends until it finishes. The forecast tells you what to
+    expect; this is what makes the expectation binding.
+    """
+
+
+def _cost_cap(config: dict) -> float:
+    """The ceiling in USD for this run. 0 means uncapped.
+
+    Ordered so the more specific wins: a per-run cap set by the web app for one tenant,
+    then an ops override, then the configured default.
+    """
+    from src import runctx
+    override = runctx.cost_cap_override()
+    if override is not None:
+        return max(0.0, float(override))
+    env = os.environ.get("H2A_COST_CAP")
+    if env:
+        try:
+            return max(0.0, float(env))
+        except ValueError:
+            pass
+    return max(0.0, float(((config or {}).get("cost_cap") or {}).get("usd", 0) or 0))
+
+
+def spent_usd(config: dict | None = None) -> float:
+    """What this run has cost so far, from the per-model usage already recorded.
+
+    A floor, not a total: a model with no published rate contributes nothing, so the real
+    figure is this or higher. That direction is the safe one for a ceiling — the cap can
+    fire late, never early.
+    """
+    from src import pricing
+    with _STATE_LOCK:
+        by_model = {m: dict(u) for m, u in (_accounting.get("models") or {}).items()}
+    return pricing.summarise(by_model, config).get("total_usd", 0.0) or 0.0
+
+
+def check_budget(config: dict, stage: str = "") -> None:
+    """Stop the run if it has reached its ceiling. Checked before each call.
+
+    Enforced before rather than after, because a call's cost is not known until it
+    returns — so the run can overshoot by at most the one call in flight when the limit
+    is crossed. Reporting the cap as exact would be the more comfortable lie; the
+    overshoot is bounded, stated, and small next to the runaway it prevents.
+    """
+    cap = _cost_cap(config)
+    if not cap:
+        return
+    spent = spent_usd(config)
+    if spent < cap:
+        return
+    from src import pricing
+    exc = CostCapExceeded(
+        f"{stage or 'run'}: stopped at {pricing.fmt(spent)}, which reached the "
+        f"{pricing.fmt(cap)} cap for this run. Raise `cost_cap.usd` in config.yaml, set "
+        "H2A_COST_CAP, or re-run — incremental reuse means completed work is not re-billed.")
+    _latch_fatal(exc)
+    raise exc
 
 
 def get_call_log() -> list[dict]:
