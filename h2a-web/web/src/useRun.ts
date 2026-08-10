@@ -31,6 +31,11 @@ export interface RunState {
   ruleLedger: RuleLedger | null;
   characterization: Characterization | null;
   radar: any | null;
+  triage: any | null;
+  provenance: any | null;
+  alignment: any | null;
+  forecast: any | null;
+  orgfit: any | null;
   gate: GateState | null;
   discovery: any | null;
   errorMsg: string;
@@ -40,7 +45,8 @@ export interface RunState {
 
 const initial = (): RunState => ({
   runId: null, status: 'idle', elapsed: '', stages: {}, feed: [], plan: [],
-  comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, ruleLedger: null, characterization: null, radar: null, gate: null,
+  comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, ruleLedger: null, characterization: null, radar: null, triage: null, provenance: null,
+  alignment: null, forecast: null, orgfit: null, gate: null,
   discovery: null, errorMsg: '', cost: null, tokens: null,
 });
 
@@ -109,6 +115,8 @@ export function useRun() {
           return { ...s, decisions: [...s.decisions, { agent: ev.agent, action: ev.action, detail: ev.detail }] };
         case 'radar':
           return { ...s, radar: ev };
+        case 'discovery_meta':
+          return s;
         case 'discovery': {
           const sum = ev.summary || {};
           s = { ...s, discovery: ev };
@@ -125,7 +133,9 @@ export function useRun() {
             decisions: ev.decisions || s.decisions, cost: ev.cost || null, tokens: ev.tokens || null,
             ruleLedger: ev.rule_ledger || null,
             characterization: ev.characterization || null,
-            radar: ev.radar || s.radar };
+            radar: ev.radar || s.radar, triage: ev.triage || null,
+            provenance: ev.provenance || null, alignment: ev.alignment || null,
+            forecast: ev.forecast || s.forecast, orgfit: ev.orgfit || s.orgfit };
         case 'cancelled':
           return feed({ ...s, status: 'idle' }, 'system', 'Run stopped', 'system');
         case 'error':

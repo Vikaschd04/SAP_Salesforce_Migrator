@@ -719,6 +719,90 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .note-inline.good { background: var(--good-bg); color: var(--good); }
 .note-inline code { background: transparent; border: none; padding: 0; color: inherit; font-weight: 600; }
 
+/* ── Forecast (pre-spend estimate) ── */
+.fc { border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--panel-2);
+  padding: 14px 16px; margin-bottom: 14px; }
+.fc-row { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.fc-metric { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.fc-metric.good { border-left: 3px solid var(--good); }
+.fc-metric b { font-size: 19px; letter-spacing: -.02em; }
+.fc-sub { font-size: 10.5px; color: var(--text-faint); }
+.fc-more { margin-top: 12px; }
+.fc-more > summary { cursor: pointer; font-size: 12px; color: var(--text-dim); padding: 4px 0; }
+.fc-tbl { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+.fc-tbl th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-faint); font-weight: 700; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.fc-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--line-soft); color: var(--text-dim); }
+.fc-assume { margin: 10px 0 0; padding-left: 18px; font-size: 11.5px; line-height: 1.6; color: var(--text-faint); }
+.fc-note { margin: 11px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--text-faint); }
+
+/* ── Target org fit ── */
+.of, .of-none { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 13px 15px;
+  margin-bottom: 14px; font-size: 12.5px; line-height: 1.55; }
+.of-none { background: var(--panel-2); color: var(--text-dim); border-left: 3px solid var(--text-faint); }
+.of-none code { background: var(--panel-3); }
+.of.clear { border-left: 3px solid var(--good); background: var(--good-bg); }
+.of.has { border-left: 3px solid var(--warn); background: var(--panel-2); }
+.of-head b { font-size: 13.5px; }
+.of-head p { margin: 3px 0 0; font-size: 11px; color: var(--text-faint); }
+.of-item { margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.of-item > summary { display: flex; align-items: center; gap: 9px; padding: 8px 11px;
+  cursor: pointer; list-style: none; }
+.of-item > summary::-webkit-details-marker { display: none; }
+.chip.of-kind { font-size: 10px; padding: 2px 8px; text-transform: uppercase; letter-spacing: .04em; }
+.chip.of-kind.collision, .chip.of-kind.headroom { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
+.chip.of-kind.reusable, .chip.of-kind.package { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.of-body { padding: 0 11px 11px; color: var(--text-dim); }
+.of-body p { margin: 6px 0 0; }
+.of-fix { color: var(--text); }
+
+/* ── Triage ── */
+.tr-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+  flex-wrap: wrap; margin-bottom: 12px; }
+.tr-head b { font-size: 14px; }
+.tr-head p { margin: 3px 0 0; font-size: 11.5px; color: var(--text-faint); }
+.btn-mini.tr-f.must { color: var(--danger); }
+.btn-mini.tr-f.review { color: var(--warn); }
+.tr-list { display: flex; flex-direction: column; gap: 8px; }
+.tr-item { border: 1px solid var(--border); border-left: 3px solid var(--text-faint);
+  border-radius: 8px; background: var(--panel); padding: 11px 13px; }
+.tr-item.must { border-left-color: var(--danger); }
+.tr-item.review { border-left-color: var(--warn); }
+.tr-top { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; font-size: 13px; }
+.chip.tr-band { font-size: 10px; padding: 2px 8px; }
+.chip.tr-band.must { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
+.chip.tr-band.review { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.chip.tr-band.routine { background: var(--panel-3); color: var(--text-dim); }
+.tr-meta { font-size: 11px; color: var(--text-faint); }
+.tr-why { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.6; color: var(--text-dim); }
+.tr-src { margin-top: 7px; font-size: 10.5px; color: var(--text-faint); }
+
+/* ── Alignment ── */
+.al-counts { display: flex; gap: 6px; flex-wrap: wrap; }
+.al-tbl td { vertical-align: top; }
+.al-tbl tr.al-broken { opacity: .82; }
+.al-gap { font-size: 11.5px; color: var(--warn); line-height: 1.5; }
+.al-proof.good { color: var(--good); font-weight: 600; }
+.al-proof.warn { color: var(--warn); }
+.al-proof.bad { color: var(--danger); font-weight: 600; }
+.al-proof.dim { color: var(--text-faint); }
+
+/* ── Provenance ── */
+.pv-art { border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+  margin-bottom: 8px; }
+.pv-head { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: none; border: none; padding: 10px 12px; color: var(--text); font-size: 13px; }
+.pv-head:hover { background: var(--panel-hover); }
+.pv-cov { font-size: 11.5px; color: var(--good); }
+.pv-lost { font-size: 11px; color: var(--warn); }
+.pv-body { padding: 0 12px 12px; }
+.pv-resid { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.pv-resid p { margin: 3px 0 7px; font-size: 11.5px; }
+.pv-resid.bad .u-lbl { color: var(--warn); }
+.pv-chip { display: inline-block; margin: 0 5px 5px 0; font-size: 11px; background: var(--panel-3);
+  padding: 3px 8px; border-radius: 5px; color: var(--text-dim); }
+
 /* ── Hazard radar ──
    Severity leads: the left stripe and the pill carry it, so a reviewer with ten minutes
    knows where to spend them before reading a word. */

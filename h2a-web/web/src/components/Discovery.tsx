@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import Preflight from './Preflight';
 import Radar from './Radar';
+import Forecast from './Forecast';
+import OrgFit from './OrgFit';
 
 export interface DiscoveryData {
   summary: { files_scanned: number; classes: number; components: number; objects: number; domains: number; total_loc: number };
@@ -42,6 +44,8 @@ export default function Discovery({ d }: { d: DiscoveryData }) {
   const s = d.summary || ({} as DiscoveryData['summary']);
   const pf = (d as any).preflight;
   const radar = (d as any).radar;
+  const forecast = (d as any).forecast;
+  const orgfit = (d as any).orgfit;
   const totalLayer = Object.values(d.layers || {}).reduce((a, b) => a + b, 0) || 1;
 
   const classes = useMemo(() => {
@@ -60,6 +64,8 @@ export default function Discovery({ d }: { d: DiscoveryData }) {
       {/* What we established before spending anything — the reviewer's first question
           is "did it even understand what I gave it", so it is answered first. */}
       {pf && <Preflight r={pf} compact />}
+      {forecast && <Forecast f={forecast} />}
+      {orgfit && <OrgFit o={orgfit} />}
       {radar && <Radar r={radar} />}
       <div className="stat-row">
         <Stat n={s.files_scanned} l="files scanned" />

@@ -6,12 +6,15 @@ import PipelineFlow from './PipelineFlow';
 import Discovery from './Discovery';
 import ArtifactReview from './ArtifactReview';
 import Rules from './Rules';
+import Triage from './Triage';
+import Alignment from './Alignment';
+import Provenance from './Provenance';
 import CharacterizationView from './Characterization';
 import type { StageStatus } from '../types';
 
 const Diff = lazy(() => import('./Diff'));
 
-type Tab = 'flow' | 'discovery' | 'plan' | 'understanding' | 'artifacts' | 'rules' | 'parity' | 'diff' | 'files' | 'reports' | 'audit';
+type Tab = 'flow' | 'discovery' | 'plan' | 'understanding' | 'artifacts' | 'triage' | 'alignment' | 'rules' | 'parity' | 'provenance' | 'diff' | 'files' | 'reports' | 'audit';
 
 interface Props {
   runId: string | null; status: string;
@@ -20,6 +23,9 @@ interface Props {
   decisions: Decision[]; ledger: LedgerRow[]; ledgerSummary: Record<string, number>;
   ruleLedger: RuleLedger | null;
   characterization: Characterization | null;
+  triage: any | null;
+  alignment: any | null;
+  provenance: any | null;
   discovery: any | null;
   cost: any | null;
   tokens: { input: number; output: number; cache_read: number } | null;
@@ -55,7 +61,7 @@ export default function Detail(p: Props) {
   };
   const toggle = (name: string) => setOpen((s) => { const n = new Set(s); n.has(name) ? n.delete(name) : n.add(name); return n; });
 
-  const TABS: [Tab, string][] = [['flow', 'Flow'], ['discovery', 'Discovery'], ['plan', 'Plan'], ['understanding', 'Understanding'], ['artifacts', 'Artifacts'], ['rules', 'Rules'], ['parity', 'Parity'], ['diff', 'Diff'], ['files', 'Files'], ['reports', 'Reports'], ['audit', 'Audit']];
+  const TABS: [Tab, string][] = [['flow', 'Flow'], ['discovery', 'Discovery'], ['plan', 'Plan'], ['understanding', 'Understanding'], ['artifacts', 'Artifacts'], ['triage', 'Triage'], ['alignment', 'Alignment'], ['rules', 'Rules'], ['parity', 'Parity'], ['provenance', 'Origin'], ['diff', 'Diff'], ['files', 'Files'], ['reports', 'Reports'], ['audit', 'Audit']];
 
   return (
     <section className="panel">
@@ -118,6 +124,12 @@ export default function Detail(p: Props) {
       )}
 
       {tab === 'rules' && <Rules led={p.ruleLedger} />}
+
+      {tab === 'triage' && <Triage t={p.triage} />}
+
+      {tab === 'alignment' && <Alignment a={p.alignment} />}
+
+      {tab === 'provenance' && <Provenance p={p.provenance} />}
 
       {tab === 'parity' && <CharacterizationView ch={p.characterization} />}
 
