@@ -366,9 +366,18 @@ def main():
         "cronjob": cmd_cronjob,
     }
 
+    from src.llm import ProviderAuthError
+
     handler = dispatch.get(args.command)
     if handler:
-        handler(args)
+        try:
+            handler(args)
+        except ProviderAuthError as e:
+            # A stack trace here would bury the one line that tells the operator what to
+            # do about it, and this failure is configuration, not a crash.
+            print(f"\n✗ {e}\n\n  Nothing was generated and nothing was charged.",
+                  file=sys.stderr)
+            sys.exit(2)
     else:
         parser.print_help()
         sys.exit(1)

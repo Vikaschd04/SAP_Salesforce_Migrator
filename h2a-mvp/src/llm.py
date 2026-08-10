@@ -89,14 +89,37 @@ _TRANSIENT_EXC = {
 _TRANSIENT_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 529}
 
 
+class ProviderAuthError(RuntimeError):
+    """The credentials are wrong — every subsequent call will fail the same way.
+
+    Kept distinct from ordinary failures because the containment that makes this engine
+    survive a bad class is exactly wrong here. A per-class `except` turns 401 into a
+    fallback comprehension, the run completes, and the reports say the codebase has no
+    business rules — which is indistinguishable, to a reader, from a codebase that
+    genuinely has none. A wrong answer delivered confidently is worse than a stopped run.
+    """
+
+
+# 401/403 mean the key is invalid or lacks access. Retrying cannot help and continuing
+# produces a confident, empty, wrong result.
+_FATAL_STATUS = {401, 403}
+
+
+def _status_of(exc: Exception):
+    s = getattr(exc, "status_code", None)
+    return s if s is not None else getattr(getattr(exc, "response", None), "status_code", None)
+
+
+def is_fatal_auth(exc: Exception) -> bool:
+    return (_status_of(exc) in _FATAL_STATUS
+            or type(exc).__name__ in ("AuthenticationError", "PermissionDeniedError"))
+
+
 def _is_transient(exc: Exception) -> bool:
     """True when retrying could plausibly succeed (rate limit, overload, network)."""
     if type(exc).__name__ in _TRANSIENT_EXC:
         return True
-    status = getattr(exc, "status_code", None)
-    if status is None:
-        status = getattr(getattr(exc, "response", None), "status_code", None)
-    return status in _TRANSIENT_STATUS
+    return _status_of(exc) in _TRANSIENT_STATUS
 
 
 def _retry_cfg(config: dict) -> dict:
@@ -117,10 +140,21 @@ def _with_retry(fn, *, stage: str, config: dict):
     cfg = _retry_cfg(config)
     last = None
     for attempt in range(cfg["max_attempts"]):
+        check_fatal()          # a sibling worker already proved this cannot succeed
         try:
             return fn()
         except Exception as exc:                       # noqa: BLE001 — re-raised below
             last = exc
+            # Re-typed before anything else, so the per-stage `except` blocks downstream
+            # can tell "this one class defeated us" from "no call will ever succeed".
+            if is_fatal_auth(exc):
+                fatal = ProviderAuthError(
+                    f"{stage}: the provider rejected the credentials "
+                    f"({type(exc).__name__}). Check ANTHROPIC_API_KEY / "
+                    "OPENROUTER_API_KEY, or set provider to mock.")
+                fatal.__cause__ = exc
+                _latch_fatal(fatal)
+                raise fatal
             if attempt == cfg["max_attempts"] - 1 or not _is_transient(exc):
                 raise
             # Full jitter: spreads concurrent workers instead of retrying in lockstep.
@@ -232,6 +266,35 @@ _calls: list[dict] = []
 def reset_call_log() -> None:
     with _STATE_LOCK:
         _calls.clear()
+    reset_fatal()
+
+
+# A fatal provider error latched for the rest of the run. Two jobs, and the second is the
+# one that matters: it fails the remaining calls instantly instead of making every one of
+# them wait for its own 401, and — because stages contain their own errors by design — it
+# gives the orchestrator something to check at each stage boundary, so the run stops even
+# when a stage swallowed the exception. Any stage added later inherits that without
+# knowing this exists.
+_fatal: BaseException | None = None
+
+
+def _latch_fatal(exc: BaseException) -> None:
+    global _fatal
+    with _STATE_LOCK:
+        if _fatal is None:
+            _fatal = exc
+
+
+def check_fatal() -> None:
+    """Raise if the provider has already failed in a way no later call can recover from."""
+    if _fatal is not None:
+        raise _fatal
+
+
+def reset_fatal() -> None:
+    global _fatal
+    with _STATE_LOCK:
+        _fatal = None
 
 
 def get_call_log() -> list[dict]:

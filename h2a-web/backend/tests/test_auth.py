@@ -283,6 +283,11 @@ def test_storage_is_refused_without_a_server_secret(api, monkeypatch):
     import keyvault
     importlib.reload(keyvault)
     assert keyvault.available() is False
+    # There are two independent reasons the vault can be unavailable and this test is
+    # about the secret one. Without the guard, running the suite in an environment that
+    # lacks `cryptography` fails here on the other reason and looks like a real defect.
+    if not keyvault._HAVE_CRYPTO:
+        pytest.skip("`cryptography` not installed — the missing-secret path is untestable")
     assert "H2A_SECRET_KEY" in keyvault.why_unavailable()
 
     c = client(api)

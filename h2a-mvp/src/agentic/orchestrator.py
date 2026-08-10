@@ -32,7 +32,7 @@ from src.parity import build_parity, write_parity_md, close_parity_gaps
 from src.report import generate_report
 from src.signature_registry import SignatureRegistry
 from src.llm import (reset_accounting, get_accounting, _load_config, _get_provider,
-                     _get_model, reset_call_log, get_call_log)
+                     _get_model, reset_call_log, get_call_log, check_fatal)
 from src.agentic.incremental import (recipe_hash, class_hashes, target_fingerprint,
                                      load_state, save_state, artifact_to_cache,
                                      artifact_from_cache)
@@ -323,6 +323,15 @@ def _make_emitter(on_event):
     break a migration. When on_event is None (CLI / extension), it's a no-op and the
     existing prints stand, so nothing changes for those callers."""
     def emit(etype, **data):
+        # Every stage announces its start, which makes this the one place that sees all
+        # of them. Stages contain their own errors on purpose — one unparseable class must
+        # not end a migration — but that containment is exactly wrong for a dead API key:
+        # each stage would degrade to its deterministic fallback and the run would finish
+        # "successfully" reporting no business rules anywhere, which reads identically to
+        # a codebase that has none. Checking here stops the run wherever the failure was
+        # swallowed, and any stage added later gets that without knowing this exists.
+        if etype == "stage" and data.get("status") == "start":
+            check_fatal()
         if on_event is None:
             return
         try:
