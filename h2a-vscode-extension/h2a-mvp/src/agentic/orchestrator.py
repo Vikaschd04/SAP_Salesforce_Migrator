@@ -31,7 +31,8 @@ from src.metadata_generator import write_schema_metadata
 from src.parity import build_parity, write_parity_md, close_parity_gaps
 from src.report import generate_report
 from src.signature_registry import SignatureRegistry
-from src.llm import reset_accounting, get_accounting, _load_config, _get_provider, _get_model
+from src.llm import (reset_accounting, get_accounting, _load_config, _get_provider,
+                     _get_model, reset_call_log, get_call_log)
 from src.agentic.incremental import (recipe_hash, class_hashes, target_fingerprint,
                                      load_state, save_state, artifact_to_cache,
                                      artifact_from_cache)
@@ -425,6 +426,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                           verify: bool | None = None, on_event=None, gate=None,
                           should_cancel=None, on_blackboard=None, state_dir=None):
     reset_accounting()
+    reset_call_log()
     config = _load_config()
     bb = Blackboard(input_dir=input_dir, output_dir=output_dir, offline=offline)
     # Publish the Blackboard immediately (not just on return) so a caller can inspect
@@ -964,6 +966,17 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         if bb.orgfit["connected"] and bb.orgfit["summary"]["total"]:
             bb.record("OrgFit", "reconciled", _oh(bb.orgfit))
 
+    # What a rework of each artifact would put back in question.
+    from src.blast import build_all as _blast_all
+    blast = _blast_all(bb)
+
+    # Every model call, keyed and replayable — the cache as an audit trail.
+    from src.replay import build_replay, write_replay_md, headline as _rph
+    replay = build_replay(get_call_log(), recipe=_recipe if "_recipe" in dir() else "")
+    if replay["summary"]["total"]:
+        write_replay_md(output_dir, replay)
+        bb.record("Replay", "recorded", _rph(replay["summary"]))
+
     from src.provenance import build_provenance, write_provenance_md, headline as _ph
     provenance = build_provenance(bb)
     if provenance["summary"]["methods"]:
@@ -1049,6 +1062,10 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
          forecast=getattr(bb, "forecast", None),
          # Every rule, from intent through implementation to proof.
          alignment=alignment,
+         # What a rework of each artifact would touch.
+         blast=blast,
+         # Every model call, keyed for exact replay.
+         replay=replay,
          # Golden-master parity from the customer's own JUnit suite — behaviour, not looks.
          characterization=characterization,
          providers=acct.get("providers", {}), requests=acct.get("requests", 0),

@@ -28,10 +28,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 import random
 import re
 import threading
-import time
 from pathlib import Path
 from typing import Any
 
@@ -216,6 +216,38 @@ def _get_api_key(var_name: str) -> str | None:
 
 
 # ── Disk cache ────────────────────────────────────────────────────────────────
+
+# ── call ledger ───────────────────────────────────────────────────────────────
+# Every call is already keyed by a hash of (stage, model, prompt). Recording those keys
+# turns the cache from an optimisation into an audit trail: "prove why the AI did that in
+# March" is a procurement requirement in regulated enterprises, and the answer is a
+# deterministic replay from the same key rather than a re-run that might differ.
+#
+# The prompt itself is NOT stored — it contains the customer's source code, and copying
+# that into a second place on disk is a liability, not a feature. The hash identifies the
+# call; the cache already holds the response.
+_calls: list[dict] = []
+
+
+def reset_call_log() -> None:
+    with _STATE_LOCK:
+        _calls.clear()
+
+
+def get_call_log() -> list[dict]:
+    with _STATE_LOCK:
+        return list(_calls)
+
+
+def _log_call(stage: str, provider: str, model: str, key: str, *, cached: bool,
+              prompt_chars: int, effort: str | None = None, attempts: int = 1) -> None:
+    with _STATE_LOCK:
+        _calls.append({
+            "seq": len(_calls) + 1, "stage": stage, "provider": provider, "model": model,
+            "cache_key": key, "cached": cached, "prompt_chars": prompt_chars,
+            "effort": effort or "", "attempts": attempts, "at": round(time.time(), 3),
+        })
+
 
 def _cache_key(stage: str, model: str, prompt: str) -> str:
     """SHA-256 cache key from stage + model + prompt (kept for API stability)."""
@@ -533,6 +565,8 @@ def call_llm(
         out["provider"] = cached.get("provider", provider)
         out["model"] = cached.get("model", model)
         out["parsed"] = _try_parse(out.get("content", ""), json_schema)
+        _log_call(stage, out["provider"], out["model"], key, cached=True,
+                  prompt_chars=len(full_prompt), effort=effort)
         return out
 
     if offline:
@@ -588,6 +622,8 @@ def call_llm(
         "model": model,
     }
     _write_cache(cache_dir, key, to_cache)
+    _log_call(stage, result.get("provider", provider), result.get("model", model), key,
+              cached=False, prompt_chars=len(full_prompt), effort=effort)
 
     out = dict(to_cache)
     out["cached"] = False

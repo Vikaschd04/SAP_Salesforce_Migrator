@@ -200,15 +200,33 @@ behaviour outranks a keyword match, because it is stronger evidence.
 > where it broke instead of guessing the rest: a plausible chain built on a bad match
 > would be worse than an incomplete one, because it would be believed.
 
-### 8. Blast-radius preview before every change
+### 8. Blast-radius preview before every change — ✅ **SHIPPED**
 Before a reviewer approves a rework, show what it breaks: dependent classes, tests to re-run,
 schema touched. Derived from the dependency graph you already build.
 
-### 9. Deterministic replay + prompt provenance
+**How it shipped** (`src/blast.py`): a reverse walk over `referenced_types`, which ingest
+already records. Direct and transitive dependents are reported **separately** — a dependent
+three hops out is not the same claim as one that calls you directly, and collapsing them
+into one scary number would train people to ignore it. Also reports shared SObjects, which
+is how a rework reaches code that never references it at all, and the recorded behaviours
+that stop being evidence the moment the artifact is regenerated.
+
+### 9. Deterministic replay + prompt provenance — ✅ **SHIPPED**
 Every LLM call is already cached by prompt hash — expose it: **replay any run exactly**, and for
 any decision show the prompt, model, and grounding docs that produced it.
 - **Why it wins:** in regulated enterprises, *"prove why the AI did that in March"* is a
   procurement requirement. This turns your cache into a compliance feature.
+
+**How it shipped** (`src/replay.py`, `DECISION_RECORD.md`): every call through the gateway
+is logged with its stage, model and cache key. A replay from that key returns the identical
+response, which a re-run cannot promise.
+
+> **The prompts are deliberately not stored.** They contain the customer's source code, and
+> copying it into a second place on disk is a liability, not a feature. The hash identifies
+> the call and the response cache already holds the answer — together that is enough to
+> reproduce any decision exactly, without a second copy of anyone's IP.
+
+> **Tier 2 is complete.**
 
 ### 10. Cost + duration forecast before you press start — ✅ **SHIPPED**
 From the scan alone: class count × complexity → estimated tokens, spend, wall-clock, and
