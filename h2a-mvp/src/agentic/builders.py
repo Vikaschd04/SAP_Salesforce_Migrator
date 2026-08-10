@@ -47,7 +47,11 @@ class BuilderAgent:
             main_class=gen.get("main_class", ""), test_class=gen.get("test_class", ""),
             mapping_notes=gen.get("mapping_notes", ""), sobject_refs=gen.get("sobject_refs", []),
             business_rules=rules,
+            # `file` is carried deliberately: downstream consumers (triage, provenance,
+            # the ledger) key on it, and rebuilding this dict without it silently broke
+            # the hazard-to-artifact mapping.
             source_classes=[{"class_name": c.get("class_name", ""), "layer": c.get("layer", ""),
+                             "file": c.get("file", ""),
                              "source": c.get("source", "")} for c in plan_item.source_classes],
             status="generated",
         )

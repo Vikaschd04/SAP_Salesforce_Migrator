@@ -138,7 +138,7 @@ and reconcile *before* generating.
 
 ## Tier 2 — the experience that makes it usable at scale
 
-### 6. Risk-ranked review triage (beat reviewer fatigue)
+### 6. Risk-ranked review triage — ✅ **SHIPPED**
 The hidden killer of human-in-the-loop is **volume** — nobody reviews 400 classes carefully.
 
 - Score every artifact (complexity × risk × confidence × blast radius) and split into
@@ -195,10 +195,8 @@ branch/compare alternative migration strategies instead of re-running from zero.
 2. ~~**Characterization tests** (#3)~~ — ✅ shipped, including the adapter bridge that
    makes it work against bulkified output.
 3. ~~**Anti-pattern radar** (#4)~~ — ✅ shipped.
-4. **Risk-ranked triage** (#6) — **next.** The radar now produces the signal it ranks on,
-   so this is the natural follow-on: score every artifact on hazards + Critic severity +
-   complexity + rules carried, and turn "read 400 files" into "these 12 need you".
-5. **Line-level provenance** (#1) — the largest remaining moat item, independent of the above.
+4. ~~**Risk-ranked triage** (#6)~~ — ✅ shipped, on the signal the radar produces.
+5. **Line-level provenance** (#1) — **next**, and the largest remaining moat item.
 
 > **Also shipped, though not on this list:** a source-side preflight that refuses a
 > non-Hybris upload before a run exists and reports credentials found in the archive.

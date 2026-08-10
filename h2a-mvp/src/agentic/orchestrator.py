@@ -397,7 +397,8 @@ def _build_payload(bb) -> dict:
     """Metadata for the build review gate. Deliberately does NOT carry code — the UI
     fetches source/generated per file on demand (/diff) when a reviewer opens it, so the
     1.2s status poll stays small even on a repo with hundreds of artifacts."""
-    return {"artifacts": [{
+    from src.triage import build_triage
+    return {"triage": build_triage(bb), "artifacts": [{
         "target_name": a.target_name, "layer": a.layer, "is_lwc": a.is_lwc,
         "apex_pattern": a.apex_pattern, "status": a.status,
         "failed": a.status == "error",
@@ -927,6 +928,13 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # appearance, so its verdicts are the strongest evidence the run produces.
     characterization = _characterize(bb, output_dir, offline=offline, config=config)
 
+    from src.triage import build_triage, write_triage_md, headline as _th
+    triage = build_triage(bb)
+    if triage["summary"]["total"]:
+        write_triage_md(output_dir, triage)
+        bb.record("Triage", "ranked", _th(triage["summary"]))
+        print(f"  Review triage: {_th(triage['summary'])}")
+
     if getattr(bb, "radar", None) and bb.radar["summary"]["total"]:
         from src.radar import write_radar_md, headline as _rh
         write_radar_md(output_dir, bb.radar)
@@ -977,6 +985,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
          rule_ledger=rule_ledger,
          # Hybris-specific hazards found in the source, before anything was generated.
          radar=getattr(bb, "radar", None),
+         # Which artifacts actually need a person, and why.
+         triage=triage,
          # Golden-master parity from the customer's own JUnit suite — behaviour, not looks.
          characterization=characterization,
          providers=acct.get("providers", {}), requests=acct.get("requests", 0),

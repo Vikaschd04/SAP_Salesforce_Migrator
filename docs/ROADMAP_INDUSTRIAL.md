@@ -106,8 +106,10 @@ At 900 calls, rare failures become certainties:
 3. ✅ **Hybris anti-pattern radar** — eleven rules for the patterns that are ordinary in
    Hybris and hazardous in Apex, surfaced at the Discovery gate before a plan is approved.
    Ten findings on the reference corpus, two critical. Deterministic: no model calls, no org.
-4. ⬜ **Risk-ranked review triage** — **next.** The radar now produces the signal it ranks on.
-5. ⬜ **Line-level provenance** — the largest of the three and independent of them.
+4. ✅ **Risk-ranked review triage** — every artifact ranked into must-review / worth a
+   look / routine, from radar hazards + Critic severity + complexity + rules carried.
+   Each item lists the reasons that produced its rank; the score is never shown alone.
+5. ⬜ **Line-level provenance** — **next**, and the largest remaining moat item.
 
 > Also shipped, outside the original list: **source preflight** — a non-Hybris upload is
 > refused before a run object exists, and credentials found in the archive are reported by
