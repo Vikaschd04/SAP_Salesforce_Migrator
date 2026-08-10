@@ -32,7 +32,7 @@ from src.parity import build_parity, write_parity_md, close_parity_gaps
 from src.report import generate_report
 from src.signature_registry import SignatureRegistry
 from src.llm import (reset_accounting, get_accounting, _load_config, _get_provider,
-                     _get_model, reset_call_log, get_call_log)
+                     _get_model, reset_call_log, get_call_log, check_fatal)
 from src.agentic.incremental import (recipe_hash, class_hashes, target_fingerprint,
                                      load_state, save_state, artifact_to_cache,
                                      artifact_from_cache)
@@ -323,6 +323,15 @@ def _make_emitter(on_event):
     break a migration. When on_event is None (CLI / extension), it's a no-op and the
     existing prints stand, so nothing changes for those callers."""
     def emit(etype, **data):
+        # Every stage announces its start, which makes this the one place that sees all
+        # of them. Stages contain their own errors on purpose — one unparseable class must
+        # not end a migration — but that containment is exactly wrong for a dead API key:
+        # each stage would degrade to its deterministic fallback and the run would finish
+        # "successfully" reporting no business rules anywhere, which reads identically to
+        # a codebase that has none. Checking here stops the run wherever the failure was
+        # swallowed, and any stage added later gets that without knowing this exists.
+        if etype == "stage" and data.get("status") == "start":
+            check_fatal()
         if on_event is None:
             return
         try:
@@ -335,18 +344,42 @@ def _make_emitter(on_event):
 _MAX_GATE_ROUNDS = 3
 
 
-def _run_gate(gate, emit, name: str, payload: dict) -> dict:
+def _run_gate(gate, emit, name: str, payload: dict, bb=None) -> dict:
     """Human-in-the-loop review gate. When `gate` is None (autopilot / CLI / extension)
     this is a no-op that approves. When supervised, it emits a gate_open event with the
     state to review, then BLOCKS in the caller's `gate` callback until the reviewer
-    submits a decision — and returns it."""
+    submits a decision — and returns it.
+
+    Every outcome is recorded on the Blackboard, including the automatic one. A sign-off
+    document that cannot tell "a named person approved this" from "nobody was asked" is
+    worse than no document, because it would be signed either way."""
+    import datetime as _dt
+
+    def _record(action, actor, supervised, note=""):
+        if bb is None:
+            return
+        bb.approvals.append({
+            "gate": name, "action": action, "actor": actor, "supervised": supervised,
+            "at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+            "note": note,
+        })
+
     if gate is None:
+        _record("auto-approved", None, False,
+                "unsupervised run — no human reviewed this stage")
         return {"action": "approve"}
+
     emit("gate_open", gate=name, **payload)
     try:
         decision = gate(name, payload) or {"action": "approve"}
-    except Exception:
-        decision = {"action": "approve"}
+        actor, supervised = (decision or {}).get("actor"), True
+        note = (decision or {}).get("note", "")
+    except Exception as e:
+        # The reviewer was asked and no answer arrived. Approving is the existing
+        # behaviour and stays, but it is not a human decision and is not filed as one.
+        decision, actor, supervised = {"action": "approve"}, None, False
+        note = f"gate callback failed ({type(e).__name__}) — approved without a reviewer"
+    _record(decision.get("action", "approve"), actor, supervised, note)
     emit("gate_closed", gate=name, action=decision.get("action", "approve"))
     return decision
 
@@ -536,7 +569,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     discovery = _discovery_payload(bb)
     emit("discovery", **discovery)
     if gate is not None:
-        _run_gate(gate, emit, "discovery", discovery)
+        _run_gate(gate, emit, "discovery", discovery, bb)
         bb.record("Reviewer", "discovery_gate", "repository analysis reviewed and accepted")
         _ck()
 
@@ -655,7 +688,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
 
     # ── Review gate: the reviewer can adjust what gets migrated before we build ──
     if gate is not None:
-        decision = _run_gate(gate, emit, "plan", _plan_payload(bb))
+        decision = _run_gate(gate, emit, "plan", _plan_payload(bb), bb)
         n = _apply_plan_decision(bb, decision)
         if n:
             bb.record("Reviewer", "plan_gate", f"{n} plan override(s) applied")
@@ -825,7 +858,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         art_domain = {p.target_name: p.domain for p in bb.plan}
         rounds = 0
         while rounds < _MAX_GATE_ROUNDS:
-            decision = _run_gate(gate, emit, "build", _build_payload(bb))
+            decision = _run_gate(gate, emit, "build", _build_payload(bb), bb)
             if decision.get("action") != "rework":
                 break
             feedback = decision.get("feedback") or {}
@@ -1012,6 +1045,19 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         verify_result=bb.verify_result, reconciliation=bb.reconciliation, parity=bb.parity,
         ledger=ledger)
 
+    # The audit as a deliverable. Written last because it certifies everything above it,
+    # and every figure in it is read back from what the run recorded rather than
+    # recomputed — a contract that derived its own evidence could disagree with the
+    # reports it is signing for.
+    from src.signoff import build_signoff, write_signoff_md, headline as _sh
+    _v = bb.verify_result or {}
+    signoff = build_signoff(
+        bb, accounting=acct, cost=cost, recipe=(_recipe if "_recipe" in dir() else ""),
+        verified={"verified": bool(_v.get("ran") and _v.get("success")),
+                  "message": _v.get("message", ""), "errors": len(_v.get("errors") or [])})
+    write_signoff_md(output_dir, signoff)
+    bb.record("SignOff", "issued", _sh(signoff))
+
     counts = {}
     for r in ledger:
         counts[r["outcome"]] = counts.get(r["outcome"], 0) + 1
@@ -1031,6 +1077,14 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         print(f"  Characterization: {_char_headline(characterization['summary'])}")
     if any(r["outcome"] == "unaccounted" for r in ledger):
         print("  ⚠ some inputs are UNACCOUNTED for — see the completeness ledger in MIGRATION_PLAN.md")
+    _collisions = bb.output_collisions()
+    if _collisions:
+        # Louder than "unaccounted", because the ledger's own check passes here: every
+        # input found an artifact, and the output still lost one.
+        print(f"  ⚠ {len(_collisions)} output file(s) were written by MORE THAN ONE "
+              "artifact — logic was overwritten. See the completeness ledger.")
+        for _p, _arts in sorted(_collisions.items()):
+            print(f"      {_p} ← {', '.join(sorted(a.target_name for a in _arts))}")
     print(f"  provider(s)={acct.get('providers', {})}  requests={acct['requests']}"
           + (f"  retries={acct['retries']}" if acct.get("retries") else ""))
     if cost["by_model"]:
@@ -1077,7 +1131,10 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
          decisions=[{"agent": d["agent"], "action": d["action"], "detail": d["detail"]}
                     for d in bb.decisions],
          artifacts=[{"target_name": a.target_name, "layer": a.layer, "status": a.status,
-                     "is_lwc": a.is_lwc, "review_flags": list(a.review_flags)} for a in bb.artifacts])
+                     "is_lwc": a.is_lwc, "review_flags": list(a.review_flags)} for a in bb.artifacts],
+         # The audit as a deliverable — carried on the completion event so the cockpit
+         # shows the same contract that was written to disk, not a second derivation.
+         signoff=signoff)
     return bb
 
 
@@ -1112,6 +1169,13 @@ def _write_plan_doc(bb) -> str:
               f"**Summary: {summary}.**", ""]
     if any(r["outcome"] == "unaccounted" for r in ledger):
         lines += ["> ⚠️ **Some inputs are unaccounted for — investigate before relying on this run.**", ""]
+    _coll = bb.output_collisions()
+    if _coll:
+        lines += ["> 🚨 **More than one artifact wrote the same file, so logic was "
+                  "overwritten.** Every input below found an artifact — the loss happened "
+                  "at the write, which is why an input-side check cannot see it:", ""]
+        lines += [f"> - `{p}` ← " + ", ".join(sorted(a.target_name for a in arts))
+                  for p, arts in sorted(_coll.items())] + [""]
     lines += ["| Source class | Layer | Outcome | Target | Note |", "|---|---|---|---|---|"]
     for r in ledger:
         lines.append(f"| `{r['source']}` | {r['layer']} | {r['outcome']} | {r['target']} | {r['note'] or '—'} |")

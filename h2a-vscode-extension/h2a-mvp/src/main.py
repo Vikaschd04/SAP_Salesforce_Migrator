@@ -366,9 +366,24 @@ def main():
         "cronjob": cmd_cronjob,
     }
 
+    from src.llm import ProviderAuthError, CostCapExceeded
+
     handler = dispatch.get(args.command)
     if handler:
-        handler(args)
+        try:
+            handler(args)
+        except ProviderAuthError as e:
+            # A stack trace here would bury the one line that tells the operator what to
+            # do about it, and this failure is configuration, not a crash.
+            print(f"\n✗ {e}\n\n  Nothing was generated and nothing was charged.",
+                  file=sys.stderr)
+            sys.exit(2)
+        except CostCapExceeded as e:
+            # Also a deliberate stop rather than a crash — and the run is resumable, which
+            # is the part the operator needs to read first.
+            print(f"\n✗ {e}\n\n  Work completed before the cap is kept; re-running "
+                  "reuses it rather than paying for it twice.", file=sys.stderr)
+            sys.exit(3)
     else:
         parser.print_help()
         sys.exit(1)

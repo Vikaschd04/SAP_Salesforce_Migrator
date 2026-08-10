@@ -32,6 +32,15 @@ max_repair_attempts: 2
 #   Override per-run with H2A_CONCURRENCY.
 concurrency: 8
 
+# Spend ceiling for a single run, in USD. 0 = uncapped.
+# The Discovery-gate forecast tells you what to expect; this is what makes that
+# expectation binding, because a range is not a limit — a repair loop that will not
+# converge spends until it finishes. Checked before each call, so a run can overshoot by
+# at most the one call in flight when the limit is crossed.
+# Override per run with H2A_COST_CAP, or per tenant from the web app.
+cost_cap:
+  usd: 25.0
+
 # Resilience. At ~900 LLM calls for a large repo, rare failures become certainties:
 # a single 429 or 503 must not cost the whole run.
 #   sdk_max_retries — retries inside the provider SDK (it already does correct

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.llm import call_structured, _load_config
+from src.llm import call_structured, ProviderAuthError, _load_config
 
 COMPREHENSION_SCHEMA = {
     "type": "object",
@@ -52,9 +52,11 @@ def comprehend_class(class_info: dict, *, offline: bool = False,
                      model: str | None = None) -> dict:
     """Produce a structured JSON understanding of one Java class.
 
-    Never raises: a class that can't be analyzed (odd shape, malformed methods, a
-    provider error) falls back to a deterministic understanding, so a single class
-    can never abort the whole migration."""
+    A class that can't be analyzed (odd shape, malformed methods, a transient provider
+    error) falls back to a deterministic understanding, so a single class can never abort
+    the whole migration. Credentials the provider rejects are the exception and propagate:
+    that failure applies to every class, and a fallback for all of them would report an
+    estate with no business rules rather than a run that never started."""
     config = _load_config()
     max_tokens = config.get("max_tokens", {}).get("comprehend", 800)
     effort = config.get("effort", {}).get("comprehend", "low")
@@ -77,6 +79,11 @@ def comprehend_class(class_info: dict, *, offline: bool = False,
             offline=offline, effort=effort, model=model,
         )
         understanding = result.get("parsed") or _fallback_understanding(class_info)
+    except ProviderAuthError:
+        # Containment is right for a class we cannot parse and wrong for credentials that
+        # do not work: falling back here would report "no business rules" for every class
+        # in the codebase, which reads exactly like a codebase that has none.
+        raise
     except Exception:
         understanding = _fallback_understanding(class_info)
 

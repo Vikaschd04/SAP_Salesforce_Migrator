@@ -116,6 +116,10 @@ class Blackboard:
     # Late-stage joins, kept on the board so alignment can read them.
     characterization: dict = field(default_factory=dict)
     rule_ledger: dict = field(default_factory=dict)
+    # Who approved which gate, when, and what they were looking at. The audit a migration
+    # ends in is only worth signing if it records the human, and an unsupervised run has
+    # no human to record — which is exactly what these entries have to be able to say.
+    approvals: list = field(default_factory=list)
 
     # Agent products
     comprehensions: dict = field(default_factory=dict)     # class_name -> understanding
@@ -151,14 +155,40 @@ class Blackboard:
     def code_plan(self) -> list:
         return [p for p in self.plan if p.is_code]
 
+    def output_path(self, artifact) -> str:
+        """Where an artifact lands on disk. The unit a collision is measured in — an
+        Apex `Pricing.cls` and an LWC `lwc/Pricing` share a name but not a file."""
+        name = getattr(artifact, "target_name", "")
+        return f"lwc/{name}" if getattr(artifact, "layer", "") == "Component" else f"{name}.cls"
+
+    def output_collisions(self) -> dict:
+        """Artifacts that would write to the same path, keyed by that path.
+
+        The ledger's guarantee is that no input was dropped, and it proved that by
+        walking source → artifact. That check passes even when two artifacts share a
+        target name, because each source still finds *an* artifact — but only one of
+        them survives the write, so the other's logic is not in the output the ledger
+        just called complete. Inputs being accounted for is not the same claim as
+        outputs being distinct, and only the second one is checkable here.
+        """
+        by_path: dict[str, list] = {}
+        for a in self.artifacts:
+            by_path.setdefault(self.output_path(a), []).append(a)
+        return {p: arts for p, arts in by_path.items() if len(arts) > 1}
+
     def completeness_ledger(self) -> list:
         """Account for every ingested source class — the proof that nothing was
         silently dropped. Each row: {source, layer, outcome, target, note} where
-        outcome is converted | flagged | skipped | unaccounted."""
+        outcome is converted | flagged | skipped | unaccounted | overwritten."""
         by_source = {}
         for a in self.artifacts:
             for c in a.source_classes:
                 by_source[c.get("class_name")] = a
+
+        # Which artifacts lost a write race. Every one of them is reported, not just the
+        # losers: last-write-wins means the survivor depends on iteration order, so
+        # naming a winner here would be a guess presented as a fact.
+        collided = {id(a): p for p, arts in self.output_collisions().items() for a in arts}
         skipped = {}
         for p in self.plan:
             if p.target_kind == "Skip":
@@ -176,11 +206,18 @@ class Blackboard:
             art = by_source.get(name)
             if art is not None:
                 flagged = bool(art.review_flags)
-                target = f"lwc/{art.target_name}" if art.layer == "Component" else f"{art.target_name}.cls"
-                rows.append({"source": name, "layer": layer,
-                             "outcome": "flagged" if flagged else "converted",
-                             "target": target,
-                             "note": "; ".join(art.review_flags) if flagged else ""})
+                target = self.output_path(art)
+                if id(art) in collided:
+                    rows.append({
+                        "source": name, "layer": layer, "outcome": "overwritten",
+                        "target": target,
+                        "note": f"more than one artifact writes `{target}` — only one "
+                                "survived, so this class's logic may not be in the output"})
+                else:
+                    rows.append({"source": name, "layer": layer,
+                                 "outcome": "flagged" if flagged else "converted",
+                                 "target": target,
+                                 "note": "; ".join(art.review_flags) if flagged else ""})
             elif name in skipped:
                 rows.append({"source": name, "layer": layer, "outcome": "skipped",
                              "target": "—", "note": skipped[name]})
