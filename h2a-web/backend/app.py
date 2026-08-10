@@ -48,7 +48,7 @@ app = FastAPI(title="H2A Migration Dashboard", version="0.1.0")
 # decorator would silently expose someone's uploaded source code.
 
 _PUBLIC = ("/api/health", "/api/config", "/api/auth/login", "/api/auth/signup",
-           "/api/auth/me", "/api/auth/logout")
+           "/api/auth/me", "/api/auth/logout", "/api/auth/demo")
 _RUN_PATH = re.compile(r"^/api/runs/([^/]+)")
 
 
@@ -149,10 +149,21 @@ async def api_delete_key(provider: str, request: Request):
     return {"ok": True}
 
 
+@app.post("/api/auth/demo")
+async def api_demo_login():
+    """One-click sign-in to a shared demo account, when a deployment enables it."""
+    try:
+        user = auth.ensure_demo_user()
+    except auth.AuthError as e:
+        raise HTTPException(403, str(e))
+    return _set_session(JSONResponse({"user": user}), auth.create_session(user["id"]))
+
+
 @app.get("/api/auth/me")
 async def api_me(request: Request):
     return {"required": auth.auth_required(), "signup_open": auth.signup_open(),
-            "has_users": auth.user_count() > 0, "user": _current_user(request)}
+            "has_users": auth.user_count() > 0, "demo": auth.demo_enabled(),
+            "user": _current_user(request)}
 
 # Report files at the output root that the dashboard surfaces.
 _REPORT_FILES = ["MIGRATION_PLAN.md", "BUSINESS_RULES.md", "CHARACTERIZATION.md",

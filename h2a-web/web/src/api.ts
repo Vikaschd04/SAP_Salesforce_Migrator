@@ -139,6 +139,7 @@ export interface Me {
   required: boolean;
   signup_open: boolean;
   has_users: boolean;
+  demo: boolean;          // this instance offers one-click demo sign-in
   user: { id: string; email: string; name: string; role: string; created?: number } | null;
 }
 
@@ -154,7 +155,7 @@ async function post(path: string, body: unknown) {
 
 export async function me(): Promise<Me> {
   const r = await fetch('/api/auth/me');
-  if (!r.ok) return { required: false, signup_open: false, has_users: false, user: null };
+  if (!r.ok) return { required: false, signup_open: false, has_users: false, demo: false, user: null };
   return r.json();
 }
 
@@ -165,6 +166,9 @@ export const signup = (email: string, password: string) =>
   post('/api/auth/signup', { email, password }).then((d) => d.user);
 
 export const logout = () => post('/api/auth/logout', {});
+
+/** One-click sign-in to the shared demo account, where a deployment enables it. */
+export const demoLogin = () => post('/api/auth/demo', {}).then((d) => d.user);
 
 // ── provider credentials ──────────────────────────────────────────────────────
 

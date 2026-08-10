@@ -109,6 +109,7 @@ user, no login, shared credentials — the right shape for one person on a lapto
 | `H2A_DB_PATH` | `.h2a/runs.db` | Where accounts and run history live. Point it at a mounted disk on a PaaS, or they reset on redeploy. |
 | `H2A_MAX_CONCURRENT_RUNS` | `3` | How many migrations run at once. Further ones queue, FIFO, with a visible position. Each run holds a codebase in memory and fans out to parallel model calls, so this is a real resource dial. |
 | `H2A_HOSTED` | off | Public-deploy mode: restricts inputs to uploads/bundled samples, and turns auth on. |
+| `H2A_DEMO_LOGIN` | off | Offers a one-click **shared** demo account on the sign-in screen, provisioned on first use. It is an unauthenticated way in, so leave it off anywhere that is not a public demo. |
 
 Generate a secret key with:
 

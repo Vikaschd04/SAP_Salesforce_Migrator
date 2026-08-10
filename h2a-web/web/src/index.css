@@ -246,7 +246,11 @@ td code { font-family: var(--mono); font-size: 11.5px; }
 .cx-low { background: var(--good-bg); color: var(--good); }
 .cx-medium { background: var(--warn-bg); color: var(--warn); }
 .cx-high { background: var(--danger-bg); color: var(--danger); }
-.chip { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); }
+.chip { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px;
+  font-weight: 600; line-height: 1.35; white-space: nowrap; border: 1px solid var(--border); }
+/* display matters here: an inline element's vertical padding does not expand its line
+   box, so the pill bled over whatever sat beneath it — most visibly the trust label
+   under each verdict in the Parity table. */
 .chip.converted { background: var(--accent-bg); color: var(--accent); border-color: transparent; }
 .chip.flagged { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
 .chip.skipped { background: var(--panel-3); color: var(--text-dim); }
@@ -510,6 +514,16 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid currentColor;
   border-top-color: transparent; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.auth-demo { display: flex; flex-direction: column; gap: 9px; margin-top: 2px; }
+.auth-or { position: relative; text-align: center; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--text-faint); font-weight: 700; }
+.auth-or::before, .auth-or::after { content: ""; position: absolute; top: 50%; width: 42%;
+  height: 1px; background: var(--border); }
+.auth-or::before { left: 0; } .auth-or::after { right: 0; }
+.auth-demo-btn { justify-content: center; font-weight: 650; }
+.auth-demo-note { margin: 0; font-size: 11px; line-height: 1.5; color: var(--text-faint);
+  text-align: center; }
+
 .auth-swap { margin: 2px 0 0; font-size: 12.5px; color: var(--text-dim); text-align: center; }
 .auth-swap button { background: none; border: none; color: var(--accent); font-size: 12.5px;
   font-weight: 600; padding: 0; text-decoration: underline; }
@@ -679,15 +693,23 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .btn-mini.ch-f.direct { color: var(--good); }
 .btn-mini.ch-f.adapter { color: var(--warn); }
 .btn-mini.ch-f.manual { color: var(--text-dim); }
-.ch-trust { display: block; margin-top: 4px; font-size: 10px; text-transform: uppercase;
-  letter-spacing: .05em; color: var(--text-faint); font-weight: 700; }
+.ch-trust { display: block; margin-top: 5px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--text-faint); font-weight: 700; line-height: 1.3; }
+/* The verdict cell stacks a pill over a label; a flex column gives them deterministic
+   spacing instead of relying on inline layout to behave. */
+.rule-tbl td:first-child { display: flex; flex-direction: column; align-items: flex-start;
+  gap: 0; min-width: 96px; }
+.rule-tbl { table-layout: auto; }
+.rule-tbl tr { vertical-align: top; }
 .rule-row.ch-direct td:first-child { box-shadow: inset 2px 0 0 var(--good); }
 .rule-row.ch-adapter td:first-child { box-shadow: inset 2px 0 0 var(--warn); }
 .ch-call { max-width: 26em; }
 .ch-call code { font-size: 11.5px; word-break: break-word; }
 .ch-arrow { display: block; margin-top: 3px; color: var(--text-faint); font-size: 11.5px; }
-.ch-peek { display: block; margin-top: 6px; background: none; border: none; padding: 0;
-  color: var(--blue); font-size: 11.5px; cursor: pointer; text-decoration: underline; }
+.ch-peek { display: block; margin-top: 8px; background: none; border: none; padding: 0;
+  color: var(--blue); font-size: 11.5px; cursor: pointer; text-decoration: underline;
+  line-height: 1.4; }
+.rule-ev { color: var(--text-dim); line-height: 1.55; max-width: 22em; min-width: 12em; }
 .ch-bridge-row td { padding: 0 10px 10px; }
 .ch-bridge { margin: 0; padding: 11px 13px; background: var(--panel-3); border-radius: 8px;
   font-family: var(--mono); font-size: 11.5px; line-height: 1.55; overflow-x: auto;

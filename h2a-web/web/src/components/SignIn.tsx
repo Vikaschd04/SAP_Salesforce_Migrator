@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Logo from './Logo';
 import type { Me } from '../api';
-import { login, signup } from '../api';
+import { login, signup, demoLogin } from '../api';
 
 /**
  * The gate on a hosted deployment.
@@ -40,6 +40,13 @@ export default function SignIn({ me, onIn }: { me: Me; onIn: (u: NonNullable<Me[
   };
 
   const swap = () => { setMode(isUp ? 'in' : 'up'); setError(''); };
+
+  const tryDemo = async () => {
+    setBusy(true); setError('');
+    try { onIn(await demoLogin()); }
+    catch (err: any) { setError(err.message || 'Demo sign-in is unavailable.'); }
+    finally { setBusy(false); }
+  };
 
   return (
     <div className="auth">
@@ -113,6 +120,19 @@ export default function SignIn({ me, onIn }: { me: Me; onIn: (u: NonNullable<Me[
             {busy ? <span className="spin" /> : null}
             {busy ? 'One moment…' : isUp ? 'Create account' : 'Sign in'}
           </button>
+
+          {me.demo && (
+            <div className="auth-demo">
+              <span className="auth-or">or</span>
+              <button type="button" className="btn auth-demo-btn" disabled={busy} onClick={tryDemo}>
+                ▶ Explore with the demo account
+              </button>
+              <p className="auth-demo-note">
+                Shared and read-write — everyone using it sees the same migrations. Don't
+                upload anything confidential.
+              </p>
+            </div>
+          )}
 
           {me.signup_open ? (
             <p className="auth-swap">

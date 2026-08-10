@@ -331,3 +331,77 @@ def test_a_tenant_without_a_key_falls_back_to_the_server(vault, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-the-servers-shared-key")
     assert vault.get_key("nobody", "anthropic") is None
     assert _get_api_key("ANTHROPIC_API_KEY") == "sk-ant-the-servers-shared-key"
+
+
+# ── demo sign-in: convenient, and shut unless asked for ───────────────────────
+
+@pytest.fixture
+def demo(api, monkeypatch):
+    monkeypatch.setenv("H2A_DEMO_LOGIN", "1")
+    import auth as A
+    importlib.reload(A)
+    import app as appmod
+    importlib.reload(appmod)
+    return appmod
+
+
+def test_demo_login_is_refused_unless_a_deployment_enables_it(api, monkeypatch):
+    """It is an unauthenticated door into the instance, so the default must be shut."""
+    monkeypatch.delenv("H2A_DEMO_LOGIN", raising=False)
+    import auth as A
+    importlib.reload(A)
+    assert A.demo_enabled() is False
+    assert TestClient(api.app).post("/api/auth/demo").status_code == 403
+
+
+def test_demo_login_works_and_reports_itself(demo):
+    c = TestClient(demo.app)
+    assert c.get("/api/auth/me").json()["demo"] is True
+    r = c.post("/api/auth/demo")
+    assert r.status_code == 200
+    assert r.json()["user"]["email"] == "demo@h2a.local"
+    assert c.get("/api/runs").status_code == 200, "the demo session did not authenticate"
+
+
+def test_the_demo_account_is_provisioned_on_demand(demo):
+    """Ephemeral storage wipes the database on every redeploy, so it has to reappear
+    by itself rather than being created once by hand."""
+    import auth as A
+    assert A.user_count() == 0
+    TestClient(demo.app).post("/api/auth/demo")
+    assert A.user_count() == 1
+
+
+def test_the_demo_account_never_becomes_an_admin(demo):
+    """On a fresh instance it would otherwise be the first account and inherit
+    ownership of the whole thing."""
+    r = TestClient(demo.app).post("/api/auth/demo")
+    assert r.json()["user"]["role"] == "member"
+
+
+def test_repeated_demo_logins_reuse_one_account(demo):
+    import auth as A
+    a = TestClient(demo.app).post("/api/auth/demo").json()["user"]
+    b = TestClient(demo.app).post("/api/auth/demo").json()["user"]
+    assert a["id"] == b["id"]
+    assert A.user_count() == 1
+
+
+def test_the_demo_password_is_not_guessable(demo):
+    """Nothing is ever told the password, so the endpoint is the only way in."""
+    TestClient(demo.app).post("/api/auth/demo")
+    for guess in ("demo", "demo@h2a.local", "password", "demo1234567"):
+        r = TestClient(demo.app).post("/api/auth/login",
+                                      json={"email": "demo@h2a.local", "password": guess})
+        assert r.status_code == 401
+
+
+def test_a_real_account_cannot_see_demo_runs(demo):
+    """The demo is shared, but it is still just a tenant — isolation still applies."""
+    d = TestClient(demo.app)
+    d.post("/api/auth/demo")
+    rid = _start_run(d, demo)
+
+    other = TestClient(demo.app)
+    register(other, "ada@example.com")
+    assert other.get(f"/api/runs/{rid}").status_code == 404

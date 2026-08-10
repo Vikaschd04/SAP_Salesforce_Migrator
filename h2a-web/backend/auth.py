@@ -100,6 +100,49 @@ class AuthError(Exception):
     pass
 
 
+# ── demo account ──────────────────────────────────────────────────────────────
+# A one-click login for evaluators, because a hosted demo whose first screen is a
+# registration form loses most of the people who reach it. Deliberately opt-in: this is
+# an unauthenticated door into the instance, so it stays shut unless a deployment asks
+# for it. render.yaml turns it on; a private deployment gets nothing.
+#
+# It is provisioned on demand rather than at import, which matters on a platform with
+# ephemeral storage — the database is empty again after every redeploy, and the account
+# simply reappears the first time someone asks for it.
+
+DEMO_EMAIL = "demo@h2a.local"
+
+
+def demo_enabled() -> bool:
+    return os.environ.get("H2A_DEMO_LOGIN", "").lower() in ("1", "true", "yes")
+
+
+def ensure_demo_user() -> dict:
+    """Return the demo user, creating it if this instance has not got one yet."""
+    if not demo_enabled():
+        raise AuthError("Demo sign-in is not enabled on this instance.")
+    c = _conn()
+    if c is None:
+        raise AuthError("Accounts are unavailable — the database is not writable.")
+    with _lock:
+        row = c.execute("SELECT id, email, name, role, created FROM users WHERE email = ?",
+                        (DEMO_EMAIL,)).fetchone()
+    if row:
+        return {"id": row[0], "email": row[1], "name": row[2], "role": row[3], "created": row[4]}
+
+    # A long random password nobody is ever told. The only way in is this endpoint, so
+    # there is no credential to leak, guess, or accidentally reuse elsewhere.
+    user = create_user(DEMO_EMAIL, secrets.token_urlsafe(32), name="Demo User")
+    if user["role"] == "admin":
+        # If the demo happens to be the first account on a fresh instance it must not
+        # inherit ownership of it.
+        with _lock:
+            c.execute("UPDATE users SET role='member' WHERE id = ?", (user["id"],))
+            c.commit()
+        user["role"] = "member"
+    return user
+
+
 def create_user(email: str, password: str, name: str = "") -> dict:
     email = _norm(email)
     if "@" not in email or len(email) < 5:
