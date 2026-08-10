@@ -719,6 +719,23 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .note-inline.good { background: var(--good-bg); color: var(--good); }
 .note-inline code { background: transparent; border: none; padding: 0; color: inherit; font-weight: 600; }
 
+/* ── Sub-navigation ──
+   Two levels: five groups that stay scannable, and the views inside the open one. The
+   count on a group is a promise that there is more behind it. */
+.tab-n { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 8px;
+  background: var(--panel-3); color: var(--text-faint); font-size: 9.5px; font-weight: 700;
+  vertical-align: middle; }
+.tab.active .tab-n { background: var(--accent-bg); color: var(--accent); }
+.subtabs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  padding: 9px 0 2px; margin-bottom: 6px; border-bottom: 1px solid var(--border); }
+.subtabs-hint { font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--text-faint); font-weight: 700; margin-right: 8px; }
+.subtab { background: none; border: 1px solid transparent; border-radius: 20px;
+  padding: 4px 12px; font-size: 12.5px; color: var(--text-dim); transition: .14s; }
+.subtab:hover { background: var(--panel-hover); color: var(--text); }
+.subtab.active { background: var(--accent-bg); color: var(--accent); font-weight: 600;
+  border-color: transparent; }
+
 /* ── Forecast (pre-spend estimate) ── */
 .fc { border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--panel-2);
   padding: 14px 16px; margin-bottom: 14px; }

@@ -36,6 +36,9 @@ const usd = (v: number | null | undefined) =>
 
 export default function Detail(p: Props) {
   const [tab, setTab] = useState<Tab>('flow');
+  // Remembering the sub-tab per group means switching away and back returns you to what
+  // you were reading, rather than resetting to the first item every time.
+  const [lastSub, setLastSub] = useState<Record<string, Tab>>({});
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [files, setFiles] = useState<string[]>([]);
   const [reports, setReports] = useState<string[]>([]);
@@ -61,15 +64,49 @@ export default function Detail(p: Props) {
   };
   const toggle = (name: string) => setOpen((s) => { const n = new Set(s); n.has(name) ? n.delete(name) : n.add(name); return n; });
 
-  const TABS: [Tab, string][] = [['flow', 'Flow'], ['discovery', 'Discovery'], ['plan', 'Plan'], ['understanding', 'Understanding'], ['artifacts', 'Artifacts'], ['triage', 'Triage'], ['alignment', 'Alignment'], ['rules', 'Rules'], ['parity', 'Parity'], ['provenance', 'Origin'], ['diff', 'Diff'], ['files', 'Files'], ['reports', 'Reports'], ['audit', 'Audit']];
+  // Fourteen flat tabs is a list, not navigation. Grouped by the question being asked —
+  // what is happening, what we read, what we wrote, whether it is right, and the paper
+  // trail — so the top row stays scannable and related views sit together.
+  const GROUPS: { id: string; label: string; hint: string; tabs: [Tab, string][] }[] = [
+    { id: 'flow', label: 'Flow', hint: 'live pipeline', tabs: [['flow', 'Flow']] },
+    { id: 'source', label: 'Source', hint: 'what we read',
+      tabs: [['discovery', 'Discovery'], ['understanding', 'Understanding'], ['plan', 'Plan']] },
+    { id: 'output', label: 'Output', hint: 'what we wrote',
+      tabs: [['artifacts', 'Artifacts'], ['diff', 'Compare'], ['files', 'Files']] },
+    { id: 'assurance', label: 'Assurance', hint: 'is it right',
+      tabs: [['triage', 'Triage'], ['rules', 'Rules'], ['alignment', 'Alignment'],
+             ['parity', 'Parity'], ['provenance', 'Origin']] },
+    { id: 'records', label: 'Records', hint: 'the paper trail',
+      tabs: [['reports', 'Reports'], ['audit', 'Audit']] },
+  ];
+  const group = GROUPS.find((g) => g.tabs.some(([id]) => id === tab)) || GROUPS[0];
+
+  const openGroup = (g: typeof GROUPS[number]) => {
+    const remembered = lastSub[g.id];
+    setTab(remembered && g.tabs.some(([id]) => id === remembered) ? remembered : g.tabs[0][0]);
+  };
+  const openSub = (id: Tab) => { setTab(id); setLastSub((s) => ({ ...s, [group.id]: id })); };
 
   return (
     <section className="panel">
       <div className="tabs">
-        {TABS.map(([id, label]) => (
-          <button key={id} className={`tab ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>{label}</button>
+        {GROUPS.map((g) => (
+          <button key={g.id} className={`tab ${group.id === g.id ? 'active' : ''}`}
+            onClick={() => openGroup(g)} title={g.hint}>
+            {g.label}
+            {g.tabs.length > 1 && <span className="tab-n">{g.tabs.length}</span>}
+          </button>
         ))}
       </div>
+      {group.tabs.length > 1 && (
+        <div className="subtabs">
+          <span className="subtabs-hint">{group.hint}</span>
+          {group.tabs.map(([id, label]) => (
+            <button key={id} className={`subtab ${tab === id ? 'active' : ''}`}
+              onClick={() => openSub(id)}>{label}</button>
+          ))}
+        </div>
+      )}
 
       {tab === 'flow' && <PipelineFlow stages={p.stages} artifacts={p.artifacts} status={p.status} />}
 
