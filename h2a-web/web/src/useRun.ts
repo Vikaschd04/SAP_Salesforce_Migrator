@@ -30,6 +30,7 @@ export interface RunState {
   ledgerSummary: Record<string, number>;
   ruleLedger: RuleLedger | null;
   characterization: Characterization | null;
+  radar: any | null;
   gate: GateState | null;
   discovery: any | null;
   errorMsg: string;
@@ -39,7 +40,7 @@ export interface RunState {
 
 const initial = (): RunState => ({
   runId: null, status: 'idle', elapsed: '', stages: {}, feed: [], plan: [],
-  comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, ruleLedger: null, characterization: null, gate: null,
+  comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, ruleLedger: null, characterization: null, radar: null, gate: null,
   discovery: null, errorMsg: '', cost: null, tokens: null,
 });
 
@@ -106,6 +107,8 @@ export function useRun() {
         }
         case 'decision':
           return { ...s, decisions: [...s.decisions, { agent: ev.agent, action: ev.action, detail: ev.detail }] };
+        case 'radar':
+          return { ...s, radar: ev };
         case 'discovery': {
           const sum = ev.summary || {};
           s = { ...s, discovery: ev };
@@ -121,7 +124,8 @@ export function useRun() {
           return { ...s, status: 'complete', ledger: ev.ledger || [], ledgerSummary: ev.ledger_summary || {},
             decisions: ev.decisions || s.decisions, cost: ev.cost || null, tokens: ev.tokens || null,
             ruleLedger: ev.rule_ledger || null,
-            characterization: ev.characterization || null };
+            characterization: ev.characterization || null,
+            radar: ev.radar || s.radar };
         case 'cancelled':
           return feed({ ...s, status: 'idle' }, 'system', 'Run stopped', 'system');
         case 'error':

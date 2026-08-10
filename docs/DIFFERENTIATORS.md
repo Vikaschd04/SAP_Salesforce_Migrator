@@ -92,7 +92,7 @@ actually is.
 > its output is never trusted to supply one — the assertion is written by the framework
 > from the recorded fact. A bridge containing `System.assert*` is rejected outright.
 
-### 4. Hybris-specific anti-pattern radar
+### 4. Hybris-specific anti-pattern radar — ✅ **SHIPPED**
 Generic Apex linting is commoditized. **Hybris→Salesforce failure modes** are not:
 
 | Source pattern | Salesforce hazard |
@@ -106,6 +106,23 @@ Generic Apex linting is commoditized. **Hybris→Salesforce failure modes** are 
 
 Ship these as **named, explained detections** with a fix. That's earned domain expertise a
 generic AI tool can't match, and it's exactly what a Hybris architect will test you on in a demo.
+
+**How it shipped** (`src/radar.py`, Discovery gate, `ANTI_PATTERNS.md`): eleven rules —
+query/DML/DAO-call in a loop, unbounded query, `@Transactional`, threads, mutable statics,
+interceptors, session-scoped beans, ImpEx volume, cronjob concurrency. Each carries what it
+means *on Salesforce* and how to fix it, severity-ranked by consequence rather than by how
+odd the Java looks. Ten findings on the reference corpus, two of them critical.
+
+Surfaced at the **Discovery gate**, beside preflight — before a plan is approved and before
+anything is generated. That placement is the point: fixing a FlexibleSearch-in-loop in the
+Java is one change; fixing the SOQL-in-loop it becomes is two.
+
+> **Precision over recall, deliberately.** A radar that cries wolf gets switched off in a
+> week and takes its true findings with it. "In a loop" is decided by tracking brace depth,
+> not by looking for a nearby `for`; comments and string literals are stripped first, so a
+> Javadoc warning *against* the pattern never fires it; and a query with a `setCount` nearby
+> is not reported as unbounded. Nine of the twenty-three tests assert that a rule does *not*
+> fire.
 
 ### 5. Pre-flight target-org fit analysis
 Every competitor reads only the **source**. Read the **destination** too: connect the org first
@@ -177,13 +194,11 @@ branch/compare alternative migration strategies instead of re-running from zero.
 1. ~~**Business-rule ledger** (#2)~~ — ✅ shipped.
 2. ~~**Characterization tests** (#3)~~ — ✅ shipped, including the adapter bridge that
    makes it work against bulkified output.
-3. **Anti-pattern radar** (#4) — **next.** Promoted above provenance because the preflight
-   work (`src/preflight.py`) already walks the source tree doing static analysis, so the
-   radar extends machinery that exists rather than building new. No model calls, no org
-   needed, and it is the fastest credibility win with a real Hybris architect.
-4. **Risk-ranked triage** (#6) — pairs directly with the radar, which produces the signal
-   it ranks on. Together they turn "read 400 files" into "these 12 need you".
-5. **Line-level provenance** (#1) — the largest of the three, and independent of them.
+3. ~~**Anti-pattern radar** (#4)~~ — ✅ shipped.
+4. **Risk-ranked triage** (#6) — **next.** The radar now produces the signal it ranks on,
+   so this is the natural follow-on: score every artifact on hazards + Critic severity +
+   complexity + rules carried, and turn "read 400 files" into "these 12 need you".
+5. **Line-level provenance** (#1) — the largest remaining moat item, independent of the above.
 
 > **Also shipped, though not on this list:** a source-side preflight that refuses a
 > non-Hybris upload before a run exists and reports credentials found in the archive.

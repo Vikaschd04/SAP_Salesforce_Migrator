@@ -103,9 +103,10 @@ At 900 calls, rare failures become certainties:
 2. ✅ **Characterization tests** — the customer's own JUnit cases replayed against the
    generated Apex, each graded by evidence strength. The adapter bridge is what makes it
    work against deliberately bulkified output (0% → 56% on our own demo).
-3. ⬜ **Hybris anti-pattern radar** — **next.** Extends `src/preflight.py`, which already
-   walks the source tree doing static analysis. No model calls, no org required.
-4. ⬜ **Risk-ranked review triage** — pairs with the radar, which produces the signal it ranks on.
+3. ✅ **Hybris anti-pattern radar** — eleven rules for the patterns that are ordinary in
+   Hybris and hazardous in Apex, surfaced at the Discovery gate before a plan is approved.
+   Ten findings on the reference corpus, two critical. Deterministic: no model calls, no org.
+4. ⬜ **Risk-ranked review triage** — **next.** The radar now produces the signal it ranks on.
 5. ⬜ **Line-level provenance** — the largest of the three and independent of them.
 
 > Also shipped, outside the original list: **source preflight** — a non-Hybris upload is

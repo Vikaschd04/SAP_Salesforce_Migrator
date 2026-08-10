@@ -107,6 +107,8 @@ class Blackboard:
     # Files we could not read or parse. Recorded rather than dropped: a migration that
     # silently forgets a file is worse than one that admits it could not read it.
     unreadable: list = field(default_factory=list)
+    # Hybris patterns that become hazards on Salesforce (src/radar.py).
+    radar: dict = field(default_factory=dict)
 
     # Agent products
     comprehensions: dict = field(default_factory=dict)     # class_name -> understanding

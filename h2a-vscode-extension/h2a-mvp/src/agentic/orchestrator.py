@@ -163,6 +163,7 @@ def _discovery_payload(bb) -> dict:
         "skipped": list(bb.frontend_skipped or []),
         # What we established about the codebase before spending anything on it.
         "preflight": getattr(bb, "preflight", None),
+        "radar": getattr(bb, "radar", None),
     }
 
 
@@ -456,6 +457,18 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         print(f"  ⚠ {len(pre['secrets'])} file(s) appear to contain credentials")
     if pre["verdict"] == "reject":
         raise ValueError("Preflight failed — " + " ".join(pre["blockers"]))
+
+    # Hybris habits that become Salesforce hazards. Deterministic, so it belongs here
+    # alongside preflight — a reviewer needs these BEFORE approving a plan, not after
+    # discovering the same shape in generated Apex three stages later.
+    from src.radar import scan as _radar_scan, headline as _radar_headline
+    try:
+        bb.radar = _radar_scan(input_dir)
+        emit("radar", **bb.radar)
+        if bb.radar["summary"]["total"]:
+            print(f"  Hazards: {_radar_headline(bb.radar['summary'])}")
+    except Exception as e:                              # advisory, never a blocker
+        print(f"  ⚠ hazard scan skipped: {e}")
 
     bb.schedule = get_translation_schedule(input_dir)
     bb.adjacency, bb.domains = build_dependency_graph(input_dir)
@@ -913,6 +926,11 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # the generated Apex. This is the only check here that tests *behaviour* rather than
     # appearance, so its verdicts are the strongest evidence the run produces.
     characterization = _characterize(bb, output_dir, offline=offline, config=config)
+
+    if getattr(bb, "radar", None) and bb.radar["summary"]["total"]:
+        from src.radar import write_radar_md, headline as _rh
+        write_radar_md(output_dir, bb.radar)
+        bb.record("Radar", "assessed", _rh(bb.radar["summary"]))
     report_file = generate_report(
         output_dir, bb.validation_results, acct,
         generated_results=bb.generated_dicts(), skipped_domains=[],
@@ -957,6 +975,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
          # Completeness in business rules, not files: every rule the Comprehender
          # found, and whether the generated code carries (and tests) it.
          rule_ledger=rule_ledger,
+         # Hybris-specific hazards found in the source, before anything was generated.
+         radar=getattr(bb, "radar", None),
          # Golden-master parity from the customer's own JUnit suite — behaviour, not looks.
          characterization=characterization,
          providers=acct.get("providers", {}), requests=acct.get("requests", 0),

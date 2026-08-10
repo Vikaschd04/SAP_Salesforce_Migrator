@@ -719,6 +719,51 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .note-inline.good { background: var(--good-bg); color: var(--good); }
 .note-inline code { background: transparent; border: none; padding: 0; color: inherit; font-weight: 600; }
 
+/* ── Hazard radar ──
+   Severity leads: the left stripe and the pill carry it, so a reviewer with ten minutes
+   knows where to spend them before reading a word. */
+.rd { border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--panel-2);
+  padding: 14px 16px; margin-bottom: 14px; }
+.rd-clean { border: 1px solid var(--border); border-left: 3px solid var(--good);
+  border-radius: var(--r-sm); background: var(--good-bg); color: var(--good);
+  padding: 11px 14px; margin-bottom: 14px; font-size: 12.5px; line-height: 1.55; }
+.rd-clean code { background: transparent; border: none; padding: 0; color: inherit; }
+.rd-head { display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 16px; flex-wrap: wrap; }
+.rd-head b { font-size: 13.5px; }
+.rd-head p { margin: 3px 0 0; font-size: 11.5px; color: var(--text-faint); }
+.rd-counts { display: flex; gap: 6px; flex-wrap: wrap; }
+.rd-pill { display: flex; align-items: baseline; gap: 5px; padding: 4px 10px; border-radius: 20px;
+  font-size: 11px; font-weight: 600; text-transform: capitalize; border: 1px solid transparent;
+  background: var(--panel-3); color: var(--text-dim); transition: .14s; }
+.rd-pill b { font-size: 12.5px; }
+.rd-pill.critical { background: var(--danger-bg); color: var(--danger); }
+.rd-pill.high { background: var(--warn-bg); color: var(--warn); }
+.rd-pill.sel { border-color: currentColor; }
+.rd-warn { margin-top: 12px; font-size: 12.5px; line-height: 1.55; color: var(--danger);
+  background: var(--danger-bg); border-radius: 8px; padding: 9px 12px; }
+.rd-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.rd-item { border: 1px solid var(--border); border-left: 3px solid var(--text-faint);
+  border-radius: 8px; background: var(--panel); }
+.rd-item.critical { border-left-color: var(--danger); }
+.rd-item.high { border-left-color: var(--warn); }
+.rd-item > summary { display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+  cursor: pointer; font-size: 12.5px; list-style: none; }
+.rd-item > summary::-webkit-details-marker { display: none; }
+.rd-item > summary:hover { background: var(--panel-hover); }
+.chip.rd-sev { font-size: 10px; padding: 2px 8px; text-transform: uppercase; letter-spacing: .04em; }
+.chip.rd-sev.critical { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
+.chip.rd-sev.high { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.chip.rd-sev.medium, .chip.rd-sev.info { background: var(--panel-3); color: var(--text-dim); }
+.rd-title { flex: 1; font-weight: 600; min-width: 0; }
+.rd-loc { font-size: 11px; color: var(--text-faint); flex: none; }
+.rd-body { padding: 0 12px 12px 12px; font-size: 12.5px; line-height: 1.6; color: var(--text-dim); }
+.rd-body p { margin: 8px 0 0; }
+.rd-fix { color: var(--text); }
+.rd-snippet { margin: 4px 0 0; padding: 9px 11px; background: var(--panel-3); border-radius: 6px;
+  font-family: var(--mono); font-size: 11.5px; overflow-x: auto; color: var(--text); }
+.rd-path { margin-top: 8px !important; font-size: 10.5px; }
+
 /* ── Discovery (repository understanding review) ── */
 .disc-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0 14px; }
 .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; }
