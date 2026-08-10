@@ -178,13 +178,27 @@ The hidden killer of human-in-the-loop is **volume** — nobody reviews 400 clas
 - **Why it wins:** it's the difference between HITL that's used and HITL that's switched off on
   day two. This is a *product* insight, not a model insight.
 
-### 7. Semantic alignment view, not text diff
+### 7. Semantic alignment view, not text diff — ✅ **SHIPPED**
 A side-by-side text diff across two different languages is close to useless. Align by **rule**:
 
 > `Java 42-58 · "10% discount over ₹5000"` → `PricingService.cls 30-41` + `Discount__c validation`
 > — *asserted by* `PricingServiceTest.testBulkDiscount`
 
 Three columns: **intent · implementation · proof**. This is the review UI the category is missing.
+
+**How it shipped** (`src/alignment.py`, `ALIGNMENT.md`): a join over data that all existed
+by the end of a run and had never been put side by side — rules from the Comprehender,
+methods and line ranges from provenance, and proof from characterization (a replayed
+behaviour) or the rule ledger (a test that references the rule's terms). A replayed
+behaviour outranks a keyword match, because it is stronger evidence.
+
+> **The chain is only as strong as its weakest link, and the report says which one that
+> is.** Rule → source class is recorded fact. Apex method → Java method is provenance,
+> already graded exact or normalised. But rule → *method* is keyword overlap, because the
+> Comprehender extracts a rule from a class rather than from a line — so that link is
+> labelled a heuristic wherever it appears. A row that cannot complete the chain reports
+> where it broke instead of guessing the rest: a plausible chain built on a bad match
+> would be worse than an incomplete one, because it would be believed.
 
 ### 8. Blast-radius preview before every change
 Before a reviewer approves a rework, show what it breaks: dependent classes, tests to re-run,

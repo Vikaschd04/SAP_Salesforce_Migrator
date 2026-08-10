@@ -113,6 +113,9 @@ class Blackboard:
     orgfit: dict = field(default_factory=dict)
     # Estimated cost/duration, produced before the first billable token.
     forecast: dict = field(default_factory=dict)
+    # Late-stage joins, kept on the board so alignment can read them.
+    characterization: dict = field(default_factory=dict)
+    rule_ledger: dict = field(default_factory=dict)
 
     # Agent products
     comprehensions: dict = field(default_factory=dict)     # class_name -> understanding

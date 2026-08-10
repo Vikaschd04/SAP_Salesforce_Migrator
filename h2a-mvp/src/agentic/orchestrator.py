@@ -971,6 +971,17 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         bb.record("Provenance", "traced", _ph(provenance["summary"]))
         print(f"  Provenance: {_ph(provenance['summary'])}")
 
+    # Intent, implementation and proof joined on one row — everything needed already
+    # existed by this point and had never been put side by side.
+    bb.characterization = characterization
+    bb.rule_ledger = rule_ledger
+    from src.alignment import build_alignment, write_alignment_md, headline as _ah
+    alignment = build_alignment(bb)
+    if alignment["summary"]["rules"]:
+        write_alignment_md(output_dir, alignment)
+        bb.record("Alignment", "joined", _ah(alignment["summary"]))
+        print(f"  Alignment: {_ah(alignment['summary'])}")
+
     from src.triage import build_triage, write_triage_md, headline as _th
     triage = build_triage(bb)
     if triage["summary"]["total"]:
@@ -1036,6 +1047,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
          orgfit=getattr(bb, "orgfit", None),
          # What this was estimated to cost, before it was run.
          forecast=getattr(bb, "forecast", None),
+         # Every rule, from intent through implementation to proof.
+         alignment=alignment,
          # Golden-master parity from the customer's own JUnit suite — behaviour, not looks.
          characterization=characterization,
          providers=acct.get("providers", {}), requests=acct.get("requests", 0),
