@@ -33,12 +33,29 @@ h2a-mvp/
 │   ├── cronjob.py         ← Spring cron triggers → Scheduled Apex runbook
 │   ├── verify.py          ← deploy to a real org + self-heal (the verification engine)
 │   ├── parity.py          ← "did we keep every business rule?" checklist
-│   └── report.py          ← writes FEASIBILITY_REPORT.md
+│   ├── report.py          ← writes FEASIBILITY_REPORT.md
+│   │
+│   │   ─── before any spend (no model calls at all) ───
+│   ├── preflight.py       ← is this even SAP Commerce? leaked credentials?
+│   ├── forecast.py        ← what this run will cost, as a range
+│   ├── orgfit.py          ← reads the DESTINATION org for collisions
+│   ├── radar.py           ← Hybris habits that become Salesforce hazards
+│   │
+│   │   ─── the proof layer (Part 13) ───
+│   ├── rule_ledger.py     ← every rule → asserted / implemented / at_risk / dropped
+│   ├── characterize.py    ← replays the customer's JUnit against the Apex
+│   ├── provenance.py      ← generated method → its Java origin, by symbol
+│   ├── alignment.py       ← rule → implementation → proof, on one row
+│   ├── triage.py          ← which artifacts actually need a human
+│   ├── blast.py           ← what else is in question if this is reworked
+│   ├── signoff.py         ← the audit as a deliverable
+│   ├── replay.py          ← every model call, keyed and auditable
+│   └── checkpoint.py      ← snapshot before each gate; diff two plans
 │   │
 │   └── agentic/           ← THE AGENT TEAM (Phase 1) — the smart mode
 │       ├── orchestrator.py    ← THE CONDUCTOR: runs the whole agentic show
 │       ├── blackboard.py      ← THE SHARED WHITEBOARD everyone reads/writes
-│       ├── planner.py         ← Agent 1: decides Apex / Native / Skip
+│       ├── planner.py         ← Agent 1: decides Convert / Skip (+ native flag)
 │       ├── builders.py        ← Agent 2 (Builder) + Agent 4 (Verifier)
 │       ├── critic.py          ← Agent 3: adversarial reviewer
 │       ├── router.py          ← picks a cheap vs frontier model per task
@@ -55,7 +72,7 @@ There are two ways to run a migration, and they share all the "hands":
 | Mode | Command | What runs it | Character |
 |---|---|---|---|
 | **Linear** | `repo-migrate` | `pipeline_driver.py` | A fixed assembly line: stage 1 → 2 → 3 … Always the same order. Cheaper, fewer Claude calls, no judgement. |
-| **Agentic** | `agent-migrate` | `agentic/orchestrator.py` | A team of agents around a shared whiteboard. Makes judgement calls (Native/Skip), reviews its own work, can send a piece *back* to be fixed. This is the default and the interesting one. |
+| **Agentic** | `agent-migrate` | `agentic/orchestrator.py` | A team of agents around a shared whiteboard. Makes judgement calls (Convert, with a native-product flag where one fits), reviews its own work, can send a piece *back* to be fixed, and pauses at three human review gates. This is the default and the interesting one. |
 
 The VS Code extension's **Engine** setting flips between them. The rest of this guide is about the **agentic** mode, because that's where "agents" live.
 
@@ -80,7 +97,7 @@ bb.comprehensions[cls["class_name"]] = comprehend_class(cls, offline=offline, mo
 ```
 This asks Claude, *"What does this class do — its purpose, its queries, its business rules?"* and stores the answer. Cheap, classification-ish work → the **router** (Part 8) can send it to a cheaper model.
 
-**Step 4 — Plan.** `PlannerAgent().run(bb)` — Agent 1 decides, for each target, whether it becomes **Apex**, a **Native** Salesforce product (e.g. CPQ), or is **Skipped**. Writes its decisions onto `bb.plan`. (Detail in Part 5.)
+**Step 4 — Plan.** `PlannerAgent().run(bb)` — Agent 1 decides, for each target, **Convert** or **Skip**, and records a `native_recommendation` where a Salesforce product (e.g. CPQ) would be a better home. A native fit never suppresses the conversion; it becomes a review flag on code that was built anyway. Writes its decisions onto `bb.plan`. (Detail in Part 5.)
 
 **Step 5 — Build + Critic loop.** This is the core coordination. For each domain, in dependency order, for each thing to build:
 ```python
@@ -132,8 +149,16 @@ It works in two passes — and this two-pass design is a pattern worth internali
 result = call_structured("plan_repo", prompt, PLANNER_SCHEMA, ...)
 decisions = {d["target_name"]: d for d in result["parsed"]["decisions"]}
 ```
-This is why, in the demo, the promotion logic gets tagged **Native → CPQ**: the Planner recognised "this is pricing, Salesforce has a product for that." Knowing what *not* to hand-translate is the Planner's whole value.
-**Safety net:** on `mock`/offline (no key), it skips the LLM pass and defaults everything to Apex — so the pipeline still runs, deterministically, for free.
+This is why, in the demo, the promotion logic comes back as **Convert + "consider Salesforce CPQ"**: the Planner recognised "this is pricing, Salesforce has a product for that" — and then converted it anyway.
+
+**The policy is convert everything.** An earlier version let the Planner mark a target `Native` and
+skip it, which meant a native-product *recommendation* silently deleted working business logic. It
+now always builds, and records the recommendation as a `native_recommendation` review flag on the
+generated artifact. Whether to adopt CPQ instead is a decision for the customer's architect, taken
+with the converted code in hand rather than instead of it. `Skip` survives only for provably dead
+code, framework glue and pure DTOs, and it must carry a reason.
+
+**Safety net:** on `mock`/offline (no key), it skips the LLM pass and defaults everything to Convert — so the pipeline still runs, deterministically, for free.
 
 ### Agent 2 — The Builder ([builders.py](../h2a-mvp/src/agentic/builders.py))
 **Job:** turn one planned target into an Apex class + a test class.
@@ -257,7 +282,7 @@ Using `Testing/acme-commerce-hybris` (5 classes), here's what actually happens:
 
 1. **Analyse:** domains found → `Order`, `OrderSummary`, `OrderCleanup`, `Promotion`; order sorted so `Order` precedes `OrderCleanup` (the job depends on it).
 2. **Comprehend:** Claude summarises each class. `DefaultOrderService` → *"places orders; rule: total must be > 0."*
-3. **Plan:** `OrderDao`→`OrderSelector` (Apex), `DefaultOrderService`→`OrderService` (Apex), `OrderController`→`OrderController` (Apex), `OrderCleanupJob`→`OrderCleanupScheduler` (Apex), **`DefaultPromotionService`→ Native → "Salesforce CPQ"** (the judgement call).
+3. **Plan:** `OrderDao`→`OrderSelector`, `DefaultOrderService`→`OrderService`, `OrderController`→`OrderController`, `OrderCleanupJob`→`OrderCleanupScheduler` — all Convert. **`DefaultPromotionService`→`PromotionService`, Convert + flagged "consider Salesforce CPQ"** (the judgement call, recorded rather than acted on).
 4. **Build + Critic, in order:** `OrderSelector` built first; its method signatures are registered. `OrderService` built next *with those signatures in scope* so it calls the selector correctly. Critic checks the zero-total rule survived; if the Apex dropped it, that's an `ERROR` → back to the Builder → re-review.
 5. **Reconcile:** the Apex used `Order__c.Priority__c`, which isn't in `items.xml`; but `priority` *is* in the Java → `Priority__c` is added with evidence.
 6. **Write + data + cron:** `.cls` files, object/field XML, `Customer__c.csv`/`Order__c.csv`/…, and the `OrderCleanupScheduler` schedule runbook.
@@ -274,7 +299,7 @@ Using `Testing/acme-commerce-hybris` (5 classes), here's what actually happens:
 |---|---|---|
 | The whole agentic flow | `agentic/orchestrator.py` → `run_agentic_migration` | function (the conductor) |
 | How agents share state | `agentic/blackboard.py` | dataclass (shared memory) |
-| Deciding Apex/Native/Skip | `agentic/planner.py` | agent |
+| Deciding Convert/Skip (+ native flag) | `agentic/planner.py` | agent |
 | Writing the Apex | `agentic/builders.py` → `BuilderAgent` | agent |
 | Reviewing the Apex | `agentic/critic.py` | agent |
 | Deploy + self-heal | `agentic/builders.py` → `VerifierAgent`, `verify.py` | agent + engine |

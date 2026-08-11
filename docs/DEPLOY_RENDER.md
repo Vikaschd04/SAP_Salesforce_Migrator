@@ -46,9 +46,12 @@ in the Render dashboard **Environment** tab add a key and switch the provider:
 
 - **Free tier sleeps** after ~15 min idle; the next request cold-starts in ~30–60 s. Upgrade to a
   paid instance for always-on.
-- **One migration at a time** (the engine uses a process-global lock) and **runs live in memory** —
-  a restart/redeploy clears history. Fine for demos; persistence + concurrency is the productionization
-  step (see [PLATFORM_VISION.md](PLATFORM_VISION.md), pillar 5A).
+- **Concurrency** is bounded by `H2A_MAX_CONCURRENT_RUNS` (default 3); further runs queue FIFO with a
+  visible position. Accounts and run history persist in SQLite at `H2A_DB_PATH` — **point that at a
+  mounted disk**, or a redeploy resets it. Uploaded source and generated output still live under the
+  container's temp dir and do not survive a restart.
+- **Set `H2A_SECRET_KEY`** if you want per-user API keys; without it every run uses the server's own
+  credential. Keep it stable — changing it makes stored keys unreadable.
 - **"Verify vs org"** needs the Salesforce CLI, which isn't in the container — leave it unchecked on
   the hosted app.
 - **Uploads / outputs** live in the container's temp dir (ephemeral).

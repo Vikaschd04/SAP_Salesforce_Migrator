@@ -176,7 +176,7 @@ layers=[("SURFACES",BLACK,["Web cockpit — review as it runs","VS Code — righ
 ("SHARED STAGE FUNCTIONS",BLACK,["parse Java","derive schema","generate Apex · LWC","validate & repair","data · jobs","verify · report"]),
 ("ASSURANCE",GDEEP,["rule ledger","replay your JUnit","provenance","triage","sign-off"]),
 ("AI PROVIDERS",BLACK,["Anthropic Claude — best quality","OpenRouter — cheap iteration","Mock — free, offline, zero exposure"])]
-ly=BODY+0.05; lh=0.86
+ly=BODY+0.05; lh=0.70
 for i,(name,lc,nodes) in enumerate(layers):
     rect(s,MX,ly,CW,lh,fill=WHITE,ln=LINE,lw=0.75)
     rect(s,MX,ly,1.95,lh,fill=lc)
@@ -187,10 +187,10 @@ for i,(name,lc,nodes) in enumerate(layers):
         rect(s,nx,ly+lh/2-0.19,w,0.38,fill=PANEL,ln=LINE,lw=0.5)
         tf=tf_box(s,nx+0.1,ly+lh/2-0.19,w-0.2,0.38,anchor=MSO_ANCHOR.MIDDLE); para(tf,[(nd,dict(size=9.5,bold=True,color=BLACK))])
         nx+=w+0.14
-    if i<3:
-        tf=tf_box(s,MX,ly+lh-0.02,CW,0.24); para(tf,[("▼",dict(size=9,color=FAINT))],align=PP_ALIGN.CENTER)
-    ly+=lh+0.24
-strip(s,"In plain words",[("Two “driving modes” — a smart agent team, or a simple assembly line — share the same proven tools underneath. And the AI brain is swappable, including a free offline one for zero-exposure evaluation.",{})])
+    if i < len(layers)-1:
+        tf=tf_box(s,MX,ly+lh-0.04,CW,0.2); para(tf,[("▼",dict(size=8,color=FAINT))],align=PP_ALIGN.CENTER)
+    ly+=lh+0.16
+strip(s,"In plain words",[("Three front doors, one engine. The agent team does the judgement work; the ",{}),("assurance layer",dict(bold=True,color=BLACK)),(" checks it afterwards using no AI at all. And the AI brain is swappable, including a free offline one for zero-exposure evaluation.",{})])
 
 # 5 · THE AI AGENT TEAM
 s=slide(PANEL)
@@ -204,7 +204,7 @@ tf=tf_box(s,MX,BODY+0.84,CW,0.5,anchor=MSO_ANCHOR.MIDDLE)
 para(tf,[("The Blackboard",dict(size=11.5,bold=True,color=GDEEP)),(" — shared state: schema · migration plan · artifacts · ",dict(size=10.5,color=INK)),("decision log",dict(size=10.5,bold=True,color=GDEEP)),(" · open questions",dict(size=10.5,color=INK))],align=PP_ALIGN.CENTER)
 tf=tf_box(s,MX,BODY+1.37,CW,0.2); para(tf,[("▲   ▼",dict(size=8.5,color=FAINT))],align=PP_ALIGN.CENTER)
 lx,cw=cols(4,0.24)
-ag=[("STRATEGY","The Planner","Decides what becomes Apex, what should be a native Salesforce product, and what to skip — with a written rationale.","“Pricing rules? That's CPQ — don't hand-build it.”"),
+ag=[("STRATEGY","The Planner","Converts everything, with a written rationale. Where a native Salesforce product fits better, it flags it for review — it never drops the logic.","“CPQ suits this pricing — but here's the code anyway.”"),
 ("EXECUTION","The Builder","Writes the Apex + a test class per class, grounded in your real data model and best practices.","“Bulk-safe, secure, on pattern — like a senior dev.”"),
 ("QUALITY GATE","The Critic","Adversarially reviews every piece: is the original behavior preserved? Is it secure?","“The zero-total rule got dropped — blocked.”"),
 ("PROOF","The Verifier","Deploys to a real org, reads real compiler errors, and heals them until green.","“Not ‘looks right’ — it actually ran.”")]
@@ -219,36 +219,37 @@ footer(s,5)
 
 # 6 · THE PIPELINE
 s=slide()
-header(s,"05 · The Pipeline",["Ten stages, end to end"],6,tsize=30)
-stg=[("01","Crawl & schedule","Group classes by domain; sort so dependencies convert first.",0),
-("02","Call graph","Map who-calls-whom for the visual dashboard.",0),
-("03","Ingest","Parse the Java and data-model definitions precisely.",0),
-("04","Derive schema","Build the target object/field catalog — the source of truth.",0),
-("05","Comprehend","AI summarises each class: purpose, queries, rules.",1),
-("06","Generate","AI writes the Apex + tests, grounded in the schema.",1),
-("07","Validate & repair","Safety checks; failures loop back to the AI to fix.",1),
-("08","Reconcile & metadata","Fill schema gaps with evidence; emit objects & fields.",0),
-("09","Data & jobs","ImpEx → CSVs; cron triggers → scheduling runbook.",0),
-("10","Verify & report","Real-org deploy + self-heal; confidence scores.",1)]
+header(s,"05 · The Pipeline",["Ten stages, and three places you decide"],6,tsize=30)
+stg=[("01","Preflight","Is this really Hybris? Any credentials in the upload? No AI, no cost.",0),
+("02","Scan & schedule","Group by domain; sort so dependencies convert first.",0),
+("03","Cost & org fit","A price range, and what collides in YOUR org — before a penny.",0),
+("04","▸ REVIEW GATE 1","You approve what was found, before any AI is used.",2),
+("05","Comprehend","AI reads each class: purpose, business rules, risks.",1),
+("06","Plan  ▸ GATE 2","AI plans every target; you approve or flip any of them.",1),
+("07","Build & review","AI writes Apex/LWC + tests; a second AI challenges it.",1),
+("08","▸ REVIEW GATE 3","You approve the code, or send it back with feedback.",2),
+("09","Verify","Real-org deploy + self-heal; data and schedules emitted.",1),
+("10","Prove it","Rule ledger, your tests replayed, provenance, sign-off.",0)]
 lx,cw=cols(5,0.22); ch=1.55
 for i,(n,t,b,ai) in enumerate(stg):
     x=lx[i%5]; y=BODY+0.05+(i//5)*(ch+0.24)
     card(s,x,y,cw,ch,top=None)
     tf=tf_box(s,x+0.16,y+0.14,cw-0.3,0.24); para(tf,[(n,dict(size=9,bold=True,color=GDEEP,name=MONO))])
     if ai:
-        rect(s,x+cw-0.5,y+0.13,0.36,0.24,fill=BLACK)
-        tf=tf_box(s,x+cw-0.5,y+0.12,0.36,0.24,anchor=MSO_ANCHOR.MIDDLE); para(tf,[("AI",dict(size=8,bold=True,color=WHITE,name=MONO))],align=PP_ALIGN.CENTER)
+        tag,bg = ("YOU",COPPER) if ai==2 else ("AI",BLACK)
+        rect(s,x+cw-0.56,y+0.13,0.42,0.24,fill=bg)
+        tf=tf_box(s,x+cw-0.56,y+0.12,0.42,0.24,anchor=MSO_ANCHOR.MIDDLE); para(tf,[(tag,dict(size=8,bold=True,color=WHITE,name=MONO))],align=PP_ALIGN.CENTER)
     tf=tf_box(s,x+0.16,y+0.4,cw-0.3,0.35); para(tf,[(t,dict(size=11,bold=True,color=BLACK))],line=1.05)
     tf=tf_box(s,x+0.16,y+0.78,cw-0.3,0.7); para(tf,b,size=8.6,color=GRAY,line=1.2)
-strip(s,"In plain words",[("The ",{}),("AI",dict(bold=True,color=BLACK)),(" is used only where judgement is needed — understanding and writing code. Everything mechanical is ordinary tested software: fast, free, repeatable.",{})])
+strip(s,"In plain words",[("The ",{}),("AI",dict(bold=True,color=BLACK)),(" is used only where judgement is needed — understanding and writing code. Everything mechanical, including all four checks before the first gate, is ordinary tested software: fast, free, repeatable.",{})])
 
 # 7 · SELF-HEALING VERIFICATION
 s=slide(PANEL)
-header(s,"06 · Why You Can Trust It",["It doesn't stop at “the AI wrote code.” It proves the code runs"],7,tsize=23)
+header(s,"06 · Why You Can Trust It",["It doesn't stop at “the AI wrote code.” It proves the behaviour survived"],7,tsize=23)
 lx,cw=cols(4,0.22)
 loop=[("Deploy for real","Validation-only deploy to an actual Salesforce org"),
 ("Read real errors","The actual compiler output — not a guess"),
-("Fix automatically","Three healing modes (below)"),
+("Fix automatically","Missing fields, compile errors, thin coverage"),
 ("Repeat until green","Anything unresolved is flagged for a human")]
 for i,(t,b) in enumerate(loop):
     x=lx[i]; card(s,x,BODY+0.1,cw,1.15,top=None)
@@ -257,25 +258,26 @@ for i,(t,b) in enumerate(loop):
     if i<3:
         tf=tf_box(s,x+cw,BODY+0.45,0.22,0.4,anchor=MSO_ANCHOR.MIDDLE); para(tf,[("→",dict(size=13,color=FAINT))],align=PP_ALIGN.CENTER)
 tf=tf_box(s,MX,BODY+1.4,CW,0.3); para(tf,[("↺  BOUNDED LOOP — RUNS UNTIL GREEN, NEVER SILENTLY SHIPS",dict(size=9,bold=True,color=GDEEP,name=MONO,track=1.0))],align=PP_ALIGN.CENTER)
+tf=tf_box(s,MX,BODY+1.62,CW,0.3); para(tf,[("AND THEN IT PROVES THE BEHAVIOUR SURVIVED",dict(size=9,bold=True,color=COPPER,name=MONO,track=1.0))],align=PP_ALIGN.CENTER)
 lx3,cw3=cols(3,0.3)
-heal=[("Metadata healing","“Missing field” error? If the field is genuinely used in the original Java — proven by evidence — it's added to the data model. Never guessed."),
-("Code repair","Compile errors are fed back to the AI with the real error message, and the class is rewritten and re-tried."),
-("Coverage healing","Salesforce requires 75% test coverage to deploy. Below it? The tool writes more tests — error paths, bulk scenarios — until it clears the bar.")]
+heal=[("Every business rule is tracked","Each rule found in your Java is followed through to the finished code and lands in one of four buckets — asserted, implemented, at risk, or dropped. “Dropped” is the one no other tool shows you."),
+("Your own tests, replayed","We mine your existing JUnit suite for what the old code actually did, then replay it against the new Apex. The AI may set the test up, but it is never allowed to write the expected answer."),
+("And what it can't prove","The sign-off contract lists the gaps as prominently as the wins — untested rules, methods with no traceable origin, whether an org ever compiled it. There is no “100%” badge anywhere.")]
 for i,(t,b) in enumerate(heal):
-    x=lx3[i]; card(s,x,BODY+1.85,cw3,2.4,top=BLACK)
-    tf=tf_box(s,x+0.22,BODY+2.08,cw3-0.44,0.35); para(tf,[(t,dict(size=12.5,bold=True,color=BLACK))])
-    tf=tf_box(s,x+0.22,BODY+2.5,cw3-0.44,1.6); para(tf,b,size=10.3,color=GRAY,line=1.26)
-strip(s,"In plain words",[("The AI can only use fields that provably exist, a second AI challenges every piece, and the code must actually compile against a real org. Correctness comes from the loop — not from trusting the model.",{})])
+    x=lx3[i]; card(s,x,BODY+2.0,cw3,2.28,top=GREEN)
+    tf=tf_box(s,x+0.22,BODY+2.2,cw3-0.44,0.5); para(tf,[(t,dict(size=12,bold=True,color=BLACK))],line=1.1)
+    tf=tf_box(s,x+0.22,BODY+2.72,cw3-0.44,1.5); para(tf,b,size=9.6,color=GRAY,line=1.24)
+strip(s,"In plain words",[("Any tool can hand you Apex. The question your architect will ask is ",{}),("“how do I know it still does what it did?”",dict(bold=True,color=BLACK)),(" — and that is what the whole right-hand side of this slide answers.",{})])
 
 # 8 · WHAT YOU GET
 s=slide()
 header(s,"07 · The Deliverable",["What lands in the output folder"],8,tsize=30)
 lx,cw=cols(3,0.3)
-inv=[("force-app/…/classes","Apex code + tests","Selectors, Services, REST controllers, scheduled jobs — each with its own test class."),
+inv=[("force-app/…/classes · lwc","Apex, LWC + tests","Selectors, Services, controllers, scheduled jobs and Lightning Web Components — each with its own test."),
 ("force-app/…/objects","Data model","Custom objects, fields, picklists, relationships, required/unique constraints."),
-("data/ · DATA_MIGRATION.md","The data","Load-ready CSVs plus a safe, re-runnable import runbook."),
-("CRON_JOBS.md · schedule.apex","Schedules","Every timed job translated, same timing, with a ready-to-run script."),
-("MIGRATION_PLAN.md","The decisions","The Planner's call on every class, the Critic's findings, the full decision log."),
+("data/ · CRON_JOBS.md","Data & schedules","Load-ready CSVs with a re-runnable import runbook; every timed job translated, same timing."),
+("SIGN_OFF.md","The audit","Who approved which stage, on what evidence — and, just as prominently, what it does not certify."),
+("TRIAGE.md · BUSINESS_RULES.md","Where to look","Every file ranked by how much it needs you, and every business rule with its verdict."),
 ("FEASIBILITY_REPORT.md","The scorecard","Validation results, a High/Medium/Low confidence score per class, deploy status, cost.")]
 for i,(code,t,b) in enumerate(inv):
     x=lx[i%3]; y=BODY+0.1+(i//3)*1.85
@@ -287,7 +289,7 @@ for i,(code,t,b) in enumerate(inv):
 chips(s,[{'t':"340 automated tests, all passing",'runs':[("340",dict(bold=True,color=BLACK)),(" automated tests, all passing",{})]},
          {'t':"3 AI providers incl. free offline",'runs':[("3",dict(bold=True,color=BLACK)),(" AI providers incl. free offline",{})]},
          {'t':"every run reports its own cost",'runs':[("every run reports its own ",{}),("cost",dict(bold=True,color=BLACK))]}],BODY+3.95)
-strip(s,"In plain words",[("Not just code — a complete package: the system, its data, its schedules, and the paper trail that tells your reviewers exactly where to look.",{})])
+strip(s,"In plain words",[("Not just code — a complete package: the system, its data, its schedules, and ",{}),("the receipts",dict(bold=True,color=BLACK)),(" that tell your reviewers exactly where to look and what is still unproven.",{})])
 
 # 9 · THE BUSINESS CASE
 s=slide(PANEL)
@@ -297,10 +299,11 @@ tf=tf_box(s,MX+0.1,ty,5,0.3); para(tf,[("WITHOUT THE ACCELERATOR",dict(size=8.5,
 tf=tf_box(s,MX+CW/2+0.1,ty,5,0.3); para(tf,[("WITH THE ACCELERATOR",dict(size=8.5,color=GRAY,name=MONO,track=1.0))])
 rect(s,MX,ty+0.32,CW,0.022,fill=BLACK)
 biz=[("Months of manual rewriting","A working, verified first draft in minutes–hours"),
-("Business rules silently lost","An AI reviewer checks rule preservation; a parity score proves it"),
+("Business rules silently lost","Every rule tracked to a verdict — including the ones nothing carries"),
 ("“Trust me, it compiles”","Deployed to a real org and self-corrected until verifiably green"),
 ("Everything becomes custom code to own forever","Native Salesforce products recommended where they fit — less debt"),
-("A black-box engagement","A decision log and a confidence score on every class")]
+("A black-box engagement","A signed audit: who approved what, on what evidence"),
+("“It converted 100% of files”","A number that means something — rules preserved, not files touched")]
 for i,(a,b) in enumerate(biz):
     y=ty+0.4+i*rh
     tf=tf_box(s,MX+0.1,y,CW/2-0.3,rh-0.12,anchor=MSO_ANCHOR.MIDDLE); para(tf,[(a,dict(size=11.5,bold=True,color=RISK))],line=1.12)
