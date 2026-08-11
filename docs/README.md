@@ -15,6 +15,7 @@ This folder is the single home for every project document. Start with whichever 
 | **Present the slide deck to management** | `DEMO_DECK.pptx` (10 slides, 10–12 min) + [DEMO_DECK_SCRIPT.md](DEMO_DECK_SCRIPT.md) (what to say per slide, with time budgets) |
 | **Present the architecture to engineers** | `ARCHITECTURE_DECK.pptx` (10 slides) + `architecture-diagram.png` (the diagram on its own) |
 | **Run the software live during a demo** | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) |
+| **Explain what each screen in the web cockpit shows** | [COCKPIT_GUIDE.md](COCKPIT_GUIDE.md) |
 | **Install and run it myself** | [HOW_TO_USE.md](HOW_TO_USE.md) |
 | **Run it for a team (accounts, keys, queue)** | [SETUP.md](SETUP.md) — the server-settings table |
 | **Know what's shipped vs still open** | [ROADMAP_INDUSTRIAL.md](ROADMAP_INDUSTRIAL.md) · [DIFFERENTIATORS.md](DIFFERENTIATORS.md) |
@@ -33,6 +34,7 @@ This folder is the single home for every project document. Start with whichever 
 | `DEMO_DECK.pptx` | The 10-slide executive accelerator deck — **editable PowerPoint** (A4 landscape), built for a 10–12 minute presentation |
 | [DEMO_DECK_SCRIPT.md](DEMO_DECK_SCRIPT.md) | **Deck speaker script** — what to say per slide, with per-slide time budgets and Q&A quick answers |
 | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) | **Live product demo script** — how to run the software live on the sample project, with talking points and Q&A |
+| [COCKPIT_GUIDE.md](COCKPIT_GUIDE.md) | **Screen-by-screen guide to the web cockpit** — what every tab and sub-tab shows, in plain words, with the line to say for each |
 | `ARCHITECTURE_DECK.pptx` | The 10-slide **architecture deck** for a technical audience — surfaces, layers, pipeline, run lifecycle, stack, deployment, and the decisions behind them |
 | `architecture-diagram.png` | The full layered architecture as **one image** (2600×1906) — drop it into any deck, doc, or wiki |
 | `build_deck.py` | Regenerates `DEMO_DECK.pptx` from code |
