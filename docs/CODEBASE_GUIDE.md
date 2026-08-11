@@ -1,6 +1,6 @@
 # Understanding the Codebase — A Teacher's Walkthrough
 
-**Version:** 0.8.0 · **Audience:** anyone who wants to *actually understand* how this engine works — no prior AI-agent background assumed.
+**Version:** 0.10.0 · **Audience:** anyone who wants to *actually understand* how this engine works — no prior AI-agent background assumed.
 
 This is the "sit down and explain it to me" document. We'll build your mental model from the top down: first the big idea, then the journey one migration takes, then the agents (what they *really* are), how they coordinate, and finally the machinery that turns an "agent" into a real Claude API call.
 
@@ -325,7 +325,53 @@ path:
 The agents, the Blackboard, the router, the LLM layer — **none of that changed shape.** A new output
 target slotted into the same team. That's the payoff of the architecture in Parts 5–8.
 
-## Part 13 — Glossary (plain words)
+## Part 13 — The assurance layer: the modules that prove the work
+
+The agents *produce* the migration. This second set of modules *proves* it — and none of
+them makes a model call. They read what the run already recorded, which is what makes them
+deterministic, free, and hard to argue with.
+
+They matter more than they look. Any tool can emit Apex; this is the part a customer's
+architect actually interrogates.
+
+### Before anything is spent (all AI-free, all shown at the Discovery gate)
+| Module | What it does |
+|---|---|
+| [preflight.py](../h2a-mvp/src/preflight.py) | Is this really a SAP Commerce project? Verdict, confidence, blockers — plus any credentials found in the upload. Refuses a wrong upload before a run exists. |
+| [forecast.py](../h2a-mvp/src/forecast.py) | What this run will cost, as a **range**. Constants are measured from instrumented runs and kept in one place so drift is visible. |
+| [orgfit.py](../h2a-mvp/src/orgfit.py) | Reads the **destination** org via the `sf` CLI and reconciles it against the plan: collisions, reusable standard objects, installed packages, limits headroom. |
+| [radar.py](../h2a-mvp/src/radar.py) | Eleven Hybris→Salesforce hazard rules (query-in-loop, `@Transactional`, session-scoped beans…). Java and XML are stripped separately — the Java stripper erases XML attribute values. |
+
+### After the build — the proof stack
+| Module | The question it answers |
+|---|---|
+| [rule_ledger.py](../h2a-mvp/src/rule_ledger.py) | Did each business rule survive? Four verdicts: asserted / implemented / at_risk / **dropped**. |
+| [characterize.py](../h2a-mvp/src/characterize.py) | Does it *behave* the same? Mines the original JUnit suite and replays it. The adapter bridge lets the model arrange and act but **never write the assertion** — that comes from the recording. |
+| [provenance.py](../h2a-mvp/src/provenance.py) | Where did each generated method come from? Symbols located in both texts, **never model-reported line numbers**. |
+| [alignment.py](../h2a-mvp/src/alignment.py) | Rule → implementation → proof on one row. It labels its own weakest link (rule→method is keyword overlap) wherever that link appears. |
+| [triage.py](../h2a-mvp/src/triage.py) | Which of these need a human? Bands plus the plain reasons — the score is a sorting device and is never shown alone. |
+| [blast.py](../h2a-mvp/src/blast.py) | What else comes back into question if I rework this one? Reverse walk over `referenced_types`; direct and transitive kept separate. |
+| [signoff.py](../h2a-mvp/src/signoff.py) | Who approved what, on what evidence — and what this does **not** certify. An unattended run reads *unreviewed*, never *approved*. |
+| [replay.py](../h2a-mvp/src/replay.py) | Every model call, keyed and replayable. Prompts are deliberately **not** stored. |
+| [checkpoint.py](../h2a-mvp/src/checkpoint.py) | Snapshots the Blackboard before each gate, so you can return to *before you decided* and diff two runs. |
+
+### Cross-cutting infrastructure
+| Module | Why it exists |
+|---|---|
+| [runctx.py](../h2a-mvp/src/runctx.py) | Per-run provider / model / key / spend-cap in `ContextVar`s. Two concurrent tenants used to race over one process global — a mock run could inherit a real provider. `propagate()` copies **values**, not the Context. |
+| [pricing.py](../h2a-mvp/src/pricing.py) | Per-model rates. An unpriced model makes a total a **floor**, and it says so rather than under-reporting. |
+| [slim.py](../h2a-mvp/src/slim.py) | Trims imports and trivial accessors out of prompts. **Javadoc is always kept** — it is where the business rules live. |
+| [textio.py](../h2a-mvp/src/textio.py) | One encoding fallback chain (utf-8-sig → utf-8 → cp1252 → iso-8859-1). Real estates contain latin-1 files, and a `UnicodeDecodeError` used to abort a whole run. |
+| [state_ledger.py](../h2a-mvp/src/state_ledger.py) · [incremental.py](../h2a-mvp/src/agentic/incremental.py) | Reuse whatever provably hasn't changed, so a re-run isn't re-billed for it. |
+
+### One rule that shaped several of these
+**Where the AI could grade its own homework, it isn't allowed to.** The characterization
+bridge can't write assertions; provenance never asks for line numbers; the rule ledger
+inspects generated *text* rather than asking the model whether it did the job. Each of
+those was a place where the easy design would have produced a number that always looked
+good.
+
+## Part 14 — Glossary (plain words)
 
 - **Agent** — a Python class with a role and a method; it preps data, calls Claude, and writes a structured result to the Blackboard. Not autonomous, not magic.
 - **Orchestrator** — the top-level function that runs the agents in the right order. The conductor.

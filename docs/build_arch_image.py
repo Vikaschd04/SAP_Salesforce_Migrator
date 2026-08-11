@@ -9,6 +9,7 @@ without looking foreign. Hue carries meaning and is used consistently everywhere
 
 Regenerate with:  python docs/build_arch_image.py
 """
+import pathlib
 from PIL import Image, ImageDraw, ImageFont
 
 # ── palette (build_deck.py's, plus a purple for the model layer) ──
@@ -180,11 +181,26 @@ y += band(y, "LAYER 4 · CAPABILITIES", "independently testable; shared by both 
     ("generate · _lwc", "Apex classes + tests; LWC bundle + controller", GRAY),
     ("validate · _lwc", "Static checks → LLM repair loop", GRAY),
     ("verify", "sf CLI dry-run deploy with self-heal", GRAY),
-    ("rule_ledger", "Every rule traced source → artifact → test", GREEN),
-    ("characterize", "Replays the customer's JUnit against the Apex", GREEN),
     ("impex · cronjob", "Data records; cronjobs → Scheduled Apex", GRAY),
     ("report · pricing", "Feasibility, completeness ledger, cost", GRAY),
 ], cols=5, tag_bg=GRAY)
+y += conn(y, "the proof layer — deterministic, no model calls, reads what the run recorded")
+
+y += band(y, "LAYER 4B · ASSURANCE", "converted code is the commodity; this is the differentiator",
+          GREEN, [
+              ("radar", "11 Hybris→Salesforce hazard rules, before any spend", COPPER),
+              ("forecast", "Cost as a range, at the Discovery gate", COPPER),
+              ("orgfit", "Reads the DESTINATION org for collisions", COPPER),
+              ("rule_ledger", "asserted / implemented / at_risk / dropped", GREEN),
+              ("characterize", "Replays the customer's JUnit against the Apex", GREEN),
+              ("provenance", "Method → origin by symbol, never model line numbers", GREEN),
+              ("alignment", "Rule → implementation → proof, on one row", GREEN),
+              ("triage", "Which artifacts actually need a human, ranked", GREEN),
+              ("blast", "What else is in question if this is reworked", GREEN),
+              ("signoff", "Who approved what — and what is NOT certified", GREEN),
+              ("replay", "Every model call keyed and auditable", GREEN),
+              ("checkpoint", "Return to before a gate; diff two plans", GREEN),
+          ], cols=6, tag_bg=GREEN)
 y += conn(y, "every model call funnels through one gateway")
 
 y += band(y, "LAYER 5 · LLM GATEWAY", "llm.py — the single choke point for cost, retries, caching",
@@ -250,7 +266,7 @@ text(W - M, fy + 22,
      "Python 3.12 · FastAPI · React 18 + Vite · TypeScript · Anthropic / OpenRouter · Docker → Render",
      MONO(19), FAINT, anchor="ra")
 
-out = "docs/architecture-diagram.png"
+out = str(pathlib.Path(__file__).resolve().parent / "architecture-diagram.png")
 img = img.crop((0, 0, W, int(fy + 78)))     # trim the working canvas to real content
 img.save(out, "PNG")
 print(f"wrote {out}  ({img.width}×{img.height})")

@@ -7,16 +7,46 @@
 
 ---
 
-## Status snapshot (v0.8.0)
+## Status snapshot (v0.10.0)
 
 | Phase | Status |
 |---|---|
-| **Phase 0 — Prove correctness** | ✅ Core delivered (self-healing deploy loop, confidence scoring, schema reconciliation, parity harness + strengthening) |
-| **Phase 1 — Agentic core** | ✅ Core delivered (Blackboard, Planner, Builder+Critic, Verifier, model routing, RAG scaffold) |
-| **Phase 2 — Full-surface coverage** | 🔶 In progress — done: ImpEx data migration, deeper `items.xml` metadata, cronjobs → Scheduled Apex. Open: business processes, OCC REST |
-| **Phase 3 — Frontend + complete-conversion intelligence** | 🔶 In progress — done: **Spartacus (Angular) → LWC** engine (frontend ingest, LWC generator + `@AuraEnabled` Apex wiring, LWC validator, LWC RAG docs, Critic LWC review); **"convert everything" policy** (native-fit logic like pricing is converted **and** flagged for review, never skipped) + a **completeness ledger** proving no source is silently dropped |
-| **Phase 4 — Enterprise platform** | ⏳ Not started |
-| **Phase 4 — Learning system & GTM** | ⏳ Not started |
+| **Phase 0 — Prove correctness** | ✅ Delivered (self-healing deploy loop, confidence scoring, schema reconciliation, parity harness + strengthening) |
+| **Phase 1 — Agentic core** | ✅ Delivered (Blackboard, Planner, Builder+Critic, Verifier, model routing, RAG) |
+| **Phase 2 — Full-surface coverage** | 🔶 Done: ImpEx data migration, deeper `items.xml` metadata, cronjobs → Scheduled Apex. Open: business processes, OCC REST |
+| **Phase 3 — Frontend + complete-conversion** | ✅ Delivered — **Spartacus (Angular) → LWC** engine (frontend ingest, LWC generator + `@AuraEnabled` Apex wiring, LWC validator, LWC RAG, Critic LWC review); **"convert everything"** policy + completeness ledger |
+| **Phase 4 — The proof moat** | ✅ Delivered — all thirteen differentiators. See [DIFFERENTIATORS.md](DIFFERENTIATORS.md) |
+| **Phase 5 — Web platform** | ✅ Core delivered — cockpit, accounts/sessions, per-tenant encrypted keys, FIFO run queue, durable SQLite history, spend caps. Open: Postgres, org/project hierarchy, RBAC, cost metering |
+| **Phase 6 — Learning system & GTM** | ⏳ Not started — house-style memory needs a second migration for the same client before it can demonstrate anything |
+
+### What "the proof moat" means concretely
+
+| Capability | What it answers |
+|---|---|
+| Preflight | Is this even a Hybris codebase? Any credentials in the upload? |
+| Cost & duration forecast | What will this cost — as a range — *before* the first billable token |
+| Per-run spend cap | The forecast made binding, so a runaway repair loop cannot spend without limit |
+| Target-org fit | Will it deploy into *your* org, or collide with what is already there? |
+| Anti-pattern radar | Which Hybris habits become Salesforce hazards |
+| Business-rule ledger | Did each rule survive? asserted / implemented / at_risk / **dropped** |
+| Characterization testing | Does it *behave* the same, judged by the original JUnit suite |
+| Line-level provenance | Where did each generated method come from |
+| Semantic alignment | Rule → implementation → proof, on one row |
+| Review triage | Which files actually need a human, ranked |
+| Blast radius | What else comes back into question if I rework this |
+| Deterministic replay | Every model call, keyed and auditable |
+| Sign-off contract | Who approved what, on what evidence — and what is **not** certified |
+| Named checkpoints | Return to before a gate decision; diff two plans |
+
+### The honest gap
+
+Every capability above is covered by tests and validated against the `mock` provider.
+**The pipeline has not yet completed an end-to-end run against a real model.** The first
+attempt found a genuine defect — a rejected API key was quietly degrading every stage to
+its deterministic fallback while the run still reported success — which is now fixed and
+regression-tested. Until a real run completes, treat the proof stack as *built and
+unit-verified*, not *field-proven*. That run is the next milestone, and it needs a valid
+provider key rather than more code.
 
 ---
 

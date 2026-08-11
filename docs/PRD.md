@@ -1,7 +1,7 @@
 # Product Requirements Document (PRD)
 
 **Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.8.0 · **Status:** Active development, Phase 2 in progress
+**Version:** 0.10.0 · **Status:** Active development, Phase 2 in progress
 **Audience:** Product owners, engineering leadership, stakeholders evaluating the product
 
 ---
@@ -49,8 +49,22 @@ Point the tool at a Hybris folder. It produces:
 - The **Salesforce data model** (custom objects, fields, picklists, relationships) derived from `items.xml`.
 - The **actual data** (`.impex` → CSV + an upsert runbook).
 - **Scheduled jobs** (Hybris cronjobs → Salesforce `Schedulable` Apex + a ready-to-run scheduling script).
+- **Lightning Web Components** where a Spartacus (Angular) storefront was present, wired to generated `@AuraEnabled` Apex controllers.
 - A **feasibility report** — validation results, confidence score per class, deploy status, code coverage.
-- A **migration plan document** — what the AI decided to build as Apex vs. recommend as a native Salesforce feature (e.g., "use Salesforce CPQ instead of hand-rolled discount code"), and every finding the review agent raised.
+- A **migration plan document** — what the AI decided to convert, what it skipped and why, and every finding the review agent raised. A native-product fit (e.g. "Salesforce CPQ would be a better home for this pricing logic") is recorded as a **review flag on fully-converted code**, never as a reason to skip it.
+- **The evidence** that the migration held — see §5b.
+
+### 5b. The evidence, which is the actual product
+
+Converted code is the commodity; the proof is the differentiator. Every run also produces:
+
+- A **business-rule ledger** — every rule found in the source, and whether it ended up asserted, implemented, at risk, or **dropped**. The last bucket is the one no competitor shows.
+- **Characterization tests** — the original JUnit suite mined for recorded behaviour and replayed against the generated Apex. Golden-master parity, not a text diff.
+- **Line-level provenance** — every generated method traced to the Java that produced it, located by symbol rather than reported by the model.
+- **Review triage** — every artifact ranked must-review / worth-a-look / routine, so a reviewer's real attention lands on the twelve that matter rather than being spent by file sixty.
+- A **sign-off contract** — who approved which gate, when, on what evidence, and prominently what the run does **not** certify.
+
+Before the first billable call it also produces a **preflight verdict**, a **cost forecast** (as a range), a **target-org fit report**, and an **anti-pattern radar** — all without a single model call.
 
 See [APP_FLOWS.md](APP_FLOWS.md) for the exact step-by-step flow, and [HOW_IT_WORKS.md](HOW_IT_WORKS.md) for a plain-English walkthrough.
 
@@ -75,17 +89,28 @@ See [APP_FLOWS.md](APP_FLOWS.md) for the exact step-by-step flow, and [HOW_IT_WO
 | Metric | How it's measured |
 |---|---|
 | **Deploy success rate** | % of generated classes that dry-run deploy cleanly to a Salesforce org (`FEASIBILITY_REPORT.md` §2b) |
-| **Behavioral parity** | % of the original business rules that are actually asserted by the generated tests (`PARITY.md`) |
+| **Behavioral parity** | % of the original business rules actually asserted by the generated tests (`PARITY.md`) |
+| **Rule survival** | Business rules asserted or implemented vs. **dropped** (`BUSINESS_RULES.md`). The headline number we care about, because "% of files converted" answers the wrong question. |
+| **Recorded-behaviour replay** | % of behaviours mined from the original JUnit suite that replay against the generated Apex (`CHARACTERIZATION.md`) |
+| **Traceability** | % of generated methods traced to a Java origin, and the count of Java methods with no Apex counterpart (`PROVENANCE.md`) |
+| **Forecast accuracy** | Actual spend against the range quoted at the Discovery gate |
 | **Cost per class** | LLM token spend per translated class (tracked in the report's token-accounting section) |
 | **Time to first draft** | Wall-clock time from "point at a repo" to "deployable output" |
 | **Reviewer effort saved** | Proportion of classes that land at High confidence (needing only a skim) vs. Low confidence (needing a rewrite) |
 
 ## 9. Future scope
 
-Full detail lives in [ROADMAP.md](ROADMAP.md). In short:
-- **Phase 2 (in progress):** more Hybris surfaces — business processes → Flow, storefront APIs → Apex REST, promotions → CPQ.
-- **Phase 3:** enterprise platform features — a human review UI, audit trail, private/VPC model deployment, org introspection (reuse a customer's existing Salesforce objects instead of duplicating them).
-- **Phase 4:** a learning flywheel (the tool gets better and cheaper with every migration) and a standalone "migration assessment" product as a sales tool.
+Full detail lives in [ROADMAP.md](ROADMAP.md). Since this document was first written, the
+human review UI, audit trail and org introspection listed below as "Phase 3" have shipped.
+What remains:
+
+- **Phase 2 (partial):** more Hybris surfaces — business processes → Flow, storefront APIs → Apex REST.
+- **Phase 5 (partial):** enterprise platform — Postgres, org/project hierarchy, RBAC beyond admin/member, per-tenant cost metering, private/VPC model deployment.
+- **Phase 6:** a learning flywheel (house-style memory — migration #2 for the same client is visibly better than #1) and a standalone "migration assessment" product as a sales tool.
+
+**The nearest milestone is not a feature.** The proof stack is built and unit-tested but has
+not yet completed an end-to-end run against a real model. That run, not more code, is what
+turns "built" into "field-proven".
 
 ## 10. How to use it
 

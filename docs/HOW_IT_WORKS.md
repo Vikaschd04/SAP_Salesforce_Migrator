@@ -1,6 +1,6 @@
 # How It All Works — A Plain-English Guide
 
-**Version:** 0.9.3 · No technical background required
+**Version:** 0.10.0 · No technical background required
 
 This explains the whole project simply, as if you've never seen the code.
 
@@ -105,6 +105,38 @@ AI is used.
 > looks like. It never shows the value, never stores it, and never sends it anywhere. If
 > it finds something real, rotate it.
 
+## What will this cost, and will it work in *my* org?
+
+Both questions are answered on the same screen, **before the first billable call**. None of
+it uses AI, which is exactly why it can be free.
+
+**The cost forecast** says something like *"$1.59–$3.67, 1–2 minutes of runtime, 1.4–3.7
+hours of your review time."* It is a **range on purpose**. A single figure would imply a
+precision that doesn't exist — how much the AI decides to say varies, repair loops fire
+unpredictably, and we don't control how fast the provider responds. The bounds are honest;
+one confident number would be wrong in a way that looks authoritative.
+
+There is also a **hard spend cap** (default $25). The forecast tells you what to expect;
+the cap is what makes that expectation binding, because a repair loop that won't settle
+would otherwise spend until it finished. If the forecast already exceeds the cap, it says
+so *here* — while raising it is still a cheap decision rather than a half-finished run.
+
+**The org-fit check** reads your actual Salesforce org and reconciles it against the plan:
+
+- *You already have an `Order__c`* — deploying will clash, or quietly merge into an object
+  that other code and data depend on.
+- *Salesforce already has a standard `Order`* — inventing a parallel custom object is a
+  decision, not a default.
+- *You have CPQ installed* — it already owns the pricing domain the Planner flagged.
+
+Everyone reads the source. Almost nobody reads the destination, which is where the classic
+day-one failure comes from. Found here it costs a rename; found at deploy time it costs the
+deploy.
+
+**The hazard radar** flags Hybris habits that become Salesforce problems — most importantly
+a database query inside a loop, which is ordinary in Hybris and will blow a governor limit
+the first time it meets real volume. Eleven rules, all found without AI.
+
 ## The journey of your code, step by step
 
 **1. Check & sort.** It confirms the codebase is what you say it is (above), then finds every source file, groups them by business topic (Order, Customer, Product…), figures out which topics depend on which, and translates dependencies first — so a class that needs another class already has it ready. Test files are set aside here, not migrated. *No AI is used in this whole step.* → **you review this**
@@ -133,9 +165,18 @@ Besides the code itself, every run produces documents you can read without being
 
 | Document | What it tells you |
 |---|---|
+| `SIGN_OFF.md` | **The audit, as a deliverable** — who approved what, on what evidence, and what it does *not* certify |
 | `MIGRATION_PLAN.md` | Every decision it made and why — the full audit trail |
 | `BUSINESS_RULES.md` | **Every business rule it found, and what happened to it** |
 | `FEASIBILITY_REPORT.md` | How confident it is in each piece (High / Medium / Low), and what a human should double-check |
+| `TRIAGE.md` | **Which files actually need your attention**, ranked, with the reasons |
+| `ALIGNMENT.md` | Each rule → the method that implements it → the evidence it still holds |
+| `PROVENANCE.md` | Every generated method traced back to the Java that produced it, with line numbers |
+| `CHARACTERIZATION.md` | Your original tests, replayed against the new code |
+| `ANTI_PATTERNS.md` | Hybris habits that will cause trouble on Salesforce |
+| `ORG_FIT.md` | What in your target org conflicts with this migration |
+| `FORECAST.md` | What the run was estimated to cost, and on what assumptions |
+| `DECISION_RECORD.md` | Every AI call, keyed and replayable |
 | `DATA_MIGRATION.md` | How to load your data into Salesforce |
 | `CRON_JOBS.md` | Your scheduled jobs and their new Salesforce equivalents |
 | `PARITY.md` | Whether the generated tests actually check your original rules |
@@ -158,6 +199,68 @@ That last bucket is the important one, and it's the thing no other tool shows yo
 The headline becomes *"147 of 152 business rules preserved and asserted"* — a number that means something.
 
 > **Being straight with you about this:** "Asserted" means the test *mentions* what the rule is about. That's real evidence, and it's far better than nothing — but it isn't mathematical proof that the new code behaves identically. Treat it as "a test probably covers this," and use a real deployment plus your own testing for proof. We'd rather tell you that than let a green number mislead you.
+
+## The four other ways it proves the work
+
+The rule ledger above answers *"did the logic survive?"*. Four more answer the questions a
+reviewer asks next.
+
+**"Where did this code come from?"** — the first thing anyone asks about generated code,
+and until you can answer it every other assurance is a leap of faith. Every generated
+method is traced back to the Java method that produced it, with real line numbers on both
+sides. Just as useful is the residue: **Java methods with no Apex counterpart**. Some are
+private helpers that got inlined; some are logic that didn't make it. That list is the one
+to check first.
+
+> **Why we don't ask the AI for the line numbers.** The obvious design is to have the model
+> report them. It doesn't work — language models are fluent about structure and unreliable
+> about counting lines they aren't looking at, so the numbers come back plausible and
+> wrong. A traceability map that is confidently wrong is worse than none, because it gets
+> believed. We locate the symbols in both files ourselves. The numbers are facts.
+
+**"Does it actually behave the same?"** — your existing JUnit tests already record what the
+old system did. We mine them, then replay those recorded behaviours against the new Apex.
+This is golden-master testing, and it is the strongest evidence in the box. Where the
+migration deliberately reshaped a method (a single-record `placeOrder` becoming a bulk
+`createOrders`), a bridge adapts the call — and the AI is allowed to *arrange and act*, but
+**never to write the assertion**. The expected value comes from the recording, not from the
+model. A model that could write its own expectations could make anything pass.
+
+**"Where do I even start?"** — nobody reviews four hundred generated classes carefully.
+They read the first thirty properly, skim fifty, and bulk-approve the rest, which turns the
+safety net into a rubber stamp somewhere around file sixty. So everything is ranked into
+**must review / worth a look / routine**, each with the plain reasons that put it there. If
+the twelve that matter are at the top, your real attention lands on them.
+
+**"Who signed off on this?"** — every migration ends in an audit, usually reconstructed
+months later from memory. The sign-off contract records who approved which gate, when, and
+on what evidence. What makes it worth signing is what it refuses to say: if nobody reviewed
+the run it reads **"unreviewed"**, not "approved"; and everything unproven is listed under
+*what this does not certify* — in the same document, at the same size.
+
+## Changed your mind? Go back to before you decided
+
+A review gate is a decision made once, on incomplete information, and lived with for the
+rest of the run. Exclude a domain at the plan gate, regret it two stages later, and the old
+answer was: run the whole thing again, and pay again.
+
+Instead, the run is snapshotted **before each gate** — before your decision is applied,
+which is what makes "back to before I approved the plan" a real position rather than an
+approximation. You can list them, and compare any two:
+
+```
+1 plan decision(s) differ · 11 artifact(s) differ · -1 converted
+  plan  PricingService: Convert → Skip
+```
+
+That answers *"I planned it the other way — what did that actually change?"* without
+running anything twice.
+
+> **One thing it deliberately won't do:** restoring a snapshot does *not* rewrite the
+> generated files sitting next to it. Those belong to whatever ran last, so it tells you
+> the plan you're reading may not be the plan that code implements. A tidy-looking mixture
+> of an old plan and new code is exactly the kind of confident wrongness this whole tool
+> exists to avoid.
 
 ## Why "check its own work" matters so much
 

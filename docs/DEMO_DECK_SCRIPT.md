@@ -1,6 +1,6 @@
 # Speaker Script — Executive Accelerator Deck (10 slides · 10–12 minutes)
 
-**Companion to:** `DEMO_DECK.pptx` · **Version:** 0.8.0
+**Companion to:** `DEMO_DECK.pptx` · **Version:** 0.10.0
 **Total talk time:** 10–12 minutes. Each slide has a time budget — stick to them and you land on time with 1–2 minutes to spare for questions.
 
 This is the talk track — what to *say* over each slide, in plain, human language. Each slide has:

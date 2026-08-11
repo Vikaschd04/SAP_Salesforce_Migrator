@@ -1,6 +1,6 @@
 # SAP Hybris → Salesforce Apex Migrator — VS Code Extension
 
-[![Version](https://img.shields.io/badge/version-0.8.0-blue.svg)](https://marketplace.visualstudio.com/items?itemName=iamvikaas.h2a-vscode-extension)
+[![Version](https://img.shields.io/badge/version-0.10.0-blue.svg)](https://marketplace.visualstudio.com/items?itemName=iamvikaas.h2a-vscode-extension)
 [![Publisher](https://img.shields.io/badge/publisher-iamvikaas-green.svg)](https://marketplace.visualstudio.com/publishers/iamvikaas)
 
 Migrate a complete SAP Hybris (Java/Spring) codebase into deployment-ready
@@ -22,13 +22,13 @@ build artifact and is intentionally not committed. Build it locally:
 ```bash
 cd h2a-vscode-extension
 npm install
-npx @vscode/vsce package        # → h2a-vscode-extension-0.8.0.vsix
+npx @vscode/vsce package        # → h2a-vscode-extension-0.10.0.vsix
 ```
 
 Install the built package:
 
 ```bash
-code --install-extension h2a-vscode-extension-0.8.0.vsix
+code --install-extension h2a-vscode-extension-0.10.0.vsix
 # …or in VS Code: Extensions view → “…” menu → Install from VSIX…
 ```
 
@@ -141,6 +141,8 @@ Deploy with `sf project deploy start --source-dir force-app`.
 
 | Version | Key changes |
 |---|---|
+| **0.10.0** | **The proof layer, and the bug it found.** Every run now produces `SIGN_OFF.md` (who approved what, on what evidence — and, at the same size, what it does *not* certify), `TRIAGE.md` (which artifacts actually need a human, ranked), `ALIGNMENT.md` (rule → implementation → proof), `PROVENANCE.md` (every generated method traced to its Java origin by symbol, never by model-reported line numbers), plus `CHARACTERIZATION.md`, `ANTI_PATTERNS.md`, `ORG_FIT.md`, `FORECAST.md` and `DECISION_RECORD.md`. Adds a **per-run spend cap** (`cost_cap.usd`, default $25) checked before every call, **output-collision detection** (two artifacts writing one file used to pass the completeness ledger while one silently overwrote the other), and **named checkpoints** — the run is snapshotted before each review gate, so `checkpoints --diff` answers "I planned it the other way, what changed?" without re-running. **Fixes a serious defect:** a rejected API key was being contained per-stage like any other error, so every class fell back to a deterministic stub and the run reported success while claiming the codebase had no business rules. A 401 is now fatal, never retried, and stops the run with a clear message. |
+| 0.9.x | Preflight (refuses a non-Hybris upload before a run exists, and reports credentials found in the archive), the anti-pattern radar, target-org fit via the `sf` CLI, the business-rule ledger, characterization testing against the customer's own JUnit suite, and prompt slimming. Robustness for real estates: an encoding fallback chain (latin-1/cp1252 files no longer abort a run), malformed `items.xml` survived, and Java 17 records no longer vanish silently. |
 | **0.8.0** | **Deploy verification from the extension: a new `verifyDeploy` setting runs a validate-only (check-only) deploy of the generated project against your default Salesforce org and self-heals real compiler/coverage errors before you review — the org is never modified. Requires the Salesforce CLI (`sf`) with a default org set. Adds a bundled, demo-ready Hybris "Order Management" sample (in the repo's `Testing/` folder) covering DAO/service/controller/job, `items.xml`, ImpEx and a cron trigger.** |
 | 0.7.0 | **Cronjobs → Scheduled Apex (Phase 2): Hybris jobs (`extends AbstractJobPerformable`) are detected as a new "Job" layer and translated to `Schedulable` Apex through the same agentic pipeline; their Spring XML / ImpEx cron triggers are resolved and translated (Hybris and Salesforce both use Quartz cron, so it's a validated pass-through) into a `CRON_JOBS.md` runbook + ready-to-run `schedule.apex`. Default model confirmed at the latest/most capable — `claude-opus-4-8`.** |
 | 0.6.3 | Codegen hardening (from a real end-to-end Claude run): fixed a double-prefix bug that produced `System.System.assertEquals`, and stopped truncated/JSON responses from ever being written to a `.cls`; raised the generation token budget so large fflib test classes aren't cut off.** |
@@ -161,4 +163,4 @@ Deploy with `sf project deploy start --source-dir force-app`.
 
 Full documentation — PRD, TRD, architecture (TDD), app flows, plain-English guide,
 usage guide, stakeholder demo script, and roadmap — lives in [`../docs/`](../docs/README.md).
-See also the pipeline [README](./h2a-mvp/README.md).
+See also the engine [README](../h2a-mvp/README.md).

@@ -2,7 +2,7 @@
   "name": "h2a-vscode-extension",
   "displayName": "SAP Hybris to Salesforce Apex Migrator",
   "description": "Automated migration pipeline for translating Hybris slices to governor-limit-aware Salesforce Apex.",
-  "version": "0.9.2",
+  "version": "0.10.0",
   "publisher": "iamvikaas",
   "author": "Vikas",
   "license": "MIT",
@@ -51,23 +51,30 @@
         "h2aMigrator.engine": {
           "type": "string",
           "default": "agentic",
-          "enum": ["agentic", "linear"],
+          "enum": [
+            "agentic",
+            "linear"
+          ],
           "enumDescriptions": [
-            "Agentic (recommended) — Planner + Builder + Critic + Verifier over a shared blackboard, with RAG grounding. Richest output; more LLM calls.",
-            "Linear — the deterministic pipeline (fewer LLM calls, lower cost)."
+            "Agentic (recommended) \u2014 Planner + Builder + Critic + Verifier over a shared blackboard, with RAG grounding. Richest output; more LLM calls.",
+            "Linear \u2014 the deterministic pipeline (fewer LLM calls, lower cost)."
           ],
           "description": "Which migration engine to run. Both produce the same SFDX output shape; agentic adds planning (what-not-to-migrate), adversarial review, and RAG grounding."
         },
         "h2aMigrator.provider": {
           "type": "string",
           "default": "anthropic",
-          "enum": ["anthropic", "openrouter", "mock"],
-          "enumDescriptions": [
-            "Anthropic Claude — best quality (needs Anthropic API key)",
-            "OpenRouter — free/cheap models for dev/testing (needs OpenRouter API key)",
-            "Mock — keyless deterministic stub (no key; for testing the pipeline)"
+          "enum": [
+            "anthropic",
+            "openrouter",
+            "mock"
           ],
-          "description": "LLM provider. Same pipeline and prompts for all — only the model changes."
+          "enumDescriptions": [
+            "Anthropic Claude \u2014 best quality (needs Anthropic API key)",
+            "OpenRouter \u2014 free/cheap models for dev/testing (needs OpenRouter API key)",
+            "Mock \u2014 keyless deterministic stub (no key; for testing the pipeline)"
+          ],
+          "description": "LLM provider. Same pipeline and prompts for all \u2014 only the model changes."
         },
         "h2aMigrator.anthropicApiKey": {
           "type": "string",

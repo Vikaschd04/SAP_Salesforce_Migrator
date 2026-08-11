@@ -4,7 +4,7 @@ An LLM-powered pipeline that translates complete SAP Hybris (Java/Spring) monoli
 repositories into governor-limit-safe Salesforce Apex classes, `@isTest` suites,
 SObject schema metadata, and a deployment-ready SFDX workspace.
 
-**Engine version**: 0.8.0 | **License**: MIT
+**Engine version**: 0.10.0 | **License**: MIT
 
 > Full documentation (PRD, TRD, architecture, app flows, plain-English guide,
 > usage guide, demo script, roadmap) lives in [`../docs/`](../docs/README.md).
@@ -152,7 +152,7 @@ salesforce_<project>/
 ## 7. Tests
 
 ```bash
-python -m pytest tests/ -q     # 63 tests: ingest, schema grounding, mock provider,
+python -m pytest tests/ -q     # 296 tests: ingest, schema grounding, mock provider,
                                # scoped signatures, agentic core, ImpEx, cronjobs,
                                # and full end-to-end mock migrations (linear + agentic)
 ```

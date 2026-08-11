@@ -1,15 +1,43 @@
 # How to Use It
 
-**Version:** 0.8.0
-**Audience:** Anyone setting up and running a migration, extension or CLI
+**Version:** 0.10.0
+**Audience:** Anyone setting up and running a migration — cockpit, extension or CLI
+
+There are three surfaces over **one engine**. They produce identical output from identical
+code and differ only in how much they show you along the way.
 
 ---
 
-## Option A — VS Code extension (recommended)
+## Option A — The web cockpit (best for reviewing as it goes)
+
+### 1. Start it
+```bash
+cd h2a-web/backend && pip install -r requirements.txt
+uvicorn app:app --port 8000            # then open http://localhost:8000
+```
+For a team deployment — accounts, per-tenant keys, the run queue, spend caps — see
+[SETUP.md](SETUP.md) and [DEPLOY_RENDER.md](DEPLOY_RENDER.md).
+
+### 2. Run a migration
+Sign in, point it at a server path or upload a `.zip`, pick your provider, and tick
+**supervised** to stop at the three review gates. Everything before the first gate is free.
+
+### 3. Review as it goes
+Five tabs: **Flow** (live), **Source** (what it read), **Output** (what it wrote),
+**Assurance** (is it right), **Records** (the paper trail). What each one shows, and the
+line to say about it in a demo, is in [COCKPIT_GUIDE.md](COCKPIT_GUIDE.md).
+
+### 4. Get the output
+**Records › Reports › ⬇ Download SFDX package**, or read any of the generated documents in
+the browser.
+
+---
+
+## Option B — VS Code extension (recommended)
 
 ### 1. Install
 ```bash
-code --install-extension h2a-vscode-extension-0.8.0.vsix
+code --install-extension h2a-vscode-extension-0.10.0.vsix
 ```
 Or: VS Code → Extensions → **···** menu → **Install from VSIX...**
 
@@ -32,7 +60,7 @@ A new folder appears next to your source: `salesforce_<YourFolderName>/` — a c
 
 ---
 
-## Option B — Command line
+## Option C — Command line
 
 ### 1. Set up the environment (one time)
 ```bash
@@ -75,7 +103,31 @@ python -m src.main impex   --input <hybris_dir> --output <out_dir>   # ImpEx →
 python -m src.main cronjob --input <hybris_dir> --output <out_dir>   # cron triggers → Scheduled Apex runbook
 ```
 
-### 6. Run the test suite
+### 6. Go back to before a review decision
+
+Every run snapshots itself before each gate.
+
+```bash
+python -m src.main checkpoints --output <out>              # list them
+python -m src.main checkpoints --output <out> --diff A B    # compare two
+python -m src.main checkpoints --output <out> --restore ID  # inspect one (read-only)
+```
+
+`--diff` answers *"I planned it the other way — what did that actually change?"* without
+re-running anything.
+
+### 7. Cap what a run can spend
+
+`cost_cap.usd` in `config.yaml` (default `$25`, `0` = uncapped), or per run:
+
+```bash
+H2A_COST_CAP=5 python -m src.main agent-migrate --input <dir> --output <out>
+```
+
+Checked before every call, so a run overshoots by at most the one call in flight. Work
+completed before the cap is kept and reused on a re-run rather than paid for twice.
+
+### 8. Run the test suite
 ```bash
 python -m pytest tests/ -q
 ```
@@ -86,8 +138,18 @@ python -m pytest tests/ -q
 
 | File | What it tells you |
 |---|---|
-| `FEASIBILITY_REPORT.md` | **Start here.** Inventory, validation results, confidence score per class, deploy status, cost. |
-| `MIGRATION_PLAN.md` | *(agentic runs only)* What the Planner decided for each class, the Critic's findings, and the full decision log. |
+| `SIGN_OFF.md` | **Start here.** Who approved what, on what evidence — and, listed just as prominently, what the run does *not* certify. |
+| `FEASIBILITY_REPORT.md` | Inventory, validation results, confidence score per class, deploy status, cost. |
+| `TRIAGE.md` | **Where to spend your review time** — every artifact ranked must-review / worth-a-look / routine, with reasons. |
+| `BUSINESS_RULES.md` | Every business rule found, and whether it is asserted, implemented, at risk, or **dropped**. |
+| `MIGRATION_PLAN.md` | *(agentic runs only)* What the Planner decided for each class, the Critic's findings, the completeness ledger, and the full decision log. |
+| `ALIGNMENT.md` | Each rule → the generated method implementing it → the evidence it still holds. |
+| `PROVENANCE.md` | Every generated method traced to the Java that produced it, with line numbers. |
+| `CHARACTERIZATION.md` | Your original JUnit behaviours, replayed against the generated Apex. |
+| `ANTI_PATTERNS.md` | Hybris patterns that become Salesforce hazards (query-in-loop, `@Transactional`…). |
+| `ORG_FIT.md` | What in your target org collides with this migration. |
+| `FORECAST.md` | What the run was estimated to cost, and on what assumptions. |
+| `DECISION_RECORD.md` | Every model call, keyed and replayable. |
 | `PARITY.md` | Which of the original business rules are actually asserted by the generated tests. |
 | `MAPPING.md` | Field-by-field and layer-by-layer mapping reference. |
 | `DATA_MIGRATION.md` | Ready-to-run `sf data upsert` commands for your data. |

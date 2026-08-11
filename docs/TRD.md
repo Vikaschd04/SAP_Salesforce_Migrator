@@ -1,7 +1,7 @@
 # Technical Requirements Document (TRD)
 
 **Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.8.0
+**Version:** 0.10.0
 **Audience:** Engineers implementing, extending, or operating the system
 
 This document lists *what the system must do and support* (requirements). For *how* it does it, see [TDD.md](TDD.md).
@@ -91,14 +91,30 @@ salesforce_<project>/
 ├── sfdx-project.json, config/project-scratch-def.json
 ├── force-app/main/default/
 │   ├── classes/         (Apex .cls + -meta.xml + matching Test.cls)
+│   ├── lwc/             (Lightning Web Component bundles, when a storefront was present)
 │   └── objects/         (Custom Objects, Custom Fields, picklists, lookups)
 ├── data/                 (per-object CSVs, from ImpEx)
+├── checkpoints/          (gzipped Blackboard snapshots, one before each review gate)
+│
+│   ── the migration ──
+├── MIGRATION_PLAN.md      (agentic run only: plan + review + completeness ledger + decisions)
+├── MAPPING.md             (field/layer mapping reference)
 ├── DATA_MIGRATION.md      (data upsert runbook)
 ├── CRON_JOBS.md + schedule.apex   (scheduled-job runbook)
-├── MAPPING.md             (field/layer mapping reference)
-├── MIGRATION_PLAN.md      (agentic run only: plan + review + decisions log)
-├── PARITY.md              (behavioral parity checklist)
 ├── FEASIBILITY_REPORT.md  (validation, confidence, deploy status, cost)
+│
+│   ── the evidence ──
+├── SIGN_OFF.md            (who approved what, on what evidence, and what is NOT certified)
+├── TRIAGE.md              (every artifact ranked by how much it needs a human)
+├── BUSINESS_RULES.md      (rule ledger: asserted / implemented / at_risk / dropped)
+├── ALIGNMENT.md           (rule → implementation → proof, one row each)
+├── PROVENANCE.md          (generated method → originating Java, with line numbers)
+├── CHARACTERIZATION.md    (original JUnit behaviours replayed against the Apex)
+├── PARITY.md              (behavioral parity checklist)
+├── ANTI_PATTERNS.md       (Hybris patterns that become Salesforce hazards)
+├── ORG_FIT.md             (collisions with the target org)
+├── FORECAST.md            (pre-run cost estimate and its assumptions)
+├── DECISION_RECORD.md     (every model call, keyed and replayable)
 └── .call_graph.json       (for the dashboard visualizer)
 ```
 
@@ -106,9 +122,11 @@ salesforce_<project>/
 
 | Interface | Entry point |
 |---|---|
+| Web cockpit | FastAPI + React at `/` — run, review the three gates live, browse every report, download the package |
+| HTTP API | `POST /api/runs`, `GET /api/runs/{id}/events` (SSE), `POST /api/runs/{id}/gate`, `GET /api/runs/{id}/report/{name}`, `/api/keys/{provider}`, `/api/auth/*` |
 | VS Code command | Right-click a folder → **H2A: Migrate to Apex** |
-| CLI | `python -m src.main {repo-migrate, agent-migrate, impex, cronjob, metadata, report, ping}` |
-| Configuration | `h2a-mvp/config.yaml` (provider, model, effort, verify, agentic, parity settings) + `.env` (API keys) + VS Code settings (`h2aMigrator.*`) |
+| CLI | `python -m src.main {repo-migrate, agent-migrate, checkpoints, impex, cronjob, metadata, report, ping}` |
+| Configuration | `h2a-mvp/config.yaml` (provider, model, effort, verify, agentic, parity, `cost_cap`) + `.env` (API keys) + VS Code settings (`h2aMigrator.*`) + server env vars (see [SETUP.md](SETUP.md)) |
 
 ## 8. Constraints & assumptions
 

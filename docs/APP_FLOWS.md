@@ -1,16 +1,54 @@
 # Application Flows
 
 **Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.8.0
+**Version:** 0.10.0
 **Audience:** Anyone who wants to see exactly what happens, step by step
 
 This document walks through every flow a user or the system goes through — from clicking a button to getting deployable Salesforce code. For the *why* behind these flows, see [TDD.md](TDD.md).
 
 ---
 
-## 1. The primary flow — VS Code extension
+## 0. The primary flow — the web cockpit
 
-This is the flow a user actually experiences.
+The surface most users see, and the only one that shows the review gates as they happen.
+
+```
+Sign in  ──▶  session cookie; every run is owned by one account, and
+   │          another tenant cannot open it (enforced in middleware)
+   ▼
+Point at a codebase — a server path, or upload a .zip
+   │
+   ▼
+PREFLIGHT runs immediately, before a run object exists
+   │
+   ├─ not a Hybris project? ──▶ 422 with the reason. Nothing is created,
+   │                            nothing is queued, nothing is charged.
+   ▼
+Run admitted to a FIFO queue (bounded concurrency)
+   │  per-run provider / model / key / spend-cap pinned in ContextVars,
+   │  so two tenants running at once cannot inherit each other's settings
+   ▼
+Engine streams events ──▶ cockpit updates live (stages, files, decisions)
+   │
+   ├──▶ GATE 1/2/3: the engine BLOCKS, the cockpit shows the review screen,
+   │    the reviewer decides, and their identity is stamped SERVER-SIDE from
+   │    the session (never from the request body) and recorded for sign-off
+   ▼
+Run completes ──▶ durable SQLite history; reopen it later exactly as it was
+   │
+   ▼
+Records › Reports › ⬇ Download SFDX package
+```
+
+**If the browser refreshes or disconnects,** the run continues — it lives in the server
+process, not the page. Reconnecting re-attaches to the same event stream.
+
+**If the provider rejects the key,** the run stops with a clear message rather than
+degrading every stage to its deterministic fallback and reporting success.
+
+## 1. The VS Code extension flow
+
+This is the flow an in-IDE user experiences.
 
 ```
  User                          Extension                        Python Engine
@@ -87,22 +125,38 @@ Deployable SFDX project + FEASIBILITY_REPORT.md
 Input folder
    │
    ▼
+PREFLIGHT — is this a SAP Commerce project at all?   (no LLM, no cost)
+   │        rejects a wrong upload before a run exists; reports any
+   │        credentials found in the archive
+   ▼
 Ingest + derive schema           (same as linear, steps 1–4)
+   │
+   ▼
+Radar · Forecast · Org fit       (no LLM — hazards, cost range, org collisions)
+   │
+   ▼
+╔═══ GATE 1 · Discovery ═══╗  reviewer approves what was found
    │
    ▼
 Comprehend every class (LLM, routed to the cheap model tier if configured)
    │
    ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ PLANNER                                                           │
+│ PLANNER — policy: CONVERT EVERYTHING                              │
 │  For each candidate target, decide:                               │
-│    Apex   → build it                                              │
-│    Native → recommend a Salesforce product instead (e.g. CPQ)     │
-│    Skip   → don't migrate (dead code / framework glue)             │
+│    Convert → build it. If a native Salesforce product would be a  │
+│              better home (e.g. CPQ), the logic is STILL converted │
+│              in full and `native_recommendation` flags it for      │
+│              human review — never a reason to drop code.          │
+│    Skip    → provably dead code / framework glue / pure DTO only,  │
+│              and it must carry a reason.                          │
 │  Records the rationale for every decision.                         │
 └─────────────────────────────────────────────────────────────────┘
    │
-   ▼  (only "Apex" targets continue)
+   ▼
+╔═══ GATE 2 · Plan ═══╗  reviewer can flip any target Convert↔Skip
+   │
+   ▼  (every "Convert" target continues)
 for each target, in dependency order:
    │
    ├─▶ BUILDER: generate Apex + tests (grounded in schema + RAG + scoped deps)
@@ -122,18 +176,35 @@ for each target, in dependency order:
 Reconcile schema gaps  →  emit metadata  →  ImpEx data  →  cron triggers
    │
    ▼
+╔═══ GATE 3 · Build ═══╗  reviewer approves, or sends artifacts back
+   │                      to the Builder with feedback (bounded rounds)
+   ▼
+Reconcile schema gaps  →  emit metadata  →  ImpEx data  →  cron triggers
+   │
+   ▼
 Parity strengthening (add test assertions for any business rule not yet covered)
    │
    ▼
 (optional) VERIFIER: deploy-verify + self-heal loop (see TDD.md §4)
    │
    ▼
-Final validation + parity scoring
+ASSURANCE — all deterministic, no LLM calls:
+   rule ledger · characterization replay · provenance · alignment
+   · triage · blast radius · replay record · sign-off contract
    │
    ▼
-Write: FEASIBILITY_REPORT.md · MIGRATION_PLAN.md (plan + review + decision log)
+Write: SIGN_OFF.md · FEASIBILITY_REPORT.md · MIGRATION_PLAN.md · TRIAGE.md
+       · BUSINESS_RULES.md · ALIGNMENT.md · PROVENANCE.md · CHARACTERIZATION.md
+       · ANTI_PATTERNS.md · ORG_FIT.md · FORECAST.md · DECISION_RECORD.md
        · PARITY.md · MAPPING.md · DATA_MIGRATION.md · CRON_JOBS.md
 ```
+
+**A snapshot is taken before each gate**, so a reviewer can return to the state they were
+looking at when they decided, and diff two plans. See `checkpoints` in
+[HOW_TO_USE.md](HOW_TO_USE.md).
+
+**Gates are optional.** With no reviewer attached (CLI, extension, CI) the run proceeds
+unattended — and the sign-off contract records it as *unreviewed* rather than approved.
 
 ## 4. The self-healing deploy flow (detail)
 

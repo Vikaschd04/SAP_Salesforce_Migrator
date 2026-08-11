@@ -110,6 +110,14 @@ user, no login, shared credentials — the right shape for one person on a lapto
 | `H2A_MAX_CONCURRENT_RUNS` | `3` | How many migrations run at once. Further ones queue, FIFO, with a visible position. Each run holds a codebase in memory and fans out to parallel model calls, so this is a real resource dial. |
 | `H2A_HOSTED` | off | Public-deploy mode: restricts inputs to uploads/bundled samples, and turns auth on. |
 | `H2A_DEMO_LOGIN` | off | Offers a one-click **shared** demo account on the sign-in screen, provisioned on first use. It is an unauthenticated way in, so leave it off anywhere that is not a public demo. |
+| `H2A_COST_CAP` | `25.0` (from `config.yaml`) | Hard spend ceiling **per run**, in USD. `0` = uncapped. Checked before every model call, so a run overshoots by at most the one call in flight. Work completed before the cap is kept and reused on a re-run rather than paid for twice. |
+| `H2A_CONCURRENCY` | `8` (from `config.yaml`) | Model calls in flight *within* one run. Compresses wall-clock, not spend. |
+| `H2A_INCREMENTAL` | on | Reuse results for source that provably has not changed since the last run of the same codebase. |
+
+> **On the spend cap.** The Discovery gate forecasts a *range*, and a range is not a limit
+> — a repair loop that will not converge spends until it finishes. The cap is what makes
+> the forecast binding. If the forecast already exceeds the cap, the Discovery gate says so
+> there, while raising it is still a cheap decision rather than a half-finished run.
 
 Generate a secret key with:
 

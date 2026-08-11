@@ -54,7 +54,7 @@ For UI development with hot-reload: `cd web && npm run dev` (Vite on :5173, prox
   findings, a specific class). Grounded in the run's Blackboard; keyless answers in mock mode,
   full conversational answers on Anthropic/OpenRouter.
 
-Then in the browser: keep the default path (`Testing/demo-commerce-suite`) or paste another
+Then in the browser: keep the default path (`Testing/acme-commerce-hybris`) or paste another
 codebase path / upload a `.zip`, pick **Provider = Mock** (free, keyless) for a rehearsal, and hit
 **Start migration**. Watch the stepper light up and the agent activity stream in real time.
 
@@ -118,17 +118,27 @@ and **agent-transparency views** so a reviewer can see *what the AI is actually 
 > bundle parts) but sparse prose, because the mock stub doesn't invent business rules or findings;
 > with a real provider (Anthropic/OpenRouter) the rules, queries, and Critic findings fill in.
 
-Per the proposal
-([../docs/WEB_PLATFORM_PROPOSAL.md](../docs/WEB_PLATFORM_PROPOSAL.md)), remaining milestones:
+The productionization once listed here as future work has shipped: accounts and sessions,
+per-tenant encrypted API keys, a FIFO run queue with bounded concurrency, durable SQLite
+history, per-run provider isolation, and a React + TypeScript SPA. See
+[../docs/SETUP.md](../docs/SETUP.md) for the server settings that turn each on.
 
-- **In-browser Salesforce OAuth** for the Verify step (replacing the local `sf` CLI).
-- **Reconcile gate** + inline code editing (edit a file in the browser, not just send it back).
-- **Productionization** — auth/multi-tenant, sandboxed uploads, a job queue for concurrent runs, and
-  a proper React SPA (the current no-build dashboard is intentionally dependency-free).
+Remaining milestones:
 
-## Notes / limitations (MVP)
+- **In-browser Salesforce OAuth** for the Verify step (today it reuses the local `sf` CLI —
+  anyone who can deploy has already authorised one, so this needs no new consent screen).
+- **Reconcile gate** + inline code editing (edit a file in the browser, not just send it
+  back to the Builder with feedback).
+- **Postgres** — SQLite is durable but single-writer, and it is the first thing that will
+  bind under genuinely concurrent tenants.
+- **Org/project hierarchy, RBAC beyond admin/member, per-tenant cost metering.**
 
-- Runs execute one at a time (the engine uses a process-global cwd + `H2A_PROVIDER`); a job queue
-  comes in productionization.
-- Output/upload folders live under the OS temp dir; not persisted across restarts.
-- Local dev server only — do not expose to a network without auth + the hardening above.
+## Notes / limitations
+
+- Runs are concurrent up to `H2A_MAX_CONCURRENT_RUNS` (default 3); the rest queue FIFO with
+  a visible position. Provider, model, credential and spend cap are per-run `ContextVar`s,
+  so two tenants running at once cannot inherit each other's settings.
+- Run history and accounts persist in SQLite at `H2A_DB_PATH`. On a PaaS, point it at a
+  mounted disk or it resets on redeploy. Uploaded source and generated output still live
+  under the OS temp dir.
+- Do not expose an instance to a network without `H2A_AUTH=1` and `H2A_SECRET_KEY` set.

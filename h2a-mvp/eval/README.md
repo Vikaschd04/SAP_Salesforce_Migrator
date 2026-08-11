@@ -7,10 +7,10 @@ instead of eyeballing output.
 
 ```bash
 # From h2a-mvp/. Keyless deterministic run (CI regression gate on the pipeline):
-python -m eval.run_eval --input ../Testing/dummy-hybris-store --provider mock
+python -m eval.run_eval --input ../Testing/acme-commerce-hybris --provider mock
 
 # Real translation quality (needs ANTHROPIC_API_KEY):
-python -m eval.run_eval --input ../Testing/dummy-hybris-store --provider anthropic
+python -m eval.run_eval --input ../Testing/acme-commerce-hybris --provider anthropic
 
 # Add a live Salesforce compile check (needs `sf` CLI + an authorised org):
 python -m eval.run_eval --input <dir> --provider anthropic --deploy

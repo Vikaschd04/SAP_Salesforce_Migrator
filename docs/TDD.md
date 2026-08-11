@@ -1,7 +1,7 @@
 # Technical Design Document (TDD)
 
 **Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.8.0
+**Version:** 0.10.0
 **Audience:** Engineers who need to understand, extend, or debug the system
 
 This document explains the **architecture** — how the pieces fit together and why they're built this way. For plain-English "what does it do," see [HOW_IT_WORKS.md](HOW_IT_WORKS.md). For requirements, see [PRD.md](PRD.md) / [TRD.md](TRD.md).
@@ -143,7 +143,11 @@ Three related mechanisms keep the AI honest about what actually exists:
 | Engine | Python 3.10+ |
 | Java parsing | `javalang` (AST) |
 | LLM SDKs | `anthropic` (native), `openai` SDK (OpenRouter, OpenAI-compatible) |
-| Config | YAML (`config.yaml`) + `.env` |
+| Config | YAML (`config.yaml`) + `.env` + per-run `ContextVar` overrides |
+| Web backend | FastAPI + uvicorn; SSE for live run events |
+| Web frontend | React + TypeScript + Vite |
+| Persistence | SQLite (accounts, sessions, run history) |
+| Credential storage | `cryptography` Fernet, keyed from `H2A_SECRET_KEY`; passwords scrypt-hashed |
 | Extension host | TypeScript, VS Code Extension API |
 | Salesforce verification | Salesforce CLI (`sf`), invoked as a subprocess |
 | Output format | Salesforce DX (SFDX) project layout |

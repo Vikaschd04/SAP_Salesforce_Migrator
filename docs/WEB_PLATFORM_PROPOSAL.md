@@ -2,7 +2,14 @@
 
 **A hosted, visual, human-in-the-loop migration cockpit built on top of the existing engine.**
 
-**Version:** 0.1 (proposal) · **Status:** For stakeholder review · **Date:** 2026-07-29
+**Version:** 0.1 (proposal) · **Status:** ✅ **DELIVERED — kept as the design record** · **Date:** 2026-07-29
+
+> **This proposal has been built.** The cockpit, the live agent dashboard, the three review
+> gates, per-file review and rework, and the downloadable package all shipped in
+> `h2a-web/`. It is kept because it records *why* the platform is shaped the way it is;
+> for what exists today read [COCKPIT_GUIDE.md](COCKPIT_GUIDE.md) (every screen),
+> [APP_FLOWS.md](APP_FLOWS.md) §0 (the flow) and [SETUP.md](SETUP.md) (running it).
+> Anything below that reads as future tense is history, not a plan.
 
 ---
 

@@ -128,9 +128,9 @@ for t,c,arrow in [("SAP HYBRIS · JAVA",COPPER,True),("AI AGENT TEAM",BLACK,True
     fx+=w
     if arrow:
         tf=tf_box(s,fx,4.75,0.5,0.42,anchor=MSO_ANCHOR.MIDDLE); para(tf,[("──▶",dict(size=11,color=FAINT))],align=PP_ALIGN.CENTER); fx+=0.5
-chips(s,[{'t':"VS Code extension + CLI",'runs':[("VS Code extension ",{}),("+ CLI",dict(bold=True,color=BLACK))]},
+chips(s,[{'t':"Web cockpit · VS Code · CLI",'runs':[("Web cockpit ",dict(bold=True,color=BLACK)),("· VS Code · CLI",{})]},
          {'t':"Powered by Anthropic Claude",'runs':[("Powered by ",{}),("Anthropic Claude",dict(bold=True,color=BLACK))]},
-         {'t':"63 automated tests · all passing",'runs':[("63",dict(bold=True,color=BLACK)),(" automated tests · all passing",{})]}],5.65)
+         {'t':"340 automated tests · all passing",'runs':[("340",dict(bold=True,color=BLACK)),(" automated tests · all passing",{})]}],5.65)
 footer(s,1)
 
 # 2 · THE PROBLEM
@@ -164,16 +164,17 @@ ox=MX+boxw+gap
 card(s,ox,BODY+0.35,boxw,3.4,top=TEAL)
 tf=tf_box(s,ox+0.28,BODY+0.63,boxw-0.5,0.4); para(tf,[("OUT — deployable Salesforce",dict(size=13.5,bold=True,color=BLACK))])
 tf=tf_box(s,ox+0.28,BODY+1.15,boxw-0.5,2.3)
-for it in ["Apex code in Salesforce enterprise patterns","A test class for every class","Data model, data & schedules — migrated","Confidence report: what to trust, what to review"]:
+for it in ["Apex code in Salesforce enterprise patterns","A test class for every class","Data model, data, schedules & LWC — migrated","The evidence: every business rule tracked, your own tests replayed","Sign-off contract — and what it could NOT prove"]:
     para(tf,[("—  ",dict(color=TEAL)),(it,dict(color=GRAY))],size=11.5,line=1.2,sa=8)
 strip(s,"Why it matters",[("The full migration is still a program — but the code-move stops being the bottleneck. The accelerator does the grind with AI intelligence; your experts review a scored draft instead of rewriting from scratch.",{})])
 
 # 4 · ARCHITECTURE
 s=slide()
-header(s,"03 · Architecture",["Four layers, one engine"],4,tsize=30)
-layers=[("INTERFACES",BLACK,["VS Code extension — right-click","Command line — for CI/CD","both drive the same engine"]),
-("ORCHESTRATION",GDEEP,["Agentic mode — Planner · Builder · Critic · Verifier","Linear mode — fixed 10-stage pipeline"]),
-("SHARED STAGE FUNCTIONS",BLACK,["parse Java","derive schema","generate Apex","validate & repair","data · jobs","verify · report"]),
+header(s,"03 · Architecture",["Three surfaces, one engine"],4,tsize=30)
+layers=[("SURFACES",BLACK,["Web cockpit — review as it runs","VS Code — right-click","CLI — for CI/CD"]),
+("ORCHESTRATION",GDEEP,["Agentic — Planner · Builder · Critic · Verifier","Three human review gates","Linear mode — fixed 10-stage pipeline"]),
+("SHARED STAGE FUNCTIONS",BLACK,["parse Java","derive schema","generate Apex · LWC","validate & repair","data · jobs","verify · report"]),
+("ASSURANCE",GDEEP,["rule ledger","replay your JUnit","provenance","triage","sign-off"]),
 ("AI PROVIDERS",BLACK,["Anthropic Claude — best quality","OpenRouter — cheap iteration","Mock — free, offline, zero exposure"])]
 ly=BODY+0.05; lh=0.86
 for i,(name,lc,nodes) in enumerate(layers):
@@ -283,7 +284,7 @@ for i,(code,t,b) in enumerate(inv):
     tf=tf_box(s,x+0.28,y+0.18,cw-0.5,0.3,anchor=MSO_ANCHOR.MIDDLE); para(tf,[(code,dict(size=8.5,color=GDEEP,name=MONO))])
     tf=tf_box(s,x+0.2,y+0.54,cw-0.4,0.3); para(tf,[(t,dict(size=11.5,bold=True,color=BLACK))])
     tf=tf_box(s,x+0.2,y+0.88,cw-0.4,0.7); para(tf,b,size=9.5,color=GRAY,line=1.22)
-chips(s,[{'t':"63 automated tests, all passing",'runs':[("63",dict(bold=True,color=BLACK)),(" automated tests, all passing",{})]},
+chips(s,[{'t':"340 automated tests, all passing",'runs':[("340",dict(bold=True,color=BLACK)),(" automated tests, all passing",{})]},
          {'t':"3 AI providers incl. free offline",'runs':[("3",dict(bold=True,color=BLACK)),(" AI providers incl. free offline",{})]},
          {'t':"every run reports its own cost",'runs':[("every run reports its own ",{}),("cost",dict(bold=True,color=BLACK))]}],BODY+3.95)
 strip(s,"In plain words",[("Not just code — a complete package: the system, its data, its schedules, and the paper trail that tells your reviewers exactly where to look.",{})])
@@ -327,7 +328,8 @@ for (t,runs),w in zip(citems,cw_c):
     cx+=w+0.2
 footer(s,10,dark=True)
 
+import pathlib
 import sys
-out=sys.argv[1] if len(sys.argv)>1 else "DEMO_DECK.pptx"
+out=sys.argv[1] if len(sys.argv)>1 else str(pathlib.Path(__file__).resolve().parent/"DEMO_DECK.pptx")
 prs.save(out)
 print("saved",out,"slides:",len(prs.slides._sldIdLst))

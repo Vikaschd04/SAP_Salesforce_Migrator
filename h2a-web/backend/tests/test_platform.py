@@ -203,20 +203,31 @@ def test_queued_runs_report_their_place_in_line(fresh, tmp_path, monkeypatch):
 
 
 def test_admission_is_fifo(fresh, tmp_path, monkeypatch):
-    """A semaphore alone would let a late arrival jump a run that has been waiting."""
+    """A semaphore alone would let a late arrival jump a run that has been waiting.
+
+    Observed at the admission call rather than by polling `status`. A mock run can go
+    queued -> running -> complete between two polls, so a sampling loop misses it and the
+    test fails for a reason that has nothing to do with ordering — which is exactly what
+    it did, but only under full-suite load.
+    """
     monkeypatch.setenv("H2A_MAX_CONCURRENT_RUNS", "1")
+
+    admitted, lock = [], threading.Lock()
+    real_admit = fresh._admit
+
+    def recording_admit(run):
+        ok = real_admit(run)
+        if ok:
+            with lock:
+                admitted.append(run.id)
+        return ok
+
+    monkeypatch.setattr(fresh, "_admit", recording_admit)
+
     runs = [fresh.start_run(DEMO, str(tmp_path / f"r{i}"), provider="mock") for i in range(4)]
-    order, seen = [], set()
-    for _ in range(600):
-        for r in runs:
-            if r.status == "running" and r.id not in seen:
-                seen.add(r.id); order.append(r.id)
-        if all(r.status not in ("queued", "running") for r in runs):
-            break
-        time.sleep(0.02)
     for r in runs:
         _await(r)
-    assert order == [r.id for r in runs], "runs did not start in submission order"
+    assert admitted == [r.id for r in runs], "runs did not start in submission order"
 
 
 def test_cancelling_a_queued_run_never_starts_it(fresh, tmp_path, monkeypatch):

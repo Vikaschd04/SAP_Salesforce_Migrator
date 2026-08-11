@@ -6,6 +6,13 @@ emits Apex.
 
 **Version:** 0.1 (vision) · **Date:** 2026-07-29 · **Builds on:** [WEB_PLATFORM_PROPOSAL.md](WEB_PLATFORM_PROPOSAL.md)
 
+> **Status as of v0.10.0:** most of this vision has shipped — the full proof stack
+> (thirteen differentiators), accounts and per-tenant encrypted keys, the run queue,
+> durable history, spend caps, and the grouped cockpit. What remains open is Postgres, the
+> org/project hierarchy, RBAC beyond admin/member, per-tenant cost metering, and
+> house-style memory. The "where we honestly are" section below describes July 2026 and is
+> no longer current; [ROADMAP.md](ROADMAP.md) has the live status.
+
 ---
 
 ## 1. Where we honestly are
