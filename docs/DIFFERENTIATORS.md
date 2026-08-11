@@ -272,9 +272,24 @@ the same size. A reader who only skims should come away with the **less** confid
 The contract id hashes the facts certified, not the prose, so re-running the same migration
 with the same outcome reproduces it.
 
-### 13. Named checkpoints ("restore to before I approved the plan")
+### 13. Named checkpoints ("restore to before I approved the plan") — ✅ **SHIPPED**
 The Blackboard is already one serializable object — snapshot it per phase and let reviewers
 branch/compare alternative migration strategies instead of re-running from zero.
+
+**How it shipped** (`src/checkpoint.py`, `h2a checkpoints`): a snapshot at every gate, taken
+*before* the decision is applied — which is what makes "before I approved the plan" a real
+position rather than an approximation — plus one at completion. `--diff` answers the
+question that justifies keeping more than one: *I planned it the other way, what did that
+actually change?* What it deliberately does **not** do is rewrite the output directory:
+generated files belong to whatever ran last, so a restore reports that the plan you are
+reading may not be the plan those `.cls` files implement, rather than presenting a
+coherent-looking mixture. Sets round-trip as sets (a list would pass every membership check
+and fail the first set operation), snapshots are written whole then moved into place, and
+they carry their own source so a restore does not depend on the repo still being there —
+gzipped, which is what makes that affordable.
+
+> **Tier 3 is complete apart from #11 (house-style memory), which needs a second migration
+> for the same client before it can demonstrate anything.**
 
 ---
 

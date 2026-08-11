@@ -344,6 +344,22 @@ def _make_emitter(on_event):
 _MAX_GATE_ROUNDS = 3
 
 
+def _snapshot(bb, name: str, *, phase: str = "", note: str = ""):
+    """Snapshot the run so a reviewer can come back to this exact moment.
+
+    Advisory, like every other recorder here: a run must not fail because a snapshot
+    could not be written. The cost of losing one is re-running; the cost of aborting a
+    paid migration over it is the migration."""
+    if bb is None:
+        return None
+    try:
+        from src.checkpoint import save
+        return save(bb, name, phase=phase, note=note)
+    except Exception as e:                                  # pragma: no cover - advisory
+        print(f"  ⚠ checkpoint '{name}' not saved: {e}")
+        return None
+
+
 def _run_gate(gate, emit, name: str, payload: dict, bb=None) -> dict:
     """Human-in-the-loop review gate. When `gate` is None (autopilot / CLI / extension)
     this is a no-op that approves. When supervised, it emits a gate_open event with the
@@ -363,6 +379,11 @@ def _run_gate(gate, emit, name: str, payload: dict, bb=None) -> dict:
             "at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
             "note": note,
         })
+
+    # Snapshot BEFORE the decision is applied. Taken after is a different position: the
+    # plan gate's whole value is being able to return to the state the reviewer was
+    # looking at when they chose, not the state their choice produced.
+    _snapshot(bb, f"before {name} gate", phase=name)
 
     if gate is None:
         _record("auto-approved", None, False,
@@ -1057,6 +1078,13 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                   "message": _v.get("message", ""), "errors": len(_v.get("errors") or [])})
     write_signoff_md(output_dir, signoff)
     bb.record("SignOff", "issued", _sh(signoff))
+
+    # A final snapshot for every run, supervised or not — the gate checkpoints only exist
+    # when there was a human to pause for, and an unattended run is still worth comparing
+    # against the next one.
+    _snapshot(bb, "run complete", phase="complete",
+                note=f"{signoff['contract_id']} · "
+                     f"{'deploy-verified' if signoff['org_verified'] else 'not deploy-verified'}")
 
     counts = {}
     for r in ledger:

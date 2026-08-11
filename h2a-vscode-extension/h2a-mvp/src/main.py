@@ -266,6 +266,71 @@ def cmd_impex(args):
         print(f"  ✓ {f}")
 
 
+def cmd_checkpoints(args):
+    """List, compare or inspect the snapshots a run left behind."""
+    from src.checkpoint import list_all, diff, load, headline
+    import datetime as _dt
+
+    def _fail(e):
+        # A mistyped id is a typo, not a crash, and the useful reply is the list of ids
+        # that do exist rather than a stack trace.
+        print(f"\n✗ {e}", file=sys.stderr)
+        have = list_all(args.output)
+        if have:
+            print("  Available: " + ", ".join(c["id"] for c in have[:8]), file=sys.stderr)
+        sys.exit(1)
+
+    if args.diff:
+        a, b = args.diff
+        try:
+            d = diff(args.output, a, b)
+        except (FileNotFoundError, ValueError) as e:
+            _fail(e)
+        print(f"\n{headline(d)}\n")
+        if not d["same_source"]:
+            print("  ⚠ These checkpoints were taken against different source. Differences "
+                  "below may come from the repository, not the decisions.\n")
+        for c in d["plan_changes"]:
+            if c["kind"] == "changed":
+                print(f"  plan  {c['target']}: {c['from']} → {c['to']}")
+            else:
+                print(f"  plan  {c['target']}: {c['kind']}")
+        for c in d["artifact_changes"]:
+            print(f"  built {c['target']}: {c['kind']}"
+                  + (f" ({c['from_status']} → {c['to_status']})"
+                     if c["from_status"] and c["to_status"] else ""))
+        return
+
+    if args.restore:
+        try:
+            bb, warnings = load(args.output, args.restore)
+        except (FileNotFoundError, ValueError) as e:
+            _fail(e)
+        print(f"\nRestored checkpoint {args.restore}: {len(bb.all_classes)} class(es), "
+              f"{len(bb.plan)} plan item(s), {len(bb.artifacts)} artifact(s).")
+        for w in warnings:
+            print(f"  ⚠ {w}")
+        if not warnings:
+            print("  No drift detected against the current source.")
+        # Deliberately read-only: restoring state is a question ("what did this look
+        # like?"), and rewriting generated files is an answer nobody asked for.
+        print("\n  This inspected the snapshot without touching anything on disk.")
+        return
+
+    rows = list_all(args.output)
+    if not rows:
+        print(f"No checkpoints under {args.output}.")
+        return
+    print(f"\n{len(rows)} checkpoint(s) under {args.output}:\n")
+    print(f"  {'ID':<14} {'WHEN':<17} {'PHASE':<10} {'PLAN':<12} {'BUILT':<8} NAME")
+    for r in rows:
+        when = _dt.datetime.fromtimestamp(r["at"]).strftime("%Y-%m-%d %H:%M")
+        plan = f"{r['convert']}c/{r['skip']}s" if r["plan_items"] else "—"
+        built = f"{r['artifacts']}" + (f" ({r['failed']}✗)" if r["failed"] else "")
+        print(f"  {r['id']:<14} {when:<17} {r['phase']:<10} {plan:<12} {built:<8} {r['name']}")
+    print("\n  Compare two:  --diff <id> <id>      Inspect one:  --restore <id>")
+
+
 def cmd_cronjob(args):
     """Translate Hybris cron triggers (Spring XML / ImpEx) into a Scheduled Apex runbook."""
     from src.cronjob import translate_cronjobs_dir
@@ -337,6 +402,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_impex.add_argument("--input", required=True, help="Directory containing .impex files")
     p_impex.add_argument("--output", required=True, help="Path to output directory")
 
+    # checkpoints — "restore to before I approved the plan"
+    p_ck = subparsers.add_parser(
+        "checkpoints", help="List, compare or inspect the snapshots a run left behind")
+    p_ck.add_argument("--output", required=True, help="A run's output directory")
+    p_ck.add_argument("--diff", nargs=2, metavar=("A", "B"),
+                      help="Compare two checkpoints by id")
+    p_ck.add_argument("--restore", metavar="ID",
+                      help="Rebuild a checkpoint's state and report any drift (read-only)")
+
     # cronjob (Phase 2: scheduled jobs)
     p_cron = subparsers.add_parser(
         "cronjob", help="Translate Hybris cron triggers (Spring XML / ImpEx) into a Scheduled Apex runbook")
@@ -364,6 +438,7 @@ def main():
         "agent-migrate": cmd_agent_migrate,
         "impex": cmd_impex,
         "cronjob": cmd_cronjob,
+        "checkpoints": cmd_checkpoints,
     }
 
     from src.llm import ProviderAuthError, CostCapExceeded
