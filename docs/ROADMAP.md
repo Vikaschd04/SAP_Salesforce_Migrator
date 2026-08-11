@@ -13,7 +13,7 @@
 |---|---|
 | **Phase 0 — Prove correctness** | ✅ Delivered (self-healing deploy loop, confidence scoring, schema reconciliation, parity harness + strengthening) |
 | **Phase 1 — Agentic core** | ✅ Delivered (Blackboard, Planner, Builder+Critic, Verifier, model routing, RAG) |
-| **Phase 2 — Full-surface coverage** | 🔶 Done: ImpEx data migration, deeper `items.xml` metadata, cronjobs → Scheduled Apex. Open: business processes, OCC REST |
+| **Phase 2 — Full-surface coverage** | 🔶 Done: ImpEx data migration, deeper `items.xml` metadata, cronjobs → Scheduled Apex, OCC REST controllers → Apex `RestResource`. Business processes are **read and reported as not-migrated** (see below); converting them to Flow is open |
 | **Phase 3 — Frontend + complete-conversion** | ✅ Delivered — **Spartacus (Angular) → LWC** engine (frontend ingest, LWC generator + `@AuraEnabled` Apex wiring, LWC validator, LWC RAG, Critic LWC review); **"convert everything"** policy + completeness ledger |
 | **Phase 4 — The proof moat** | ✅ Delivered — all thirteen differentiators. See [DIFFERENTIATORS.md](DIFFERENTIATORS.md) |
 | **Phase 5 — Web platform** | ✅ Core delivered — cockpit, accounts/sessions, per-tenant encrypted keys, FIFO run queue, durable SQLite history, spend caps. Open: Postgres, org/project hierarchy, RBAC, cost metering |
@@ -37,6 +37,17 @@
 | Deterministic replay | Every model call, keyed and auditable |
 | Sign-off contract | Who approved what, on what evidence — and what is **not** certified |
 | Named checkpoints | Return to before a gate decision; diff two plans |
+
+### Business processes — reported, not yet converted
+
+`*-process.xml` used to be invisible: never read, so a process could not appear in the
+completeness ledger even as a loss. It is now parsed, each action resolved to the Java class
+implementing it, and reported at the **Discovery gate** and in `BUSINESS_PROCESSES.md` as
+awaiting manual migration.
+
+Converting them is the next step of that work — Salesforce **Flow** where it can express the
+state machine, an Apex state machine where it cannot. Doing the reporting first was
+deliberate: a known gap that is stated is a different product from a gap nobody can see.
 
 ### The honest gap
 

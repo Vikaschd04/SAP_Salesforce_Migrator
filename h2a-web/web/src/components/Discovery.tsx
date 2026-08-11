@@ -21,6 +21,13 @@ export interface DiscoveryData {
     fields: { name: string; type: string }[]; required: string[]; picklists: Record<string, string[]>;
   }[];
   skipped: { class_name?: string; layer?: string; reason?: string }[];
+  processes?: {
+    name: string; file: string; start?: string; on_error?: string; transitions?: number;
+    unreadable?: string;
+    actions: { id: string; bean: string; implemented_by: string; transitions_to: string[] }[];
+    flow?: { id: string; kind: string; event?: string; timeout?: string }[];
+    end_states?: { id: string; state: string }[];
+  }[];
 }
 
 type View = 'overview' | 'files' | 'classes' | 'model';
@@ -63,6 +70,7 @@ export default function Discovery({ d }: { d: DiscoveryData }) {
     <div className="disc">
       {/* What we established before spending anything — the reviewer's first question
           is "did it even understand what I gave it", so it is answered first. */}
+      {!!(d.processes || []).length && <Processes list={d.processes!} />}
       {pf && <Preflight r={pf} compact />}
       {forecast && <Forecast f={forecast} />}
       {orgfit && <OrgFit o={orgfit} />}
@@ -379,3 +387,73 @@ function FileTree({ files }: { files: { path: string; bytes: number }[] }) {
 const fileIcon = (n: string) =>
   n.endsWith('.java') ? '☕' : n.endsWith('.ts') ? '🅃' : n.endsWith('.html') ? '🖹'
     : n.endsWith('.xml') ? '⚙' : n.endsWith('.impex') ? '🗒' : n.match(/\.s?css$/) ? '🎨' : '📄';
+
+
+/**
+ * Business processes — read, but not converted.
+ *
+ * Shown at the Discovery gate on purpose: "the orchestration will not be migrated" is
+ * something to learn before approving the spend, not after. It leads with the loss rather
+ * than the count, because a reviewer skimming this needs to take away that something is
+ * missing, not that something was found.
+ */
+function Processes({ list }: { list: NonNullable<DiscoveryData['processes']> }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const actions = list.reduce((n, p) => n + (p.actions || []).length, 0);
+  const resolved = list.reduce(
+    (n, p) => n + (p.actions || []).filter((a) => a.implemented_by).length, 0);
+
+  return (
+    <section className="bp">
+      <header>
+        <div>
+          <h4>{list.length === 1 ? '1 business process' : `${list.length} business processes`} — not migrated</h4>
+          <p>
+            The {actions} action {actions === 1 ? 'class' : 'classes'} inside {list.length === 1 ? 'it' : 'them'} convert
+            to Apex ({resolved} matched to source so far). The state machine that sequences
+            them — the order, the branches, the waits, the error paths — does not. Rebuild
+            each as a Salesforce Flow, or as an Apex state machine where Flow can't express it.
+          </p>
+        </div>
+      </header>
+      <ul>
+        {list.map((p) => (
+          <li key={p.file}>
+            <button onClick={() => setOpen(open === p.file ? null : p.file)}>
+              <code>{p.name}</code>
+              <span className="bp-meta">
+                {(p.actions || []).length} actions · {p.transitions ?? 0} transitions
+                {p.unreadable ? ' · unreadable' : ''}
+              </span>
+              <span className="bp-chev">{open === p.file ? '▾' : '▸'}</span>
+            </button>
+            {open === p.file && (
+              <table className="bp-tbl">
+                <thead><tr><th>Step</th><th>Implemented by</th><th>Goes to</th></tr></thead>
+                <tbody>
+                  {(p.actions || []).map((a) => (
+                    <tr key={a.id}>
+                      <td><code>{a.id}</code></td>
+                      <td>{a.implemented_by
+                        ? <code>{a.implemented_by}</code>
+                        : <em>unresolved — check your Spring config</em>}</td>
+                      <td className="dim">{(a.transitions_to || []).join(', ') || '—'}</td>
+                    </tr>
+                  ))}
+                  {(p.flow || []).map((w) => (
+                    <tr key={w.id}>
+                      <td><code>{w.id}</code></td>
+                      <td><b>no class — pure orchestration</b>
+                        <span className="dim"> ({w.kind}{w.timeout ? `, timeout ${w.timeout}` : ''})</span></td>
+                      <td className="dim">—</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}

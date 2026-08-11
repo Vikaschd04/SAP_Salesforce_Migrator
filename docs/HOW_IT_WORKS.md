@@ -165,6 +165,7 @@ Besides the code itself, every run produces documents you can read without being
 
 | Document | What it tells you |
 |---|---|
+| `BUSINESS_PROCESSES.md` | **Workflows we read but did not convert** — and exactly what's missing |
 | `SIGN_OFF.md` | **The audit, as a deliverable** — who approved what, on what evidence, and what it does *not* certify |
 | `MIGRATION_PLAN.md` | Every decision it made and why — the full audit trail |
 | `BUSINESS_RULES.md` | **Every business rule it found, and what happened to it** |
@@ -199,6 +200,24 @@ That last bucket is the important one, and it's the thing no other tool shows yo
 The headline becomes *"147 of 152 business rules preserved and asserted"* — a number that means something.
 
 > **Being straight with you about this:** "Asserted" means the test *mentions* what the rule is about. That's real evidence, and it's far better than nothing — but it isn't mathematical proof that the new code behaves identically. Treat it as "a test probably covers this," and use a real deployment plus your own testing for proof. We'd rather tell you that than let a green number mislead you.
+
+## What it deliberately does *not* migrate — and says so
+
+Hybris **business processes** are workflows: order fulfilment, returns, registration. Each
+is a state machine written in XML — do this, then if payment declines go there, wait up to
+four hours for the warehouse, and if that times out run the compensating step.
+
+The tool converts every action *class* in a process, because those are ordinary Java. It
+does **not** yet rebuild the state machine that sequences them. So it tells you, in the
+completeness ledger and in its own document: *you are holding the pieces without the
+wiring*, here is every step, here is which ones became Apex, and here is the wait with the
+four-hour timeout that has no code at all.
+
+> **Why this is worth pointing out.** Until recently the tool didn't read these files, so a
+> process couldn't even be reported as missing — it was *absent* from the ledger rather
+> than listed in it. The action classes appeared in the output and everything looked
+> complete. A gap nobody can see is the one that reaches production, so making it
+> impossible to miss came before converting it.
 
 ## The four other ways it proves the work
 

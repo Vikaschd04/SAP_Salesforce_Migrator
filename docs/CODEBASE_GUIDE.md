@@ -40,6 +40,7 @@ h2a-mvp/
 │   ├── forecast.py        ← what this run will cost, as a range
 │   ├── orgfit.py          ← reads the DESTINATION org for collisions
 │   ├── radar.py           ← Hybris habits that become Salesforce hazards
+│   ├── processes.py       ← business processes: read, resolved, reported as NOT migrated
 │   │
 │   │   ─── the proof layer (Part 13) ───
 │   ├── rule_ledger.py     ← every rule → asserted / implemented / at_risk / dropped
@@ -365,6 +366,7 @@ architect actually interrogates.
 | [preflight.py](../h2a-mvp/src/preflight.py) | Is this really a SAP Commerce project? Verdict, confidence, blockers — plus any credentials found in the upload. Refuses a wrong upload before a run exists. |
 | [forecast.py](../h2a-mvp/src/forecast.py) | What this run will cost, as a **range**. Constants are measured from instrumented runs and kept in one place so drift is visible. |
 | [orgfit.py](../h2a-mvp/src/orgfit.py) | Reads the **destination** org via the `sf` CLI and reconciles it against the plan: collisions, reusable standard objects, installed packages, limits headroom. |
+| [processes.py](../h2a-mvp/src/processes.py) | Reads `*-process.xml` — which nothing read before, so a business process could not appear in the ledger even as a loss. Resolves each action to its Java class and reports the whole state machine as awaiting manual migration. |
 | [radar.py](../h2a-mvp/src/radar.py) | Eleven Hybris→Salesforce hazard rules (query-in-loop, `@Transactional`, session-scoped beans…). Java and XML are stripped separately — the Java stripper erases XML attribute values. |
 
 ### After the build — the proof stack

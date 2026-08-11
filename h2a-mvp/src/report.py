@@ -184,6 +184,14 @@ def generate_report(output_dir: str, validation_results: dict = None,
                 "> ⚠️ **Some inputs are unaccounted for — investigate before relying on this run.**",
                 "",
             ])
+        if any(r["outcome"] == "manual" for r in ledger):
+            sections.extend([
+                "> ⚠️ **`manual` means we read it and did not convert it.** Hybris business "
+                "processes are state machines; their action classes were converted to Apex, "
+                "but the orchestration that sequences them was not. See "
+                "`BUSINESS_PROCESSES.md` — you are holding the pieces without the wiring.",
+                "",
+            ])
         if any(r["outcome"] == "overwritten" for r in ledger):
             sections.extend([
                 "> 🚨 **`overwritten` means two artifacts wrote the same file and only one "

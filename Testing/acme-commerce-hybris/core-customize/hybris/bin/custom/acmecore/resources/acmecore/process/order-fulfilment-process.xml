@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Order fulfilment for ACME Commerce.
+
+  This is the orchestration a migration has to reproduce: the order the actions run in,
+  the branch when payment is declined, the wait for warehouse confirmation, and the
+  compensating path when a consignment cannot be created. The action classes below are
+  ordinary Java and migrate on their own; this file is what makes them a process.
+-->
+<process xmlns="http://www.hybris.de/xsd/processdefinition"
+         name="order-fulfilment-process"
+         processClass="de.hybris.platform.orderprocessing.model.OrderProcessModel"
+         start="checkOrder"
+         onError="handleFailure">
+
+    <action id="checkOrder" bean="checkOrderAction">
+        <transition name="OK"    to="authorizePayment"/>
+        <transition name="NOK"   to="handleFailure"/>
+    </action>
+
+    <action id="authorizePayment" bean="authorizePaymentAction">
+        <transition name="OK"      to="applyLoyaltyPoints"/>
+        <transition name="DECLINED" to="notifyCustomerOfDecline"/>
+        <transition name="RETRY"    to="authorizePayment"/>
+    </action>
+
+    <action id="applyLoyaltyPoints" bean="applyLoyaltyPointsAction">
+        <transition name="OK" to="reserveStock"/>
+    </action>
+
+    <action id="reserveStock" bean="reserveStockAction">
+        <transition name="OK"           to="waitForWarehouse"/>
+        <transition name="OUT_OF_STOCK" to="notifyCustomerOfDecline"/>
+    </action>
+
+    <wait id="waitForWarehouse" then="createConsignments" prependProcessCode="true">
+        <event>WarehouseConfirmedEvent</event>
+        <timeout delay="PT4H" then="handleFailure"/>
+    </wait>
+
+    <action id="createConsignments" bean="createConsignmentsAction">
+        <transition name="OK"   to="sendOrderConfirmation"/>
+        <transition name="FAIL" to="releaseStock"/>
+    </action>
+
+    <action id="releaseStock" bean="releaseStockAction">
+        <transition name="OK" to="handleFailure"/>
+    </action>
+
+    <action id="sendOrderConfirmation" bean="sendOrderConfirmationAction">
+        <transition name="OK" to="success"/>
+    </action>
+
+    <action id="notifyCustomerOfDecline" bean="notifyCustomerOfDeclineAction">
+        <transition name="OK" to="failed"/>
+    </action>
+
+    <action id="handleFailure" bean="handleFulfilmentFailureAction">
+        <transition name="OK" to="failed"/>
+    </action>
+
+    <end id="success" state="SUCCEEDED">Order fulfilled.</end>
+    <end id="failed"  state="ERROR">Order fulfilment failed.</end>
+</process>

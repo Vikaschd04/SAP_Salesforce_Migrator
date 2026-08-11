@@ -112,6 +112,7 @@ salesforce_<project>/
 ├── CHARACTERIZATION.md    (original JUnit behaviours replayed against the Apex)
 ├── PARITY.md              (behavioral parity checklist)
 ├── ANTI_PATTERNS.md       (Hybris patterns that become Salesforce hazards)
+├── BUSINESS_PROCESSES.md  (workflows read but NOT converted, and exactly what is missing)
 ├── ORG_FIT.md             (collisions with the target org)
 ├── FORECAST.md            (pre-run cost estimate and its assumptions)
 ├── DECISION_RECORD.md     (every model call, keyed and replayable)

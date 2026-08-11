@@ -107,6 +107,10 @@ class Blackboard:
     # Files we could not read or parse. Recorded rather than dropped: a migration that
     # silently forgets a file is worse than one that admits it could not read it.
     unreadable: list = field(default_factory=list)
+    # Hybris business processes (`*-process.xml`). Read but not yet converted — the
+    # action classes migrate, the state machine that sequences them does not. Held here
+    # so the ledger can say so, which it could not when these files went unread.
+    processes: list = field(default_factory=list)
     # Hybris patterns that become hazards on Salesforce (src/radar.py).
     radar: dict = field(default_factory=dict)
     # What the destination Salesforce org already contains (src/orgfit.py).
@@ -179,7 +183,7 @@ class Blackboard:
     def completeness_ledger(self) -> list:
         """Account for every ingested source class — the proof that nothing was
         silently dropped. Each row: {source, layer, outcome, target, note} where
-        outcome is converted | flagged | skipped | unaccounted | overwritten."""
+        outcome is converted | flagged | skipped | unaccounted | overwritten | manual."""
         by_source = {}
         for a in self.artifacts:
             for c in a.source_classes:
@@ -232,6 +236,14 @@ class Blackboard:
                          "outcome": "unreadable", "target": "—",
                          "note": f"{u.get('unreadable', 'unknown')} ({u.get('file', '')})"
                                  " — migrate this file by hand"})
+
+        # Business processes: read, resolved to their action classes, and reported as
+        # awaiting manual migration. Before these files were parsed at all, a process
+        # could not appear here even as a loss — the one gap the ledger could not see.
+        if self.processes:
+            from src.processes import ledger_rows
+            converted = {r["source"] for r in rows if r["outcome"] in ("converted", "flagged")}
+            rows.extend(ledger_rows(self.processes, converted))
 
         # Frontend framework glue / type-only files: no business logic to convert.
         for sk in self.frontend_skipped:

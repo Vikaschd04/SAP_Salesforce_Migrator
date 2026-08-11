@@ -151,6 +151,7 @@ def _discovery_payload(bb) -> dict:
             "classes": len([c for c in classes if c["layer"] != "Component"]),
             "components": len([c for c in classes if c["layer"] == "Component"]),
             "objects": len(schema),
+            "processes": len(getattr(bb, "processes", []) or []),
             "domains": len(bb.domains or {}),
             "total_loc": sum(c["loc"] for c in classes),
         },
@@ -162,6 +163,9 @@ def _discovery_payload(bb) -> dict:
         "schedule": list(bb.schedule or []),
         "schema": schema,
         "skipped": list(bb.frontend_skipped or []),
+        # Read but not converted. Surfaced at the gate so the scope gap is a decision,
+        # not a discovery made after the money is spent.
+        "processes": list(getattr(bb, "processes", []) or []),
         # What we established about the codebase before spending anything on it.
         "preflight": getattr(bb, "preflight", None),
         "radar": getattr(bb, "radar", None),
@@ -547,6 +551,22 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     bb.unreadable = ingest_result.get("unreadable", [])
     bb.schema = build_schema(bb.item_types, bb.relations, bb.enum_types)
     bb.source_corpus = "\n".join(c.get("source", "") for c in bb.all_classes)
+
+    # Business processes. Read here, with the class list already in hand so each action
+    # resolves to the Java that implements it — and reported at the Discovery gate,
+    # because "the orchestration will not be migrated" is something to learn before
+    # paying for the migration rather than after.
+    try:
+        from src.processes import discover as _discover_processes, headline as _proc_headline
+        bb.processes = _discover_processes(
+            input_dir, {c.get("class_name") for c in bb.all_classes})
+        if bb.processes:
+            from src.processes import summarise as _proc_summarise
+            print(f"  Processes: {_proc_headline(_proc_summarise(bb.processes))}")
+            bb.record("Scanner", "processes_found",
+                      _proc_headline(_proc_summarise(bb.processes)))
+    except Exception as e:                              # advisory, never a blocker
+        print(f"  ⚠ business-process scan skipped: {e}")
 
     # A number before the first billable token. The Discovery gate is the last moment
     # this is still true, which is exactly why it belongs here.
@@ -1056,6 +1076,12 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         bb.record("Triage", "ranked", _th(triage["summary"]))
         print(f"  Review triage: {_th(triage['summary'])}")
 
+    if getattr(bb, "processes", None):
+        from src.processes import (write_processes_md, summarise as _psum,
+                                   headline as _phead)
+        write_processes_md(output_dir, bb.processes)
+        bb.record("Scanner", "processes_reported", _phead(_psum(bb.processes)))
+
     if getattr(bb, "radar", None) and bb.radar["summary"]["total"]:
         from src.radar import write_radar_md, headline as _rh
         write_radar_md(output_dir, bb.radar)
@@ -1103,6 +1129,14 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     if characterization:
         from src.characterize import headline as _char_headline
         print(f"  Characterization: {_char_headline(characterization['summary'])}")
+    if getattr(bb, "processes", None):
+        from src.processes import summarise as _psum
+        _ps = _psum(bb.processes)
+        from src.processes import _plural
+        print(f"  ⚠ {_plural(_ps['processes'], 'business process', 'business processes')}"
+              f" NOT migrated — {_plural(_ps['actions'], 'action')} converted as loose "
+              "classes, the orchestration that sequences them did not. "
+              "See BUSINESS_PROCESSES.md")
     if any(r["outcome"] == "unaccounted" for r in ledger):
         print("  ⚠ some inputs are UNACCOUNTED for — see the completeness ledger in MIGRATION_PLAN.md")
     _collisions = bb.output_collisions()

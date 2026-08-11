@@ -147,6 +147,7 @@ python -m pytest tests/ -q
 | `PROVENANCE.md` | Every generated method traced to the Java that produced it, with line numbers. |
 | `CHARACTERIZATION.md` | Your original JUnit behaviours, replayed against the generated Apex. |
 | `ANTI_PATTERNS.md` | Hybris patterns that become Salesforce hazards (query-in-loop, `@Transactional`…). |
+| `BUSINESS_PROCESSES.md` | **Workflows we read but did not convert** — every step, which actions became Apex, and the orchestration that did not. |
 | `ORG_FIT.md` | What in your target org collides with this migration. |
 | `FORECAST.md` | What the run was estimated to cost, and on what assumptions. |
 | `DECISION_RECORD.md` | Every model call, keyed and replayable. |
