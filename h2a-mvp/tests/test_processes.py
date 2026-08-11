@@ -155,7 +155,8 @@ def test_non_process_xml_is_ignored(tmp_path):
 def test_summary_and_covered_classes(proc):
     s = summarise([proc])
     assert s == {"processes": 1, "actions": 4, "actions_resolved": 3,
-                 "unreadable": 0, "transitions": 7}
+                 "unreadable": 0, "transitions": 7,
+                 "scaffolded": 0, "wired": 0, "review_items": 0}
     assert covered_classes([proc]) == NAMES
     assert "1 business process found" in headline(s)   # not "1 process(es)"
 

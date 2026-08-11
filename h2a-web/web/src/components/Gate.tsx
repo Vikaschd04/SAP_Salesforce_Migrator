@@ -9,7 +9,9 @@ export function cxBadge(cx?: string) {
   return <span className={`badge cx-${cx.toLowerCase()}`}>{cx} complexity</span>;
 }
 
-export default function Gate({ runId, gate, onClosed }: { runId: string; gate: GateState; onClosed: () => void }) {
+export default function Gate({ runId, gate, onClosed, onStop }: {
+  runId: string; gate: GateState; onClosed: () => void; onStop?: (gate: string) => void;
+}) {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   // Local copy so a per-file regenerate updates this screen immediately.
@@ -102,6 +104,23 @@ export default function Gate({ runId, gate, onClosed }: { runId: string; gate: G
         </div>
 
         <div className="gate-actions">
+          {/* Reviewing is when you find out the source needs changing — a hazard you want
+              to fix at source, a class that should never have been in scope. Without this
+              the only options were approve something you disagree with, or abandon the
+              tab. Stopping keeps every completed stage: the re-run reuses whatever you
+              did not touch, so you pay for the delta rather than the estate. */}
+          <button className="btn ghost" disabled={busy}
+            onClick={() => {
+              if (!confirm(
+                'Stop this run so you can change the source?\n\n'
+                + 'Everything finished so far is kept. When you run again, files you did '
+                + 'not change are reused rather than paid for a second time.')) return;
+              setBusy(true);
+              onStop?.(gate.gate);
+            }}>
+            ■ Stop &amp; edit source
+          </button>
+          <span className="gate-sep" />
           {gate.gate === 'discovery' ? (
             <button className="btn primary" disabled={busy} onClick={() => send({ action: 'approve' })}>
               Looks right — continue ▶

@@ -92,6 +92,7 @@ salesforce_<project>/
 ├── force-app/main/default/
 │   ├── classes/         (Apex .cls + -meta.xml + matching Test.cls)
 │   ├── lwc/             (Lightning Web Component bundles, when a storefront was present)
+│   ├── flows/           (Salesforce Flows generated from Hybris business processes, Draft)
 │   └── objects/         (Custom Objects, Custom Fields, picklists, lookups)
 ├── data/                 (per-object CSVs, from ImpEx)
 ├── checkpoints/          (gzipped Blackboard snapshots, one before each review gate)

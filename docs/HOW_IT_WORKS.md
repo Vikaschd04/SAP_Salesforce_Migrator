@@ -201,23 +201,46 @@ The headline becomes *"147 of 152 business rules preserved and asserted"* — a 
 
 > **Being straight with you about this:** "Asserted" means the test *mentions* what the rule is about. That's real evidence, and it's far better than nothing — but it isn't mathematical proof that the new code behaves identically. Treat it as "a test probably covers this," and use a real deployment plus your own testing for proof. We'd rather tell you that than let a green number mislead you.
 
-## What it deliberately does *not* migrate — and says so
+## Workflows become Flows — as a scaffold, and it says so
 
 Hybris **business processes** are workflows: order fulfilment, returns, registration. Each
 is a state machine written in XML — do this, then if payment declines go there, wait up to
 four hours for the warehouse, and if that times out run the compensating step.
 
-The tool converts every action *class* in a process, because those are ordinary Java. It
-does **not** yet rebuild the state machine that sequences them. So it tells you, in the
-completeness ledger and in its own document: *you are holding the pieces without the
-wiring*, here is every step, here is which ones became Apex, and here is the wait with the
-four-hour timeout that has no code at all.
+The tool now translates each one into a **Salesforce Flow**. The shape is exact: every
+step, every branch, every wait and end state, in the right order, laid out so you can open
+it in Flow Builder and compare it against the original side by side. It also writes the
+small `@InvocableMethod` wrappers a Flow needs to call the converted Apex.
 
-> **Why this is worth pointing out.** Until recently the tool didn't read these files, so a
+**And it is honest that this is a scaffold, not a finished job.** Two things are inferred:
+
+- **The branch names.** A Hybris step returns a named outcome (`OK`, `DECLINED`) and the
+  Flow branches on that name. That holds only if the converted Apex kept the same words.
+- **What passes between steps.** Hybris hands each step a whole process record; the Flow
+  passes an id. Retry counters and flags a step used to read are *not* wired.
+
+Every generated Flow is deployed as **Draft** deliberately — an unreviewed translation of
+your order pipeline must not become live through an accidental deploy. The completeness
+ledger calls it `scaffolded`, never `converted`, and `BUSINESS_PROCESSES.md` numbers each
+thing left to finish.
+
+> **Why this got built in two steps.** These files were once never read at all, so a
 > process couldn't even be reported as missing — it was *absent* from the ledger rather
-> than listed in it. The action classes appeared in the output and everything looked
-> complete. A gap nobody can see is the one that reaches production, so making it
-> impossible to miss came before converting it.
+> than listed in it. Reporting the gap came first, converting it second, because a loss
+> nobody can see is the one that reaches production.
+
+## Changed your mind mid-review? Stop, fix the source, run again
+
+Reviewing is exactly when you discover the source needs changing — a hazard you'd rather
+fix at source than migrate, a module that shouldn't have been in scope. So every review
+gate has a **Stop & edit source** button.
+
+Nothing finished is thrown away. When you run again, files you didn't touch are reused
+rather than converted a second time, so **you pay for the difference, not the estate**.
+
+And stopping is recorded as stopping: the sign-off contract shows the run as *unreviewed*
+with that gate un-approved. It would have been easy for a cancel to look like an approval
+in the paperwork — it doesn't.
 
 ## The four other ways it proves the work
 

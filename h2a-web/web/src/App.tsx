@@ -45,8 +45,15 @@ export default function App() {
   const running = state.status === 'running';
   const showLanding = state.status === 'idle';
 
+  // Kept so a run stopped at a gate can be restarted with identical settings after the
+  // user edits their source. The engine's incremental reuse then does the rest — only
+  // what actually changed is re-billed.
+  const [lastForm, setLastForm] = useState<FormData | null>(null);
+  const [stoppedAt, setStoppedAt] = useState<string | null>(null);
+
   const start = async (fd: FormData) => {
     setStarting(true); setError(''); setRejected(null); setErrDismissed(false);
+    setLastForm(fd); setStoppedAt(null);
     try { begin(await startRun(fd)); }
     catch (e: any) {
       // A refused upload is not an error to apologise for — it is a finding, and the
@@ -57,6 +64,14 @@ export default function App() {
     finally { setStarting(false); }
   };
   const stop = async () => { if (state.runId) await cancelRun(state.runId); reset(); };
+
+  // Stopping from a review gate is a different intent from abandoning the run: the user
+  // wants to change something and come back, so we remember where they were.
+  const stopFromGate = async (gateName: string) => {
+    if (state.runId) await cancelRun(state.runId);
+    closeGate(); reset(); setStoppedAt(gateName);
+  };
+  const runAgain = () => { if (lastForm) start(lastForm); };
 
   const statusText = running ? `running · ${state.elapsed}` : state.status === 'complete' ? 'complete'
     : state.status === 'error' ? 'error' : (engineUp === null ? 'connecting…' : engineUp ? 'ready' : 'offline');
@@ -92,7 +107,10 @@ export default function App() {
       </header>
 
       {showLanding ? (
-        <Landing hosted={hosted} defaultProvider={defaultProvider} starting={starting} error={error} onStart={start} />
+        <Landing hosted={hosted} defaultProvider={defaultProvider} starting={starting}
+          error={error} onStart={start}
+          stoppedAt={stoppedAt} onRunAgain={lastForm ? runAgain : undefined}
+          onDismissStopped={() => setStoppedAt(null)} />
       ) : (
         <>
           {state.errorMsg && !errDismissed && (
@@ -151,7 +169,7 @@ export default function App() {
       <PreflightModal report={rejected} onClose={() => setRejected(null)} />
       <Keys open={keysOpen} onClose={() => setKeysOpen(false)} />
       <History open={histOpen} onClose={() => setHistOpen(false)} onOpen={begin} />
-      {state.gate && state.runId && <Gate runId={state.runId} gate={state.gate} onClosed={closeGate} />}
+      {state.gate && state.runId && <Gate runId={state.runId} gate={state.gate} onClosed={closeGate} onStop={stopFromGate} />}
       <Copilot runId={state.runId} open={cpOpen} onClose={() => setCpOpen(false)} onEvents={injectEvents} />
     </div>
   );

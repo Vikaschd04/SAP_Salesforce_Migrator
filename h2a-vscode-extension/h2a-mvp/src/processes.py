@@ -96,14 +96,19 @@ def parse_process(path: str, class_names: set[str] | None = None) -> dict | None
         tag = _localname(node.tag)
         if tag in _ACTION_TAGS:
             bean = node.get("bean", "") or node.get("class", "")
-            outs = [t.get("to", "") for t in node
-                    if _localname(t.tag) == "transition"]
-            transitions += len(outs)
+            # Names as well as targets: a Hybris transition name (OK / NOK / DECLINED) is
+            # the value the action returns, so it is the condition a Salesforce Flow
+            # decision has to compare against. Dropping it would leave the branch
+            # untranslatable.
+            edges = [{"name": t.get("name", ""), "to": t.get("to", "")}
+                     for t in node if _localname(t.tag) == "transition"]
+            transitions += len(edges)
             actions.append({
                 "id": node.get("id", ""),
                 "bean": bean,
                 "implemented_by": _bean_to_class(bean, class_names),
-                "transitions_to": [o for o in outs if o],
+                "transitions": edges,
+                "transitions_to": [e["to"] for e in edges if e["to"]],
             })
         elif tag in _FLOW_TAGS:
             # `then` and a timeout's `then` are edges in the state machine as much as a
@@ -163,12 +168,16 @@ def discover(input_dir: str, class_names: set[str] | None = None) -> list[dict]:
 def summarise(processes: list[dict]) -> dict:
     acts = [a for p in processes for a in p["actions"]]
     resolved = [a for a in acts if a["implemented_by"]]
+    gen = [p.get("generated_flow") for p in processes if p.get("generated_flow")]
     return {
         "processes": len(processes),
         "actions": len(acts),
         "actions_resolved": len(resolved),
         "unreadable": sum(1 for p in processes if p.get("unreadable")),
         "transitions": sum(p.get("transitions", 0) for p in processes),
+        "scaffolded": len(gen),
+        "wired": sum((g.get("coverage") or {}).get("wired", 0) for g in gen),
+        "review_items": sum(len(g.get("review_notes") or []) for g in gen),
     }
 
 
@@ -180,10 +189,15 @@ def _plural(n: int, one: str, many: str = "") -> str:
 def headline(s: dict) -> str:
     if not s.get("processes"):
         return "No Hybris business processes found."
-    return (f"{_plural(s['processes'], 'business process', 'business processes')} found — "
+    base = (f"{_plural(s['processes'], 'business process', 'business processes')} found — "
             f"{_plural(s['actions'], 'action')}, "
-            f"{_plural(s['transitions'], 'transition')}. Not migrated: the action classes "
-            "convert, the orchestration that sequences them does not.")
+            f"{_plural(s['transitions'], 'transition')}")
+    if s.get("scaffolded"):
+        return (f"{base}. {_plural(s['scaffolded'], 'Flow')} generated as a Draft "
+                f"scaffold — {s.get('wired', 0)}/{s['actions']} steps wired to converted "
+                "Apex; the rest need finishing by hand.")
+    return (f"{base}. Not migrated: the action classes convert, the orchestration that "
+            "sequences them does not.")
 
 
 def covered_classes(processes: list[dict]) -> set[str]:
@@ -210,6 +224,21 @@ def ledger_rows(processes: list[dict], converted: set[str] | None = None) -> lis
         acts = p["actions"]
         built = [a["implemented_by"] for a in acts
                  if a["implemented_by"] and a["implemented_by"] in converted]
+        gen = p.get("generated_flow")
+        if gen:
+            cov = gen.get("coverage", {})
+            wired, total = cov.get("wired", 0), cov.get("actions", len(acts))
+            # `scaffolded`, not `converted`. The topology is faithful and it deploys, but
+            # unwired steps and inferred outcome names mean calling it converted would be
+            # the overclaim this ledger exists to prevent.
+            note = (f"Flow `{gen['api_name']}` generated (Draft) — topology faithful, "
+                    f"{wired}/{total} steps wired to converted Apex, "
+                    f"{_plural(len(gen.get('review_notes') or []), 'item')} needing "
+                    "review. See BUSINESS_PROCESSES.md.")
+            rows.append({"source": p["name"], "layer": "Process",
+                         "outcome": "scaffolded",
+                         "target": f"flows/{gen['api_name']}", "note": note})
+            continue
         note = (f"{_plural(len(acts), 'action')}, "
                 f"{_plural(p.get('transitions', 0), 'transition')}. "
                 f"{_plural(len(built), 'action class', 'action classes')} converted to "
@@ -222,16 +251,35 @@ def ledger_rows(processes: list[dict], converted: set[str] | None = None) -> lis
 
 def write_processes_md(output_dir: str, processes: list[dict]) -> str:
     s = summarise(processes)
-    out = ["# Business Processes — not migrated", "",
+    scaffolded = bool(s.get("scaffolded"))
+    title = ("# Business Processes — translated to Flow, needs finishing" if scaffolded
+             else "# Business Processes — not migrated")
+    out = [title, "",
            "Hybris business processes are state machines: actions wired together by named "
-           "transitions. The action classes in them are ordinary Java and **were** "
-           "converted to Apex. The orchestration that sequences those actions was not.", "",
-           f"**{headline(s)}**", "",
-           "> ⚠️ **You are holding the pieces without the wiring.** Each action below has "
-           "an Apex counterpart where its class was resolved, but nothing reproduces the "
-           "order they run in, the conditions between them, or the error paths. Rebuild "
-           "each process as a Salesforce **Flow**, or as an Apex state machine where Flow "
-           "cannot express it.", ""]
+           "transitions, with waits and error paths. The action classes inside them are "
+           "ordinary Java and were converted to Apex.", "",
+           f"**{headline(s)}**", ""]
+
+    if scaffolded:
+        out += ["> ⚠️ **This is a scaffold, not a finished migration.** The *topology* is a "
+                "faithful translation — every step, branch, wait and end state is in the "
+                "generated Flow, in the right order. Two things are inferred and need a "
+                "human:", "",
+                "> 1. **Outcome names.** A Hybris transition is named (`OK`, `DECLINED`) "
+                "and the action returns it. Each Flow decision compares against that name, "
+                "which holds only if the converted Apex kept the same vocabulary.",
+                "> 2. **What passes between steps.** Hybris hands each action a process "
+                "model; the Flow passes a record id. Anything else an action read from the "
+                "process — retry counters, flags — is not wired.", "",
+                "> Every generated Flow is deployed as **Draft** on purpose: an unreviewed "
+                "translation of an order pipeline must not become activatable through an "
+                "accidental deploy.", ""]
+    else:
+        out += ["> ⚠️ **You are holding the pieces without the wiring.** Each action below "
+                "has an Apex counterpart where its class was resolved, but nothing "
+                "reproduces the order they run in, the conditions between them, or the "
+                "error paths. Rebuild each process as a Salesforce **Flow**, or as an "
+                "Apex state machine where Flow cannot express it.", ""]
 
     for p in processes:
         out += [f"## `{p['name']}`", "", f"<sub>{p['file']}</sub>", ""]
@@ -270,12 +318,28 @@ def write_processes_md(output_dir: str, processes: list[dict]) -> str:
                 f"`{e['id']}`" + (f" ({e['state']})" if e["state"] else "")
                 for e in p["end_states"]), ""]
 
+        gen = p.get("generated_flow")
+        if gen:
+            cov = gen.get("coverage") or {}
+            out += ["", f"### Generated Flow — `{gen['api_name']}`", "",
+                    f"`force-app/main/default/flows/{gen['api_name']}.flow-meta.xml` · "
+                    f"**Draft** · {cov.get('wired', 0)}/{cov.get('actions', 0)} steps "
+                    f"wired to converted Apex · {cov.get('waits', 0)} wait(s) · "
+                    f"{cov.get('ends', 0)} end state(s)", ""]
+            notes = gen.get("review_notes") or []
+            if notes:
+                out += [f"**{_plural(len(notes), 'item')} to finish before this Flow does "
+                        "what the Hybris process did:**", ""]
+                out += [f"{i}. {n}" for i, n in enumerate(notes, 1)]
+                out.append("")
+
     out += ["---", "",
-            "> **Why this file exists.** Until now these definitions were never read at "
-            "all, so a process could not even be reported as missing — it was absent from "
-            "the completeness ledger rather than listed in it. Converting them is future "
-            "work; making the gap impossible to miss is not, because a loss nobody can see "
-            "is the one that reaches production."]
+            "> **Why this file exists.** These definitions were once never read at all, so "
+            "a process could not even be reported as missing — it was absent from the "
+            "completeness ledger rather than listed in it. It is now parsed, translated "
+            "into a Flow whose shape you can check against the table above, and listed "
+            "with everything that still needs a human. A loss nobody can see is the one "
+            "that reaches production; a scaffold you can read and finish is not a loss."]
 
     path = Path(output_dir) / "BUSINESS_PROCESSES.md"
     path.parent.mkdir(parents=True, exist_ok=True)

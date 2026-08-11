@@ -325,3 +325,21 @@ def test_placeholders_are_not_reported_as_secrets(tmp_path):
     (ext / "extensioninfo.xml").write_text('<extensioninfo><extension name="x"/></extensioninfo>')
     (ext / "local.properties").write_text("db.password=\ndb.pass=${env.DB_PASS}\napi_key=\n")
     assert inspect(str(tmp_path))["secrets"] == []
+
+
+def test_cancelling_at_a_gate_does_not_look_like_an_approval(fresh, tmp_path):
+    """The unblock injected to free the paused engine thread must not read as a verdict.
+
+    A run stopped mid-review is reported as cancelled and its gate as un-approved; the
+    sign-off contract is only worth signing if it can tell those apart.
+    """
+    run = fresh.start_run(DEMO, str(tmp_path / "g"), provider="mock", supervised=True)
+    for _ in range(600):                       # wait until it parks at a gate
+        if run.awaiting_gate:
+            break
+        time.sleep(0.02)
+    assert run.awaiting_gate, "run never reached a review gate"
+
+    run.request_cancel()
+    assert run._gate_decision["action"] == "cancelled"
+    assert _await(run) == "cancelled"

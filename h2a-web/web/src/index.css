@@ -842,6 +842,23 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .so-none { margin: 0; font-size: 12px; color: var(--text-faint); }
 .so-note { margin: 16px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--text-faint); }
 
+/* ── Stopped-at-a-gate banner ──
+   Informational, not an error: stopping to fix the source is a legitimate move, and the
+   reassuring part (nothing lost, only the delta is re-billed) has to be the loud part or
+   people will not use it. */
+.gate-sep { flex: 1; }
+.btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--text-dim); }
+.btn.ghost:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+
+.resume { display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  max-width: 780px; margin: 0 auto 22px; padding: 14px 18px; border-radius: var(--r-sm);
+  border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  background: var(--panel-2); text-align: left; }
+.resume b { font-size: 13px; color: var(--text); }
+.resume p { margin: 5px 0 0; font-size: 12px; line-height: 1.55; color: var(--text-dim); }
+.resume-actions { display: flex; flex-direction: column; align-items: stretch; gap: 7px; flex: none; }
+@media (max-width: 640px) { .resume { flex-direction: column; align-items: stretch; } }
+
 /* ── Business processes (read, not converted) ──
    Warning-coloured because the headline is a gap, not a finding. It sits at the top of
    Discovery so the scope limit is seen before the spend is approved. */

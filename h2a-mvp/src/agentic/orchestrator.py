@@ -348,6 +348,26 @@ def _make_emitter(on_event):
 _MAX_GATE_ROUNDS = 3
 
 
+def _write_flow_outputs(output_dir: str, flows: list, invocables: dict) -> None:
+    """Flows and their @InvocableMethod wrappers, in standard SFDX layout."""
+    if not flows:
+        return
+    from src.flow_generator import build_invocable
+    root = Path(output_dir) / "force-app" / "main" / "default"
+    fdir, cdir = root / "flows", root / "classes"
+    fdir.mkdir(parents=True, exist_ok=True)
+    cdir.mkdir(parents=True, exist_ok=True)
+    meta = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">\n'
+            "    <apiVersion>62.0</apiVersion>\n    <status>Active</status>\n"
+            "</ApexClass>\n")
+    for f in flows:
+        (fdir / f"{f['api_name']}.flow-meta.xml").write_text(f["xml"], encoding="utf-8")
+    for cls, wrapper in invocables.items():
+        (cdir / f"{wrapper}.cls").write_text(build_invocable(cls), encoding="utf-8")
+        (cdir / f"{wrapper}.cls-meta.xml").write_text(meta, encoding="utf-8")
+
+
 def _snapshot(bb, name: str, *, phase: str = "", note: str = ""):
     """Snapshot the run so a reviewer can come back to this exact moment.
 
@@ -397,8 +417,13 @@ def _run_gate(gate, emit, name: str, payload: dict, bb=None) -> dict:
     emit("gate_open", gate=name, **payload)
     try:
         decision = gate(name, payload) or {"action": "approve"}
-        actor, supervised = (decision or {}).get("actor"), True
+        actor = (decision or {}).get("actor")
         note = (decision or {}).get("note", "")
+        # A reviewer who stopped the run did not approve anything. The engine aborts
+        # immediately after this either way, but the contract records what happened here.
+        supervised = decision.get("action") != "cancelled"
+        if not supervised:
+            note = note or "reviewer stopped the run at this gate — nothing was approved"
     except Exception as e:
         # The reviewer was asked and no answer arrived. Approving is the existing
         # behaviour and stays, but it is not a human decision and is not filed as one.
@@ -932,7 +957,45 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                   f"+{len(bb.reconciliation['added_objects'])} object(s), "
                   f"+{len(bb.reconciliation['added_fields'])} field(s)")
 
+    # Business processes → Salesforce Flow. Deterministic: the state machine is fully
+    # specified in the source XML, so nothing here needs a model. Runs after the build
+    # because it can only wire a step to Apex that actually got generated.
+    if getattr(bb, "processes", None):
+        try:
+            from src.flow_generator import build_flow, build_invocable
+            converted = {a.target_name for a in bb.artifacts
+                         if a.status != "error" and not a.is_lwc}
+            # An action class converts under its own name; the artifact carries it.
+            for a in bb.artifacts:
+                for c in a.source_classes:
+                    if c.get("class_name"):
+                        converted.add(c["class_name"])
+            flows, invocables = [], {}
+            for proc in bb.processes:
+                if proc.get("unreadable"):
+                    continue
+                f = build_flow(proc, converted)
+                flows.append(f)
+                invocables.update(f["invocables"])
+                proc["flow"] = proc.get("flow") or []
+                proc["generated_flow"] = {k: f[k] for k in
+                                          ("api_name", "coverage", "review_notes")}
+            bb.flows = flows
+            bb.flow_invocables = invocables
+            if flows:
+                wired = sum(f["coverage"]["wired"] for f in flows)
+                total = sum(f["coverage"]["actions"] for f in flows)
+                bb.record("FlowBuilder", "scaffolded",
+                          f"{len(flows)} Flow(s) from business processes — "
+                          f"{wired}/{total} steps wired to converted Apex")
+                print(f"  Flows: {len(flows)} generated from business processes "
+                      f"({wired}/{total} steps wired to Apex, Draft status, review needed)")
+        except Exception as e:                          # advisory, never a blocker
+            print(f"  ⚠ Flow generation skipped: {e}")
+
     write_outputs(output_dir, bb.generated_dicts(), bb.item_types, mappings)
+    _write_flow_outputs(output_dir, getattr(bb, "flows", []),
+                        getattr(bb, "flow_invocables", {}))
     meta = write_schema_metadata(output_dir, bb.schema)
     print(f"    ✓ classes + {len(meta)} metadata file(s)")
     # Surface exactly which schema changes the AI made (and its evidence) so the

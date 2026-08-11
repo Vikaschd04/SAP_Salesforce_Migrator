@@ -139,3 +139,38 @@ def test_document_renders_and_leads_with_the_weaker_reading(tmp_path):
     assert "What this does **not** certify" in text
     # The banner must appear before the evidence, not after it.
     assert text.index("This run was unattended") < text.index("## 3. Evidence")
+
+
+# ── stopping at a gate is not approving ───────────────────────────────────────
+
+def test_stopping_at_a_gate_is_never_recorded_as_an_approval(tmp_path):
+    """Cancelling used to inject `{"action": "approve"}` to unblock the paused engine
+    thread, which meant a run the reviewer *stopped* was filed in this contract as one
+    they approved — the precise overclaim the document exists to prevent."""
+    from src.agentic.orchestrator import _run_gate
+    from src.agentic.blackboard import Blackboard
+
+    bb = Blackboard(input_dir=str(tmp_path), output_dir=str(tmp_path / "out"))
+    _run_gate(lambda name, payload: {"action": "cancelled"},
+              lambda *a, **k: None, "plan", {}, bb)
+
+    entry = bb.approvals[-1]
+    assert entry["action"] == "cancelled"
+    assert entry["supervised"] is False
+    assert "nothing was approved" in entry["note"]
+
+    c = build_signoff(bb)
+    assert c["supervised"] is False
+    assert "plan" in c["gates_auto_approved"] or c["gates_reviewed_by_a_human"] == []
+    assert "Unreviewed" in headline(c)
+
+
+def test_a_real_approval_at_the_same_gate_still_counts(tmp_path):
+    from src.agentic.orchestrator import _run_gate
+    from src.agentic.blackboard import Blackboard
+
+    bb = Blackboard(input_dir=str(tmp_path), output_dir=str(tmp_path / "out"))
+    _run_gate(lambda name, payload: {"action": "approve", "actor": "ada@example.com"},
+              lambda *a, **k: None, "plan", {}, bb)
+    assert bb.approvals[-1]["supervised"] is True
+    assert build_signoff(bb)["reviewers"] == ["ada@example.com"]

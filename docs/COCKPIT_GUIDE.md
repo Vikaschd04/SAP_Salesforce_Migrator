@@ -55,16 +55,17 @@ Shown **before a single AI call**. Four things sit on this screen:
 | **Forecast** | "This run will cost **$1.59–$3.67** and take 1–2 minutes, plus 1.4–3.7 hours of your review time." A *range*, never one number. If it would blow your spend cap, it says so here — while raising the cap is still cheap. |
 | **Target org fit** | Reads **your actual Salesforce org**. "You already have an `Order__c`. Deploying will clash." Found now costs a rename; found at deploy time costs the deploy. |
 | **Anti-pattern radar** | Hybris habits that become Salesforce problems — a database query inside a loop will blow a governor limit at real volume. 11 rules. |
-| **Business processes** | Workflows it found and **will not convert**: the action classes become Apex, the state machine sequencing them does not. Shown here, before you approve the spend, so the scope limit is a decision rather than a surprise. |
+| **Business processes** | Workflows it found, and what it will do with them: each becomes a **Salesforce Flow scaffold** (exact shape, Draft, with the unwired steps listed). Shown here, before you approve the spend, so the scope is a decision rather than a surprise. |
 
 > **Say this:** "Before we've spent a penny, it has told us what this codebase is, what it
 > will cost, what will break in *your* org, where the landmines are — and what it is *not*
 > going to migrate."
 
-**On the business-process card, if it appears:** this is a good thing to volunteer rather
-than wait to be asked. *"Hybris workflows aren't converted yet. The action classes are —
-you'll get the Apex — but the state machine that sequences them you rebuild as a Flow. We
-tell you that here, at zero cost, rather than letting you find it after the invoice."*
+**On the business-process card, if it appears:** volunteer this rather than waiting to be
+asked. *"Hybris workflows become Salesforce Flows — the exact shape, every branch and wait,
+generated for you. It ships as a Draft because two things are inferred and need your eyes:
+the branch names, and what data passes between steps. We tell you that here, at zero cost,
+rather than letting you find it after the invoice."*
 
 ### Gate 2 — "Approve the migration plan"
 
@@ -79,6 +80,20 @@ before building.
 
 Every generated file, with the Critic's findings. You can send anything back for a rework
 with feedback, or approve.
+
+### At any gate — "Stop & edit source"
+
+Every gate has a stop button, because reviewing is when you find out the *source* needs
+changing. It stops the run, you go fix your Hybris code, and you come back and press
+**Run again**.
+
+> **Say this:** "Nothing finished is thrown away, and when you re-run, the files you didn't
+> touch are reused rather than converted again — you pay for the difference, not the whole
+> estate. And notice it records this as *stopped*, not approved. A cancel that quietly
+> counted as a sign-off would be worth nothing."
+
+This is a good moment to demo deliberately if someone asks "what if the AI gets it wrong?"
+— the answer is that you can leave at any point without losing work.
 
 ---
 

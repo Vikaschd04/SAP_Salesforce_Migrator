@@ -7,9 +7,17 @@ interface Props {
   starting: boolean;
   error: string;
   onStart: (fd: FormData) => void;
+  stoppedAt?: string | null;
+  onRunAgain?: () => void;
+  onDismissStopped?: () => void;
 }
 
-export default function Landing({ hosted, defaultProvider, starting, error, onStart }: Props) {
+const GATE_LABEL: Record<string, string> = {
+  discovery: 'the Discovery gate', plan: 'the Plan gate', build: 'the Build gate',
+};
+
+export default function Landing({ hosted, defaultProvider, starting, error, onStart,
+                                  stoppedAt, onRunAgain, onDismissStopped }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [path, setPath] = useState('Testing/acme-commerce-hybris');
   const [provider, setProvider] = useState(defaultProvider || 'mock');
@@ -39,6 +47,26 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
 
   return (
     <div className="landing">
+      {stoppedAt && (
+        <div className="resume">
+          <div>
+            <b>Run stopped at {GATE_LABEL[stoppedAt] || stoppedAt}.</b>
+            <p>
+              Nothing was approved, and nothing finished so far was thrown away. Edit your
+              source, then run again — files you did not change are reused rather than
+              converted a second time, so you pay for the difference.
+            </p>
+          </div>
+          <div className="resume-actions">
+            {onRunAgain && (
+              <button className="btn primary" disabled={starting} onClick={onRunAgain}>
+                {starting ? 'Starting…' : '▶ Run again'}
+              </button>
+            )}
+            <button className="link-btn" onClick={onDismissStopped}>Start something else</button>
+          </div>
+        </div>
+      )}
       <div className="hero">
         <Logo size={70} glow />
         <span className="hero-badge">◆ <b>Agentic</b> · SAP Hybris &amp; Spartacus → Salesforce</span>

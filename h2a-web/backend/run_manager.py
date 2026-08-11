@@ -130,7 +130,11 @@ class Run:
         with _qlock:                    # wake it if it is still waiting for a slot
             _qlock.notify_all()
         if self.awaiting_gate is not None and not self._gate_event.is_set():
-            self._gate_decision = {"action": "approve"}   # unblock the wait; _ck() then aborts
+            # NOT "approve". The engine aborts either way, but the gate outcome is
+            # recorded in the sign-off contract — and filing a run the reviewer stopped
+            # as one they approved is exactly the overclaim that document exists to
+            # prevent.
+            self._gate_decision = {"action": "cancelled"}   # unblock; _ck() then aborts
             self._gate_event.set()
         with self._cond:
             self._cond.notify_all()
