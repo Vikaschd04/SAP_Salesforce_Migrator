@@ -20,6 +20,7 @@ This folder is the single home for every project document.
 | **Explain what each screen shows during a demo** | [COCKPIT_GUIDE.md](COCKPIT_GUIDE.md) |
 | **Learn the actual code — how agents work & coordinate** | [CODEBASE_GUIDE.md](CODEBASE_GUIDE.md) |
 | **Know why anyone would buy this over a competitor** | [DIFFERENTIATORS.md](DIFFERENTIATORS.md) |
+| **Introduce the project to a client in 5 slides** | `CLIENT_DECK.pptx` — pictorial, high level |
 | **Present the slide deck to management** | `DEMO_DECK.pptx` + [DEMO_DECK_SCRIPT.md](DEMO_DECK_SCRIPT.md) |
 | **Present the architecture to engineers** | `ARCHITECTURE_DECK.pptx` + `architecture-diagram.png` |
 | **Run the software live during a demo** | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) |
@@ -75,6 +76,7 @@ contract recording who approved what — including, prominently, whatever it cou
 | [COCKPIT_GUIDE.md](COCKPIT_GUIDE.md) | **Screen-by-screen guide** — what every tab and sub-tab shows, in plain words, with the line to say for each |
 | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) | **Live product demo script** — running the software on the sample project, with talking points and Q&A |
 | [DEMO_DECK_SCRIPT.md](DEMO_DECK_SCRIPT.md) | **Deck speaker script** — what to say per slide, with time budgets |
+| `CLIENT_DECK.pptx` | **The 5-slide client intro** — 16:9, almost entirely diagrams: what it does, the architecture, how a run flows, and why the output can be trusted. For the meeting where nobody has seen it before. |
 | `DEMO_DECK.pptx` | The executive accelerator deck — editable PowerPoint, built for 10–12 minutes |
 | `ARCHITECTURE_DECK.pptx` | The **architecture deck** for a technical audience — surfaces, layers, pipeline, run lifecycle, stack, deployment |
 | `architecture-diagram.png` | The full layered architecture as **one image** — drop it into any deck or wiki |
@@ -88,6 +90,7 @@ contract recording who approved what — including, prominently, whatever it cou
 ### Regenerating the artifacts
 | Script | Regenerates |
 |---|---|
+| `build_client_deck.py` | `CLIENT_DECK.pptx` |
 | `build_deck.py` | `DEMO_DECK.pptx` |
 | `build_arch_image.py` | `architecture-diagram.png` |
 | `build_arch_deck.py` | `ARCHITECTURE_DECK.pptx` (embeds the diagram — run `build_arch_image.py` first if stale) |
@@ -96,8 +99,8 @@ contract recording who approved what — including, prominently, whatever it cou
 
 | Folder | What it is |
 |---|---|
-| `h2a-mvp/` | **The engine** — the Python pipeline that does the actual work. 296 tests. |
-| `h2a-web/` | **The web platform** — FastAPI backend + React cockpit, with accounts, per-tenant keys, a run queue and durable history. 44 tests. |
+| `h2a-mvp/` | **The engine** — the Python pipeline that does the actual work. 339 tests. |
+| `h2a-web/` | **The web platform** — FastAPI backend + React cockpit, with accounts, per-tenant keys, a run queue and durable history. 45 tests. |
 | `h2a-vscode-extension/` | **The VS Code extension** — bundles a synced copy of the engine, so it is self-contained |
 | `Testing/` | `acme-commerce-hybris`, a realistic SAP Commerce sample used for development and demos, plus a deterministic capability tour |
 
