@@ -30,6 +30,7 @@ This folder is the single home for every project document.
 | **Know what's shipped vs still open** | [ROADMAP.md](ROADMAP.md) · [ROADMAP_INDUSTRIAL.md](ROADMAP_INDUSTRIAL.md) |
 | **Build the second migration pipeline** | [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md) |
 | **Run or verify the v2 engine** | [V2_ENGINE.md](V2_ENGINE.md) |
+| **See what is built and what is next, task by task** | [V2_DELIVERY_PLAN.md](V2_DELIVERY_PLAN.md) |
 
 ## The one-paragraph pitch
 
@@ -88,6 +89,7 @@ contract recording who approved what — including, prominently, whatever it cou
 |---|---|
 | [ROADMAP.md](ROADMAP.md) | **Future scope** — what's shipped, what's next, and the hardest open bets |
 | [ROADMAP_INDUSTRIAL.md](ROADMAP_INDUSTRIAL.md) | The industrial-readiness track — proof, platform, and what each was for |
+| [V2_DELIVERY_PLAN.md](V2_DELIVERY_PLAN.md) | **The build sheet** — every phase broken into work items, with current status, what "done" means, and how each is checked |
 | [V2_ENGINE.md](V2_ENGINE.md) | **Running the v2 engine** — how to select a version, and the three tests that prove v1 is untouched |
 | [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md) | **Two Pipelines, One Engine** — the scope-locked build plan for Adobe Commerce → SAP Hybris alongside Hybris → Salesforce: the adapter architecture, six testable correctness gates, four efficiency budgets, and how the shipped pipeline is protected |
 
