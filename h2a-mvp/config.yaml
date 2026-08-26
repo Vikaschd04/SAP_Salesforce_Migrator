@@ -32,6 +32,15 @@ max_repair_attempts: 2
 #   Override per-run with H2A_CONCURRENCY.
 concurrency: 8
 
+# Which engine path a run takes.
+#   v1  the shipped single-pipeline engine — SAP Hybris → Salesforce, unchanged
+#   v2  the same work routed through pipeline adapters, which the second migration
+#       path (Adobe Commerce → SAP Hybris) is built on
+# Both produce byte-identical output today, and tests/test_golden.py asserts it on every
+# commit. v1 remains the default, and stays available, until v2 has earned the switch.
+# Override per run with H2A_ENGINE_VERSION or --engine-version.
+engine_version: v1
+
 # Spend ceiling for a single run, in USD. 0 = uncapped.
 # The Discovery-gate forecast tells you what to expect; this is what makes that
 # expectation binding, because a range is not a limit — a repair loop that will not

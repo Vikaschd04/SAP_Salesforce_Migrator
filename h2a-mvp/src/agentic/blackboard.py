@@ -104,6 +104,12 @@ class Blackboard:
     test_classes: list = field(default_factory=list)
     # Preflight verdict: what this codebase is, and anything alarming in it.
     preflight: dict = field(default_factory=dict)
+    # Which migration this run is: "hybris->salesforce" | "adobe->hybris". Empty on the v1
+    # code path, where there is only one and nothing needs to ask.
+    pipeline_id: str = ""
+    # The IR the source adapter produced, when running v2. Held so later stages can move
+    # behind the seam one at a time rather than in a single irreversible commit.
+    source_model: object = None
     # Files we could not read or parse. Recorded rather than dropped: a migration that
     # silently forgets a file is worse than one that admits it could not read it.
     unreadable: list = field(default_factory=list)

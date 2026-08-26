@@ -244,6 +244,9 @@ def cmd_repo_migrate(args):
 
 
 def cmd_agent_migrate(args):
+    if getattr(args, "engine_version", None):
+        import os as _os
+        _os.environ["H2A_ENGINE_VERSION"] = args.engine_version
     """Run the Phase-1 agentic migration (Planner + Builder + Critic + Verifier)."""
     from src.agentic import run_agentic_migration
     offline = getattr(args, "offline", False)
@@ -395,6 +398,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_agent.add_argument("--offline", action="store_true", help="Replay cached responses only")
     p_agent.add_argument("--verify", action="store_true",
                          help="Dry-run deploy + self-heal against a Salesforce org (needs `sf` CLI)")
+    p_agent.add_argument("--engine-version", choices=["v1", "v2"], default=None,
+                         help="v1 (default) = the shipped single-pipeline engine. "
+                              "v2 = the same work routed through the pipeline adapters, "
+                              "which is what the second migration path is built on. Both "
+                              "produce identical output today; v1 stays available until "
+                              "v2 has proven itself.")
 
     # impex (Phase 2: data migration)
     p_impex = subparsers.add_parser(

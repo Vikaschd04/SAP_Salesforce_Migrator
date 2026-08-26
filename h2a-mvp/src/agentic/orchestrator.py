@@ -566,7 +566,24 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     except Exception as ge:
         print(f"  ⚠ call graph skipped: {ge}")
 
-    ingest_result = ingest(input_dir)
+    # ── engine version switch ────────────────────────────────────────────────
+    # v1 calls ingest directly, exactly as it always has. v2 routes the same call through
+    # the source adapter, which delegates to the same function — so the two paths must
+    # produce identical output, and tests/test_golden.py asserts precisely that. The
+    # adapter layer is a seam, not a rewrite; the day it changes behaviour is the day it
+    # has a bug.
+    from src.pipeline import v2_enabled, ensure_registered, resolve
+    if v2_enabled(config):
+        ensure_registered()
+        _pl = resolve(input_dir)
+        bb.pipeline_id = _pl.id
+        _model = _pl.source.read(input_dir)
+        ingest_result = _model.to_ingest()
+        bb.source_model = _model
+        print(f"  Engine: v2  |  pipeline: {_pl.label}"
+              + ("" if _pl.verifiable else "  (target has no compile oracle)"))
+    else:
+        ingest_result = ingest(input_dir)
     bb.all_classes = ingest_result["classes"]
     bb.item_types = ingest_result["item_types"]
     bb.relations = ingest_result.get("relations", [])
@@ -1193,13 +1210,22 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         from src.characterize import headline as _char_headline
         print(f"  Characterization: {_char_headline(characterization['summary'])}")
     if getattr(bb, "processes", None):
-        from src.processes import summarise as _psum
+        from src.processes import summarise as _psum, _plural
         _ps = _psum(bb.processes)
-        from src.processes import _plural
-        print(f"  ⚠ {_plural(_ps['processes'], 'business process', 'business processes')}"
-              f" NOT migrated — {_plural(_ps['actions'], 'action')} converted as loose "
-              "classes, the orchestration that sequences them did not. "
-              "See BUSINESS_PROCESSES.md")
+        # Must agree with the ledger. Before Flow generation existed this always said
+        # "NOT migrated"; once processes became `scaffolded` the same run reported a Flow
+        # generated AND the process not migrated, which contradicts both the ledger and
+        # BUSINESS_PROCESSES.md. A reader who spots two answers stops believing either.
+        _procs = _plural(_ps["processes"], "business process", "business processes")
+        if _ps.get("scaffolded"):
+            print(f"  ⚠ {_procs} scaffolded as Flow(s), not finished — "
+                  f"{_ps.get('wired', 0)}/{_ps['actions']} steps wired to Apex, "
+                  f"{_plural(_ps.get('review_items', 0), 'item')} needing review. "
+                  "See BUSINESS_PROCESSES.md")
+        else:
+            print(f"  ⚠ {_procs} NOT migrated — "
+                  f"{_plural(_ps['actions'], 'action')} converted as loose classes, the "
+                  "orchestration that sequences them did not. See BUSINESS_PROCESSES.md")
     if any(r["outcome"] == "unaccounted" for r in ledger):
         print("  ⚠ some inputs are UNACCOUNTED for — see the completeness ledger in MIGRATION_PLAN.md")
     _collisions = bb.output_collisions()
