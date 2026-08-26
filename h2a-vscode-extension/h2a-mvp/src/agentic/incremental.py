@@ -35,12 +35,31 @@ def _md5(text: str) -> str:
     return hashlib.md5(text.encode("utf-8", "replace")).hexdigest()
 
 
+def _canonical(obj):
+    """Serialise the un-serialisable *stably*.
+
+    The schema carries `required` and `unique` as sets, and `default=str` used to render
+    them via `str(set)` — whose element order depends on per-process string hash
+    randomisation. Two identical runs therefore produced two different recipe hashes,
+    which silently disabled incremental reuse: `target_fingerprint` derives from the
+    recipe, so nothing ever matched the previous run's cache and every re-run re-billed
+    the entire estate. Sorting makes the hash a function of the content alone.
+    """
+    if isinstance(obj, (set, frozenset)):
+        return sorted(obj, key=str)
+    if isinstance(obj, (tuple, list)):
+        return list(obj)
+    return str(obj)
+
+
 def recipe_hash(provider: str, model: str, schema: dict, mappings: dict) -> str:
-    """Identity of *how* output is produced. Changing any of it invalidates everything."""
+    """Identity of *how* output is produced. Changing any of it invalidates everything.
+
+    Must be a pure function of its inputs across processes — see `_canonical`."""
     return _md5("|".join([
         f"v{VERSION}", provider or "", model or "",
-        _md5(json.dumps(schema or {}, sort_keys=True, default=str)),
-        _md5(json.dumps(mappings or {}, sort_keys=True, default=str)),
+        _md5(json.dumps(schema or {}, sort_keys=True, default=_canonical)),
+        _md5(json.dumps(mappings or {}, sort_keys=True, default=_canonical)),
     ]))
 
 

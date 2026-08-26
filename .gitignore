@@ -44,3 +44,6 @@ Testing/*.zip
 .h2a_agentic_state.json
 **/.h2a_agentic_state.json
 .h2a/
+
+# Salesforce CLI local state (per-machine, never shared)
+.sf/

@@ -1193,13 +1193,22 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         from src.characterize import headline as _char_headline
         print(f"  Characterization: {_char_headline(characterization['summary'])}")
     if getattr(bb, "processes", None):
-        from src.processes import summarise as _psum
+        from src.processes import summarise as _psum, _plural
         _ps = _psum(bb.processes)
-        from src.processes import _plural
-        print(f"  ⚠ {_plural(_ps['processes'], 'business process', 'business processes')}"
-              f" NOT migrated — {_plural(_ps['actions'], 'action')} converted as loose "
-              "classes, the orchestration that sequences them did not. "
-              "See BUSINESS_PROCESSES.md")
+        # Must agree with the ledger. Before Flow generation existed this always said
+        # "NOT migrated"; once processes became `scaffolded` the same run reported a Flow
+        # generated AND the process not migrated, which contradicts both the ledger and
+        # BUSINESS_PROCESSES.md. A reader who spots two answers stops believing either.
+        _procs = _plural(_ps["processes"], "business process", "business processes")
+        if _ps.get("scaffolded"):
+            print(f"  ⚠ {_procs} scaffolded as Flow(s), not finished — "
+                  f"{_ps.get('wired', 0)}/{_ps['actions']} steps wired to Apex, "
+                  f"{_plural(_ps.get('review_items', 0), 'item')} needing review. "
+                  "See BUSINESS_PROCESSES.md")
+        else:
+            print(f"  ⚠ {_procs} NOT migrated — "
+                  f"{_plural(_ps['actions'], 'action')} converted as loose classes, the "
+                  "orchestration that sequences them did not. See BUSINESS_PROCESSES.md")
     if any(r["outcome"] == "unaccounted" for r in ledger):
         print("  ⚠ some inputs are UNACCOUNTED for — see the completeness ledger in MIGRATION_PLAN.md")
     _collisions = bb.output_collisions()
