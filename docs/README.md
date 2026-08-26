@@ -28,7 +28,7 @@ This folder is the single home for every project document.
 | **Run it for a team (accounts, keys, queue, spend caps)** | [SETUP.md](SETUP.md) |
 | **Deploy the web platform** | [DEPLOY_RENDER.md](DEPLOY_RENDER.md) |
 | **Know what's shipped vs still open** | [ROADMAP.md](ROADMAP.md) · [ROADMAP_INDUSTRIAL.md](ROADMAP_INDUSTRIAL.md) |
-| **Decide on supporting a second migration path** | [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md) |
+| **Build the second migration pipeline** | [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md) |
 
 ## The one-paragraph pitch
 
@@ -87,7 +87,7 @@ contract recording who approved what — including, prominently, whatever it cou
 |---|---|
 | [ROADMAP.md](ROADMAP.md) | **Future scope** — what's shipped, what's next, and the hardest open bets |
 | [ROADMAP_INDUSTRIAL.md](ROADMAP_INDUSTRIAL.md) | The industrial-readiness track — proof, platform, and what each was for |
-| [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md) | **Feasibility + roadmap for a second migration path** (Adobe Commerce → SAP Hybris) alongside the existing one — measured coupling, the adapter architecture, five phases, and how the current product is protected |
+| [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md) | **Two Pipelines, One Engine** — the scope-locked build plan for Adobe Commerce → SAP Hybris alongside Hybris → Salesforce: the adapter architecture, six testable correctness gates, four efficiency budgets, and how the shipped pipeline is protected |
 
 ### Regenerating the artifacts
 | Script | Regenerates |
