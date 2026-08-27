@@ -112,7 +112,11 @@ class BuilderAgent:
         errors = [f for f in findings if f.get("severity") == "ERROR"]
         if not errors:
             return False
-        issues = [{"rule": f.get("category", "critic"), "message": f["message"],
+        # .get() everywhere, not just on `category` — critic.py now normalises its own
+        # output, but this stays defensive in case a caller ever hands in raw findings
+        # from somewhere else. A finding worth repairing must never crash the repair step.
+        issues = [{"rule": f.get("category", "critic"),
+                   "message": f.get("message") or "(unspecified issue)",
                    "severity": "ERROR"} for f in errors]
         repaired = repair(art.main_class, issues, attempt=1, offline=offline,
                           signatures=sigs, schema=schema)
