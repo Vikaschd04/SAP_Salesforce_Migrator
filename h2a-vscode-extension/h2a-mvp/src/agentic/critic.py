@@ -44,6 +44,37 @@ CRITIC_SCHEMA = {
 }
 
 
+def _normalise_findings(raw: list) -> list:
+    """Defend against a model that does not honour the declared schema.
+
+    CRITIC_SCHEMA marks severity/category/message/suggestion as `required`, but that is a
+    hint to the model, not an enforced contract — call_structured() parses whatever comes
+    back, and a weaker or free-tier model can drop a required field even though the schema
+    asked for it. Downstream code (apply_critic_repair, the triage/report renderers) reads
+    these dicts with direct key access in places, so a finding missing `message` used to
+    raise a raw KeyError instead of being reported as a finding with no explanation.
+
+    Findings with no usable severity are dropped — there is nothing safe to do with a
+    finding that cannot be classified as ERROR or WARNING, and guessing one risks either
+    triggering a repair loop the model never actually asked for, or silently swallowing a
+    real ERROR.
+    """
+    out = []
+    for f in raw or []:
+        if not isinstance(f, dict):
+            continue
+        severity = str(f.get("severity", "")).upper()
+        if severity not in ("ERROR", "WARNING"):
+            continue
+        out.append({
+            "severity": severity,
+            "category": f.get("category") or "critic",
+            "message": f.get("message") or "(the model flagged this without an explanation)",
+            "suggestion": f.get("suggestion") or "",
+        })
+    return out
+
+
 class CriticAgent:
     name = "Critic"
 
@@ -115,7 +146,7 @@ class CriticAgent:
                 config.get("max_tokens", {}).get("generate", 4000),
                 offline=offline, effort=config.get("effort", {}).get("generate", "high"),
                 model=route_model(config, f"critic_{artifact.target_name}"))
-            return (result.get("parsed") or {}).get("findings", []) or []
+            return _normalise_findings((result.get("parsed") or {}).get("findings", []))
         except Exception:
             return []
 
@@ -153,6 +184,6 @@ class CriticAgent:
                 offline=offline, effort=config.get("effort", {}).get("generate", "high"),
                 model=route_model(config, f"critic_{artifact.target_name}"),
             )
-            return (result.get("parsed") or {}).get("findings", []) or []
+            return _normalise_findings((result.get("parsed") or {}).get("findings", []))
         except Exception:  # a failed review must never abort the run
             return []
