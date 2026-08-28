@@ -1,28 +1,33 @@
 """
 planner.py — the Planner / Architect agent.
 
-Replaces the hard-coded `plan_targets()` mapping with a decision-maker. It still
-derives the *structural* targets deterministically (so target names stay stable
-and testable), then — with a real LLM — annotates each one:
+Replaces a hard-coded structural mapping with a decision-maker. It still derives the
+*structural* targets deterministically (so target names stay stable and testable), then —
+with a real LLM — annotates each one:
 
-    Convert → translate its logic fully to Apex (the default for almost everything).
-              If a native Salesforce product (CPQ, Flow, Approval Process…) might be
-              a better long-term home, the logic is STILL converted and the product
-              is recorded in `native_recommendation` as a review suggestion.
+    Convert → translate its logic fully (the default for almost everything). If a native
+              product on the target platform (Salesforce CPQ, Flow, Approval Process…)
+              might be a better long-term home, the logic is STILL converted and the
+              product is recorded in `native_recommendation` as a review suggestion.
     Skip    → only for code with no business logic to preserve (pure DTOs, framework
               glue, provably dead code), always with a justification.
 
 The guiding principle is COMPLETENESS: never drop business logic just because a
 native product overlaps with it — convert it and flag the suggestion instead.
-With `mock`/offline it falls back to "convert everything as Apex", so the pipeline
-stays deterministic and keyless.
+With `mock`/offline it falls back to "convert everything", so the pipeline stays
+deterministic and keyless.
+
+**The Planner does not know what platform it is targeting.** Candidate targets come from
+the pipeline's target adapter (see `_candidate_targets`), so the same agent plans Apex for
+a Salesforce target and Java services for a Hybris one. What it *does* own is the
+judgement on top — Convert vs Skip, and the native-product flag — which is the same
+question whatever the destination.
 """
 
 from __future__ import annotations
 
 from src.agentic.blackboard import PlanItem
 from src.agentic.router import route_model
-from src.generate import plan_targets
 from src.llm import call_structured, _load_config, _get_provider
 
 _LAYER_TO_PATTERN = {
@@ -53,6 +58,29 @@ PLANNER_SCHEMA = {
 }
 
 
+def _candidate_targets(bb, classes: list) -> list:
+    """What the target platform would build from this slice of source classes.
+
+    v1 calls `generate.plan_targets` — which knows about Apex, Selectors and LWC — so the
+    Planner was hard-wired to one target platform. v2 asks the pipeline's target adapter
+    instead, so the same Planner produces Java services for a Hybris target and Apex for a
+    Salesforce one without knowing either exists.
+
+    `bb.pipeline_id` is set only on the v2 path, so it doubles as the switch: one source of
+    truth for which engine is running, rather than a second flag that could disagree with it.
+    """
+    if bb.pipeline_id:
+        # ensure_registered() is idempotent, and calling it here means the Planner does not
+        # depend on the orchestrator having registered first — the lookup would otherwise
+        # raise KeyError in any entry point that reaches the Planner by another route.
+        from src.pipeline import ensure_registered, get as get_pipeline
+        from src.llm import _load_config
+        ensure_registered()
+        return get_pipeline(bb.pipeline_id).target.plan(classes, _load_config())
+    from src.generate import plan_targets
+    return plan_targets(classes)
+
+
 class PlannerAgent:
     name = "Planner"
 
@@ -62,7 +90,7 @@ class PlannerAgent:
         for domain in bb.schedule:
             domain_class_names = {c["class_name"] for c in bb.domains.get(domain, [])}
             domain_classes = [c for c in bb.all_classes if c["class_name"] in domain_class_names]
-            for t in plan_targets(domain_classes):
+            for t in _candidate_targets(bb, domain_classes):
                 base.append(PlanItem(
                     target_name=t["target_name"], layer=t["layer"], domain=domain,
                     source_classes=t["source_classes"],

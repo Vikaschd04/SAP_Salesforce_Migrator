@@ -72,8 +72,13 @@ class TargetAdapter(Protocol):
     #: Can generated output be compiled/deployed by an authoritative oracle?
     has_oracle: bool
 
-    def plan(self, model, config: dict) -> list:
-        """Source units → targets to build."""
+    def plan(self, units: list, config: dict) -> list:
+        """Source units → the targets this platform would build from them.
+
+        Takes a *slice* of units rather than a whole SourceModel, because the Planner
+        asks per dependency-domain rather than for the estate at once. Units are dicts —
+        the wire format the pipeline already passes around (see `ir.SourceUnit.to_dict`).
+        """
 
     def emit(self, output_dir: str, artifacts: list, model, config: dict) -> list:
         """Write the package in the target's own layout. Returns paths created."""

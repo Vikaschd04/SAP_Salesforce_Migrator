@@ -16,10 +16,16 @@ class SalesforceTarget:
     label = "Salesforce (Apex · LWC · metadata)"
     has_oracle = True                      # `sf project deploy --dry-run`
 
-    def plan(self, model, config: dict) -> list:
+    def plan(self, units: list, config: dict) -> list:
+        """What Salesforce builds from these source units: Selectors, Services, LWC…
+
+        Delegates to the same `plan_targets` the v1 path calls, so routing through the
+        adapter cannot change what gets planned. Accepts either IR units or the plain
+        dicts the pipeline passes today.
+        """
         from src.generate import plan_targets
-        units = [u.to_dict() for u in getattr(model, "units", [])]
-        return plan_targets(units)
+        return plan_targets([u.to_dict() if hasattr(u, "to_dict") else u
+                             for u in (units or [])])
 
     def emit(self, output_dir: str, artifacts: list, model, config: dict) -> list:
         from src.generate import write_outputs, _load_mappings

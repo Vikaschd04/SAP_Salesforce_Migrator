@@ -11,7 +11,7 @@ checked. Status is current, not aspirational.
 | Phase | | Status |
 |---|---|---|
 | **0** | Real-provider validation | ⛔ **Blocked — needs a provider key** |
-| **1** | The seam | 🔶 **~40% — registry, IR, adapters and golden harness landed** |
+| **1** | The seam | 🔶 **~50% — registry, IR, adapters, golden harness, and the Planner seam landed** |
 | **2** | Adobe Commerce source adapter | ⏳ Not started |
 | **3** | SAP Hybris target adapter + oracle | ⏳ Not started |
 | **4** | Two-pipeline product surface | ⏳ Not started |
@@ -57,6 +57,7 @@ has only ever run against the `mock` provider. The first real attempt found a de
 | 1.5 | **Engine-version switch** — flag → env → config → v1 | Precedence and bad-value fallback tested |
 | 1.6 | **Hybris source + Salesforce target adapters** (thin) | Adapter reads the whole model incl. processes and hazards |
 | 1.7 | **v1 ≡ v2 proof** | `test_v2_engine_matches_v1_exactly` — byte-identical, 128 files |
+| 1.8 | **Target adapter owns candidate targets** — the Planner no longer imports `generate.plan_targets` | 6 tests incl. a spy proving the adapter is *actually* called on v2, not silently bypassed |
 
 ### Remaining
 
@@ -66,7 +67,6 @@ incrementally rather than in one irreversible change.
 
 | # | Work item | Files | Done when |
 |---|---|---|---|
-| 1.8 | Target adapter takes over `plan_targets` | `adapters/salesforce_target.py`, `orchestrator.py` | Golden green; v2 ≡ v1 |
 | 1.9 | Target adapter takes over `write_outputs` / layout | same | Golden green |
 | 1.10 | Target adapter takes over `validate` | `validate.py` call sites | Golden green |
 | 1.11 | Verifier moves behind `target.verify()` | `builders.py::VerifierAgent` | Golden green; `--verify` unchanged |
