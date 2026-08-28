@@ -80,8 +80,17 @@ class TargetAdapter(Protocol):
         the wire format the pipeline already passes around (see `ir.SourceUnit.to_dict`).
         """
 
-    def emit(self, output_dir: str, artifacts: list, model, config: dict) -> list:
-        """Write the package in the target's own layout. Returns paths created."""
+    def emit(self, output_dir: str, artifacts: list, data_model, config: dict) -> list:
+        """Write the code package in this platform's own layout. Returns paths created.
+
+        The layout is the platform's, not the pipeline's: Salesforce wants
+        `force-app/main/default/classes`, a Hybris extension wants
+        `bin/custom/<ext>/src/...`. Nothing above this method should know which.
+
+        `data_model` is an `ir.DataModel` rather than a bare list, because emitting a
+        package can need relations and enums as well as types — a Salesforce target
+        happens to need only the types today.
+        """
 
     def verify(self, output_dir: str, config: dict) -> dict:
         """Ask the oracle. `{"ran": False}` when there is none to ask."""

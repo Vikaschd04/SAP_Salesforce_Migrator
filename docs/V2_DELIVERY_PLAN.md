@@ -11,7 +11,7 @@ checked. Status is current, not aspirational.
 | Phase | | Status |
 |---|---|---|
 | **0** | Real-provider validation | ⛔ **Blocked — needs a provider key** |
-| **1** | The seam | 🔶 **~50% — registry, IR, adapters, golden harness, and the Planner seam landed** |
+| **1** | The seam | 🔶 **~55% — registry, IR, adapters, golden harness, Planner and emit seams landed** |
 | **2** | Adobe Commerce source adapter | ⏳ Not started |
 | **3** | SAP Hybris target adapter + oracle | ⏳ Not started |
 | **4** | Two-pipeline product surface | ⏳ Not started |
@@ -58,6 +58,7 @@ has only ever run against the `mock` provider. The first real attempt found a de
 | 1.6 | **Hybris source + Salesforce target adapters** (thin) | Adapter reads the whole model incl. processes and hazards |
 | 1.7 | **v1 ≡ v2 proof** | `test_v2_engine_matches_v1_exactly` — byte-identical, 128 files |
 | 1.8 | **Target adapter owns candidate targets** — the Planner no longer imports `generate.plan_targets` | 6 tests incl. a spy proving the adapter is *actually* called on v2, not silently bypassed |
+| 1.9 | **Target adapter owns the output layout** — `emit()` takes an `ir.DataModel` and writes the platform's own tree | 3 tests + a spy run; golden green |
 
 ### Remaining
 
@@ -67,7 +68,6 @@ incrementally rather than in one irreversible change.
 
 | # | Work item | Files | Done when |
 |---|---|---|---|
-| 1.9 | Target adapter takes over `write_outputs` / layout | same | Golden green |
 | 1.10 | Target adapter takes over `validate` | `validate.py` call sites | Golden green |
 | 1.11 | Verifier moves behind `target.verify()` | `builders.py::VerifierAgent` | Golden green; `--verify` unchanged |
 | 1.12 | Knowledge packs per pipeline | `prompts/`, `mappings/`, `knowledge/` → `packs/hybris_to_salesforce/` | Golden green; pack path resolved from the pipeline |
@@ -78,6 +78,13 @@ incrementally rather than in one irreversible change.
 
 **Exit:** every stage reachable through an adapter; v2 still byte-identical to v1; the
 purity rule enforced.
+
+> **Design question surfaced by 1.9, for Phase 3.** `bb.schema` is already *target*-shaped —
+> a Salesforce SObject model derived from Hybris item types, built by `build_schema()` long
+> before any adapter sees it. `write_schema_metadata()` therefore emits Salesforce object
+> XML from it. A Hybris target needs `items.xml` from the same source facts, so the schema
+> stage itself has to move behind the seam, not just its writer. That is a larger change
+> than a call-site rewire and belongs with the Hybris target adapter, not here.
 **Estimate for the remainder:** 2–3 weeks.
 
 ---

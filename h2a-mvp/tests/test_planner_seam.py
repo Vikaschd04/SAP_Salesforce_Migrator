@@ -93,3 +93,47 @@ def test_an_unknown_pipeline_id_still_fails_loudly(monkeypatch):
     pipeline id that does not exist is a bug, and must not fall back to v1 quietly."""
     with pytest.raises(KeyError, match="unknown pipeline"):
         _candidate_targets(_BB("magento->sap"), CLASSES)
+
+
+# ── item 1.9 — the target adapter owns the output layout ─────────────────────
+
+class _DataModel:
+    def __init__(self, types=None):
+        self.types = types or []
+        self.relations = []
+        self.enums = []
+
+
+def test_emit_writes_the_salesforce_layout(tmp_path):
+    """The layout is the platform's business. Salesforce means an SFDX tree; a Hybris
+    target will mean bin/custom/<ext>/src, and nothing above emit() should know which."""
+    from src.adapters.salesforce_target import ADAPTER
+    artifacts = [{
+        "target_name": "OrderSelector", "layer": "DAO",
+        "main_class": "public class OrderSelector {}",
+        "test_class": "@isTest public class OrderSelectorTest {}",
+        "source_classes": [{"class_name": "OrderDao"}],
+    }]
+    ADAPTER.emit(str(tmp_path), artifacts, _DataModel(), {})
+
+    classes = tmp_path / "force-app" / "main" / "default" / "classes"
+    assert (classes / "OrderSelector.cls").exists()
+    assert (classes / "OrderSelectorTest.cls").exists()
+    assert (tmp_path / "sfdx-project.json").exists()
+
+
+def test_emit_accepts_a_data_model_not_a_bare_list():
+    """emit() takes an ir.DataModel because a package can need relations and enums as
+    well as types — Salesforce happens to need only the types today, Hybris items.xml
+    will need all three."""
+    import inspect
+    from src.adapters.salesforce_target import ADAPTER
+    params = list(inspect.signature(ADAPTER.emit).parameters)
+    assert params == ["output_dir", "artifacts", "data_model", "config"]
+
+
+def test_emit_tolerates_a_data_model_with_no_types(tmp_path):
+    """A codebase with no items.xml is a real case, not an error."""
+    from src.adapters.salesforce_target import ADAPTER
+    created = ADAPTER.emit(str(tmp_path), [], _DataModel(types=None), {})
+    assert isinstance(created, list)

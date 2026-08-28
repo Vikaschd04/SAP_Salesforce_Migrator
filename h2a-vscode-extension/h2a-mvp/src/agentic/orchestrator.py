@@ -30,6 +30,7 @@ from src.generate import _load_mappings, write_outputs
 from src.metadata_generator import write_schema_metadata
 from src.parity import build_parity, write_parity_md, close_parity_gaps
 from src.report import generate_report
+from src import ir
 from src.signature_registry import SignatureRegistry
 from src.llm import (reset_accounting, get_accounting, _load_config, _get_provider,
                      _get_model, reset_call_log, get_call_log, check_fatal)
@@ -1010,7 +1011,19 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         except Exception as e:                          # advisory, never a blocker
             print(f"  ⚠ Flow generation skipped: {e}")
 
-    write_outputs(output_dir, bb.generated_dicts(), bb.item_types, mappings)
+    # Writing the package is the target platform's business: Salesforce wants an SFDX
+    # tree, a Hybris extension wants bin/custom/<ext>/src. v1 calls write_outputs directly;
+    # v2 asks the adapter, which delegates to the same function — so the bytes on disk are
+    # identical and the golden harness proves it.
+    _data_model = ir.DataModel(types=bb.item_types, relations=bb.relations,
+                               enums=bb.enum_types)
+    if bb.pipeline_id:
+        from src.pipeline import ensure_registered, get as get_pipeline
+        ensure_registered()
+        get_pipeline(bb.pipeline_id).target.emit(
+            output_dir, bb.generated_dicts(), _data_model, config)
+    else:
+        write_outputs(output_dir, bb.generated_dicts(), bb.item_types, mappings)
     _write_flow_outputs(output_dir, getattr(bb, "flows", []),
                         getattr(bb, "flow_invocables", {}))
     meta = write_schema_metadata(output_dir, bb.schema)

@@ -27,10 +27,15 @@ class SalesforceTarget:
         return plan_targets([u.to_dict() if hasattr(u, "to_dict") else u
                              for u in (units or [])])
 
-    def emit(self, output_dir: str, artifacts: list, model, config: dict) -> list:
+    def emit(self, output_dir: str, artifacts: list, data_model, config: dict) -> list:
+        """The SFDX layout: force-app/main/default/{classes,lwc,objects} + sfdx-project.json.
+
+        Delegates to the same `write_outputs` the v1 path calls, so routing through the
+        adapter cannot change what lands on disk.
+        """
         from src.generate import write_outputs, _load_mappings
-        item_types = list(getattr(getattr(model, "data_model", None), "types", []) or [])
-        return write_outputs(output_dir, artifacts, item_types, _load_mappings())
+        types = list(getattr(data_model, "types", None) or [])
+        return write_outputs(output_dir, artifacts, types, _load_mappings())
 
     def verify(self, output_dir: str, config: dict) -> dict:
         from src.verify import sf_available
