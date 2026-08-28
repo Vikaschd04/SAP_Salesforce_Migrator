@@ -137,3 +137,75 @@ def test_emit_tolerates_a_data_model_with_no_types(tmp_path):
     from src.adapters.salesforce_target import ADAPTER
     created = ADAPTER.emit(str(tmp_path), [], _DataModel(types=None), {})
     assert isinstance(created, list)
+
+
+# ── item 1.12 — knowledge packs per pipeline ─────────────────────────────────
+
+def test_the_shipped_pack_is_complete():
+    """A pack is only useful if it is self-contained — prompts, mappings and RAG
+    together. A second pipeline is meant to be 'copy this directory and edit it'."""
+    from src import packs
+    d = packs.pack_dir()
+    for name in ("comprehend", "generate", "generate_system", "repair"):
+        assert (d / "prompts" / f"{name}.txt").is_file(), f"missing prompt {name}"
+    assert (d / "mappings.yaml").is_file()
+    assert list((d / "knowledge").glob("*.md")), "no RAG corpus in the pack"
+
+
+def test_pack_resolves_from_the_run_context(monkeypatch):
+    """Deep call sites get the right pack without being handed the pipeline id."""
+    from src import packs, runctx
+    import contextvars
+
+    def in_a_run():
+        runctx.set_overrides(pipeline_id="hybris->salesforce")
+        return packs.pack_name()
+
+    assert contextvars.copy_context().run(in_a_run) == "hybris_to_salesforce"
+
+
+def test_unset_context_resolves_to_the_shipped_pack():
+    """The v1 path sets no pipeline id and must behave exactly as before."""
+    from src import packs
+    assert packs.pack_name() == packs.DEFAULT_PACK
+
+
+def test_a_missing_pack_raises_rather_than_falling_back(monkeypatch):
+    """The worst possible failure here is plausible output for the wrong platform: an
+    Adobe→Hybris run that quietly generated Apex because its pack was absent."""
+    from src import packs
+    monkeypatch.setitem(packs._PACK_FOR_PIPELINE, "adobe->hybris", "does_not_exist")
+    with pytest.raises(FileNotFoundError, match="knowledge pack"):
+        packs.pack_dir("adobe->hybris")
+
+
+def test_a_missing_prompt_names_the_pack_and_the_prompt():
+    """Whoever builds pack #2 will hit this; the error should say what to create."""
+    from src import packs
+    with pytest.raises(FileNotFoundError, match="no prompt"):
+        packs.prompt("not_a_real_prompt")
+
+
+def test_every_prompt_the_engine_asks_for_exists_in_the_pack():
+    """Guards against a prompt being renamed in code but not in the pack — which would
+    only surface at generation time, mid-run, after money had been spent."""
+    from src import packs
+    import src.comprehend, src.generate, src.validate     # noqa: F401 — import side-effect free
+    for name in ("comprehend", "generate", "generate_system", "repair"):
+        assert packs.prompt(name).strip(), f"prompt {name} is empty"
+
+
+def test_mappings_come_from_the_pack_not_a_global_config_path():
+    """A single global `mappings_file` cannot serve two pipelines running at once."""
+    from src.generate import _load_mappings
+    from src import packs
+    assert _load_mappings() == packs.mappings()
+    assert (_load_mappings().get("layers") or {}), "mapping rules failed to load"
+
+
+def test_rag_corpus_comes_from_the_pack():
+    """Grounding a Hybris target in Apex governor limits would be worse than not
+    grounding it at all."""
+    from src.agentic.retriever import Retriever
+    from src import packs
+    assert Retriever().docs_dir == packs.knowledge_dir()

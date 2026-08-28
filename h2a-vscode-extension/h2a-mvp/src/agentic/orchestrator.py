@@ -578,6 +578,10 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         ensure_registered()
         _pl = resolve(input_dir)
         bb.pipeline_id = _pl.id
+        # Publish it to the run context so prompts, mappings and RAG resolve to this
+        # pipeline's pack in call sites too deep to be handed the id explicitly.
+        from src.runctx import set_overrides as _set_run_overrides
+        _set_run_overrides(pipeline_id=_pl.id)
         _model = _pl.source.read(input_dir)
         ingest_result = _model.to_ingest()
         bb.source_model = _model

@@ -28,10 +28,16 @@ _api_key: contextvars.ContextVar[str | None] = contextvars.ContextVar("h2a_api_k
 # A spend ceiling for this run alone. Per-run rather than global because concurrent runs
 # belong to different tenants, and one tenant's budget must not throttle another's.
 _cost_cap: contextvars.ContextVar[float | None] = contextvars.ContextVar("h2a_cost_cap", default=None)
+# Which migration this run is. Read by `packs` to resolve prompts, mappings and RAG docs
+# for the right platform pair. Per-run rather than global for the same reason as the
+# credential: two concurrent runs can be different migrations, and a module-level variable
+# would let one silently borrow the other's prompts.
+_pipeline_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("h2a_pipeline_id", default=None)
 
 
 def set_overrides(*, provider: str | None = None, model: str | None = None,
-                  api_key: str | None = None, cost_cap: float | None = None) -> None:
+                  api_key: str | None = None, cost_cap: float | None = None,
+                  pipeline_id: str | None = None) -> None:
     """Pin provider/model/credential/budget for this run (and anything it spawns via
     propagate)."""
     if provider:
@@ -42,6 +48,8 @@ def set_overrides(*, provider: str | None = None, model: str | None = None,
         _api_key.set(api_key)
     if cost_cap is not None:
         _cost_cap.set(float(cost_cap))
+    if pipeline_id:
+        _pipeline_id.set(pipeline_id)
 
 
 def provider_override() -> str | None:
@@ -58,6 +66,10 @@ def api_key_override() -> str | None:
 
 def cost_cap_override() -> float | None:
     return _cost_cap.get()
+
+
+def pipeline_id() -> str | None:
+    return _pipeline_id.get()
 
 
 def propagate(fn):

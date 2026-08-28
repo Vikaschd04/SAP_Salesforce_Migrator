@@ -67,8 +67,10 @@ def run_repo_migration(input_dir: str, output_dir: str, *, offline: bool = False
     incremental = (env_inc.lower() in ("true", "1", "yes")) if env_inc is not None \
         else config.get("incremental", True)
 
-    mappings_file = config.get("mappings_file", "mappings/hybris_to_apex.yaml")
-    mappings_hash = calculate_md5(Path(__file__).resolve().parent.parent / mappings_file)
+    # Hashed so that editing the mapping rules invalidates cached work. Reads the pack
+    # rather than a config path, because which rules apply now depends on the pipeline.
+    from src.packs import pack_dir
+    mappings_hash = calculate_md5(pack_dir() / "mappings.yaml")
     config_hash = calculate_md5(Path(__file__).resolve().parent.parent / "config.yaml")
 
     current_ledger = load_ledger(output_dir) if incremental else {}
