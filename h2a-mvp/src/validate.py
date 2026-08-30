@@ -51,14 +51,43 @@ def validate_tier1(apex_code: str, filename: str) -> list:
 
     for i, line in enumerate(lines, 1):
         clean = re.sub(r"//.*|/\*.*?\*/", "", line).strip()
-        is_loop_start = bool(loop_pattern.search(clean)) and ("(" in clean or "{" in clean)
+        starts_loop = bool(loop_pattern.search(clean)) and ("(" in clean or "{" in clean)
+        is_loop_start = starts_loop
+
+        # Record whether we were inside a loop *at each character*, rather than judging by
+        # the brace state left at end of line. A loop that opens and closes on one line —
+        # `for (String c : cs) { Product__c p = [SELECT ...]; }` — pushed its frame and
+        # popped it again before the check ran, so the query was invisible to a rule whose
+        # entire job is to catch it. Legal Apex, and a governor limit breached at volume.
+        inside_loop_at = []
         for ch in clean:
+            inside_loop_at.append("loop" in brace_stack)
             if ch == "{":
                 brace_stack.append("loop" if is_loop_start else "other")
                 is_loop_start = False
             elif ch == "}" and brace_stack:
                 brace_stack.pop()
-        if "loop" in brace_stack or is_loop_start:
+
+        def _in_loop(match) -> bool:
+            """Was this match inside a loop *where it appears*?
+
+            Position matters: `} Product__c p = [SELECT ...];` closes the loop before the
+            query, so flagging it would be a false positive — and a rule that cries wolf
+            gets muted, which costs more than the rule is worth.
+            """
+            if match is None:
+                return False
+            pos = match.start()
+            if pos < len(inside_loop_at):
+                return inside_loop_at[pos]
+            return "loop" in brace_stack
+
+        # A brace-less single-statement loop (`for (...) doThing();`) never pushes a frame,
+        # so the line that starts one is treated as loop body in its own right.
+        soql_match = soql_pattern.search(clean)
+        dml_match = dml_pattern.search(clean)
+        if (_in_loop(soql_match) or (starts_loop and soql_match)
+                or _in_loop(dml_match) or (starts_loop and dml_match)):
             if soql_pattern.search(clean):
                 issues.append({"rule": "soql_in_loop",
                                "message": f"Line {i}: SOQL query inside a loop.",
