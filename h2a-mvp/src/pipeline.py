@@ -92,6 +92,13 @@ class TargetAdapter(Protocol):
         happens to need only the types today.
         """
 
+    def validate(self, code: str, filename: str, schema: dict, config: dict) -> list:
+        """Objective checks for this platform — what a linter would catch, no model call.
+
+        Apex means governor limits and schema-grounded SOQL; Java means imports resolving
+        and no FlexibleSearch in a loop. Same question, different answers per platform.
+        """
+
     def verify(self, output_dir: str, config: dict) -> dict:
         """Ask the oracle. `{"ran": False}` when there is none to ask."""
 
@@ -197,6 +204,36 @@ def resolve(root: str = "", pipeline_id: str = "") -> Pipeline:
                 + " or ".join(m.target_platform for m in matches)
                 + " — choose one with --pipeline")
     return default_pipeline()
+
+
+def current_target():
+    """The target adapter for the run in progress, or None on the v1 path.
+
+    Read from `runctx`, not from a passed argument, because the deepest callers — the
+    Critic's objective floor and the Builder's repair loop — never see the Blackboard.
+    Threading a pipeline id down to them would mean changing signatures that have nothing
+    else to do with platforms.
+    """
+    from src import runctx
+    pid = runctx.pipeline_id()
+    if not pid:
+        return None
+    ensure_registered()
+    return get(pid).target
+
+
+def validate_artifact(code: str, filename: str, schema: dict,
+                      config: dict | None = None) -> list:
+    """Objective checks for the running pipeline's target platform.
+
+    One function rather than the same three-line dance at four call sites — and the
+    fallback keeps v1 calling the Salesforce validator directly, unchanged.
+    """
+    target = current_target()
+    if target is not None:
+        return target.validate(code, filename, schema, config or {})
+    from src.validate import validate_all
+    return validate_all(code, filename, schema)
 
 
 def _register_builtins() -> None:

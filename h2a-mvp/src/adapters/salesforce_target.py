@@ -37,6 +37,15 @@ class SalesforceTarget:
         types = list(getattr(data_model, "types", None) or [])
         return write_outputs(output_dir, artifacts, types, _load_mappings())
 
+    def validate(self, code: str, filename: str, schema: dict, config: dict) -> list:
+        """Governor limits, structural checks, and SOQL grounded in the SObject schema.
+
+        Delegates to the same `validate_all` the v1 path calls, so routing through the
+        adapter cannot change which issues are found.
+        """
+        from src.validate import validate_all
+        return validate_all(code, filename, schema)
+
     def verify(self, output_dir: str, config: dict) -> dict:
         from src.verify import sf_available
         if not sf_available():

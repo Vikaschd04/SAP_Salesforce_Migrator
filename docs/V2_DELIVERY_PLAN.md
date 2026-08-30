@@ -11,7 +11,7 @@ checked. Status is current, not aspirational.
 | Phase | | Status |
 |---|---|---|
 | **0** | Real-provider validation | ⛔ **Blocked — needs a provider key** |
-| **1** | The seam | 🔶 **~65% — registry, IR, adapters, golden harness, Planner/emit seams, and knowledge packs landed** |
+| **1** | The seam | 🔶 **~72% — registry, IR, adapters, golden harness, Planner/emit/validate seams, and knowledge packs landed** |
 | **2** | Adobe Commerce source adapter | ⏳ Not started |
 | **3** | SAP Hybris target adapter + oracle | ⏳ Not started |
 | **4** | Two-pipeline product surface | ⏳ Not started |
@@ -60,6 +60,7 @@ has only ever run against the `mock` provider. The first real attempt found a de
 | 1.8 | **Target adapter owns candidate targets** — the Planner no longer imports `generate.plan_targets` | 6 tests incl. a spy proving the adapter is *actually* called on v2, not silently bypassed |
 | 1.9 | **Target adapter owns the output layout** — `emit()` takes an `ir.DataModel` and writes the platform's own tree | 3 tests + a spy run; golden green |
 | 1.12 | **Knowledge packs per pipeline** — prompts, mappings and RAG moved to `packs/<pair>/`, resolved from the run context | 8 tests; golden green after moving 14 files and rewiring 7 call sites |
+| 1.10 | **Target adapter validates its own output** — 4 agentic call sites routed via `validate_artifact()` | 5 tests + a spy showing 43 real calls through the adapter; golden green |
 
 ### Remaining
 
@@ -69,7 +70,6 @@ incrementally rather than in one irreversible change.
 
 | # | Work item | Files | Done when |
 |---|---|---|---|
-| 1.10 | Target adapter takes over `validate` | `validate.py` call sites | Golden green |
 | 1.11 | Verifier moves behind `target.verify()` | `builders.py::VerifierAgent` | Golden green; `--verify` unchanged |
 | 1.13 | Split `characterize` into mine / plan / emit | `characterize.py` → 3 units | Golden green; mining is source-side, emission target-side |
 | 1.14 | Rename `provenance` / `alignment` internals `apex_*` → `target_*` | 2 modules + their tests | Golden green; report wording unchanged |

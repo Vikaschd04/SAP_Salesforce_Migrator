@@ -209,3 +209,89 @@ def test_rag_corpus_comes_from_the_pack():
     from src.agentic.retriever import Retriever
     from src import packs
     assert Retriever().docs_dir == packs.knowledge_dir()
+
+
+# ── item 1.10 — the target adapter validates its own output ──────────────────
+
+# The loop body is on its own line deliberately: `soql_in_loop` tracks brace depth per
+# line, so a single-line body slips past it. That is a real gap in the detector, fixed
+# separately — these tests are about *routing*, so they use a form it reliably catches.
+BAD_APEX = """public class Bad {
+    public void run(List<String> codes) {
+        for (String c : codes) {
+            Product__c p = [SELECT Id FROM Product__c];
+        }
+    }
+}"""
+
+
+def test_v2_routes_validation_through_the_adapter(monkeypatch):
+    """The two deepest callers — the Critic's objective floor and the Builder's repair
+    loop — never see the Blackboard, so this resolves the target from the run context."""
+    import src.adapters.salesforce_target as st
+    from src import runctx, pipeline
+    import contextvars
+
+    calls = []
+    original = st.SalesforceTarget.validate
+
+    def spy(self, code, filename, schema, config):
+        calls.append(filename)
+        return original(self, code, filename, schema, config)
+
+    monkeypatch.setattr(st.SalesforceTarget, "validate", spy)
+
+    def in_a_run():
+        runctx.set_overrides(pipeline_id="hybris->salesforce")
+        return pipeline.validate_artifact(BAD_APEX, "Bad.cls", {})
+
+    issues = contextvars.copy_context().run(in_a_run)
+    assert calls == ["Bad.cls"], "validation did not go through the target adapter"
+    assert issues, "the SOQL-in-loop should still have been caught"
+
+
+def test_v1_validates_directly_without_the_adapter(monkeypatch):
+    import src.adapters.salesforce_target as st
+    from src import pipeline
+
+    calls = []
+    original = st.SalesforceTarget.validate
+    monkeypatch.setattr(st.SalesforceTarget, "validate",
+                        lambda self, c, f, s, cfg: calls.append(f) or original(self, c, f, s, cfg))
+
+    issues = pipeline.validate_artifact(BAD_APEX, "Bad.cls", {})
+    assert calls == [], "the v1 path should not consult the adapter"
+    assert issues
+
+
+def test_both_paths_find_the_same_issues():
+    """The adapter delegates to the same validator, so routing cannot change the verdict."""
+    from src import runctx, pipeline
+    import contextvars
+
+    def in_a_run():
+        runctx.set_overrides(pipeline_id="hybris->salesforce")
+        return pipeline.validate_artifact(BAD_APEX, "Bad.cls", {})
+
+    v2 = contextvars.copy_context().run(in_a_run)
+    v1 = pipeline.validate_artifact(BAD_APEX, "Bad.cls", {})
+    assert [i["rule"] for i in v1] == [i["rule"] for i in v2]
+
+
+def test_current_target_is_none_outside_a_v2_run():
+    from src.pipeline import current_target
+    assert current_target() is None
+
+
+def test_agentic_modules_do_not_import_validate_all_directly():
+    """The Critic and Builder must not know which platform they are checking. A direct
+    import of `validate.validate_all` is exactly that knowledge."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent / "src/agentic"
+    offenders = []
+    for f in ("critic.py", "builders.py", "orchestrator.py"):
+        for line in (root / f).read_text().splitlines():
+            if line.startswith(("from src.validate import", "import src.validate")):
+                if "validate_all" in line:
+                    offenders.append(f"{f}: {line.strip()}")
+    assert not offenders, f"agentic code imports the Salesforce validator: {offenders}"

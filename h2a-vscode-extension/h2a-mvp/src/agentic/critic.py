@@ -16,8 +16,8 @@ none, since the Builder already repaired them), so the run stays deterministic.
 from __future__ import annotations
 
 from src.agentic.router import route_model
-from src.validate import validate_all
 from src.llm import call_structured, _load_config, _get_provider
+from src.pipeline import validate_artifact
 
 CRITIC_SCHEMA = {
     "type": "object",
@@ -89,7 +89,7 @@ class CriticAgent:
         # 1. Objective floor — governor + schema grounding on the final code.
         for code, fname in ((artifact.main_class, f"{artifact.target_name}.cls"),
                             (artifact.test_class, f"{artifact.target_name}Test.cls")):
-            for i in validate_all(code, fname, schema):
+            for i in validate_artifact(code, fname, schema):
                 findings.append({"severity": i["severity"], "category": i["rule"],
                                  "message": i["message"]})
 

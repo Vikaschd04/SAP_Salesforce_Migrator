@@ -25,11 +25,11 @@ from src.repo_analyzer import (get_translation_schedule, build_dependency_graph,
 from src.ingest import ingest
 from src.comprehend import comprehend_class
 from src.schema import build_schema, reconcile_schema
-from src.validate import validate_all
 from src.generate import _load_mappings, write_outputs
 from src.metadata_generator import write_schema_metadata
 from src.parity import build_parity, write_parity_md, close_parity_gaps
 from src.report import generate_report
+from src.pipeline import validate_artifact
 from src import ir
 from src.signature_registry import SignatureRegistry
 from src.llm import (reset_accounting, get_accounting, _load_config, _get_provider,
@@ -971,7 +971,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     print("  --- Reconcile + Write ---")
     emit("stage", name="reconcile", status="start")
     # Only Apex artifacts feed schema reconciliation (LWC has no SObject SOQL to check).
-    prelim = {f"{a.target_name}.cls": validate_all(a.main_class, f"{a.target_name}.cls", bb.schema)
+    prelim = {f"{a.target_name}.cls": validate_artifact(a.main_class, f"{a.target_name}.cls", bb.schema)
               for a in bb.artifacts if not a.is_lwc}
     bb.schema, bb.reconciliation = reconcile_schema(bb.schema, prelim, bb.source_corpus)
     if bb.reconciliation["added_fields"] or bb.reconciliation["added_objects"]:
@@ -1091,8 +1091,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
             bb.validation_results[f"lwc/{a.target_name}"] = validate_lwc(a.lwc_bundle or {})
             continue
         m, t = f"{a.target_name}.cls", f"{a.target_name}Test.cls"
-        bb.validation_results[m] = validate_all(a.main_class, m, bb.schema)
-        bb.validation_results[t] = validate_all(a.test_class, t, bb.schema)
+        bb.validation_results[m] = validate_artifact(a.main_class, m, bb.schema)
+        bb.validation_results[t] = validate_artifact(a.test_class, t, bb.schema)
 
     bb.parity = build_parity([g for g in bb.generated_dicts() if g.get("layer") != "Component"])
     if parity_strengthen:

@@ -2,7 +2,7 @@
 builders.py — the Builder and Verifier agents.
 
 These are deliberately thin: they reuse the proven Phase-0 stage functions
-(generate_apex / validate_all / repair / deploy_and_heal) rather than
+(generate_apex / validate / repair / deploy_and_heal) rather than
 reimplementing codegen. The agentic value is in coordination and review
 (Planner + Critic + Orchestrator), not in a second code generator.
 """
@@ -12,7 +12,8 @@ from __future__ import annotations
 from src.agentic.blackboard import Artifact
 from src.generate import (generate_apex, extract_method_signatures, clean_java_artifacts,
                           prepend_review_flag)
-from src.validate import validate_all, repair
+from src.validate import repair
+from src.pipeline import validate_artifact
 
 
 class BuilderAgent:
@@ -96,12 +97,12 @@ class BuilderAgent:
             is_test = field_name == "test_class"
             filename = f"{art.target_name}{'Test' if is_test else ''}.cls"
             code = getattr(art, field_name)
-            issues = validate_all(code, filename, schema)
+            issues = validate_artifact(code, filename, schema)
             attempt = 1
             while issues and attempt <= max_repair:
                 repaired = repair(code, issues, attempt=attempt, offline=offline,
                                   signatures=sigs, schema=schema)
-                new_issues = validate_all(repaired, filename, schema)
+                new_issues = validate_artifact(repaired, filename, schema)
                 if not new_issues or len(new_issues) < len(issues):
                     code, issues = repaired, new_issues
                 attempt += 1
