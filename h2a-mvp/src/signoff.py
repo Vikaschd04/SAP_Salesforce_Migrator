@@ -153,11 +153,11 @@ def _caveats(counts, rules, chars, prov, radar, approvals, org_verified) -> list
         out.append("No recorded behaviours were available, so nothing here is backed by "
                    "golden-master parity against the original implementation.")
 
-    if prov.get("java_without_apex"):
-        out.append(f"{prov['java_without_apex']} Java method(s) have no traceable Apex "
+    if prov.get("source_without_target"):
+        out.append(f"{prov['source_without_target']} Java method(s) have no traceable Apex "
                    "counterpart. Some are inlined helpers; some may be lost logic.")
-    if prov.get("apex_without_origin"):
-        out.append(f"{prov['apex_without_origin']} generated method(s) trace to no Java "
+    if prov.get("target_without_origin"):
+        out.append(f"{prov['target_without_origin']} generated method(s) trace to no Java "
                    "origin — scaffolding, or invented.")
 
     crit = (radar.get("critical") or 0) + (radar.get("high") or 0)

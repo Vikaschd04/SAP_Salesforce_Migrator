@@ -43,7 +43,13 @@ class Retriever:
     """Lexical (TF-IDF) retriever over a directory of Markdown notes."""
 
     def __init__(self, docs_dir: str | Path | None = None, top_k: int = 3):
-        self.docs_dir = Path(docs_dir) if docs_dir else Path(__file__).resolve().parent / "knowledge"
+        # The corpus is per platform pair: grounding a Hybris target in Apex governor
+        # limits would be worse than not grounding it at all.
+        if docs_dir:
+            self.docs_dir = Path(docs_dir)
+        else:
+            from src.packs import knowledge_dir
+            self.docs_dir = knowledge_dir()
         self.top_k = top_k
         self.chunks: list[Chunk] = []
         self._idf: dict[str, float] = {}

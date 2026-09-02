@@ -1,0 +1,297 @@
+"""Item 1.8 — the Planner asks the target adapter for candidate targets.
+
+Before this, `PlannerAgent` imported `generate.plan_targets` directly, which knows about
+Apex, Selectors and LWC. That hard-wired the Planner to one target platform: adding a
+Hybris target would have meant editing the Planner itself.
+
+The v1 path is unchanged and stays reachable. The point of these tests is to prove the v2
+path is *actually* taken — a golden-harness pass would look identical if v2 silently fell
+back to v1, so "output matches" is necessary but not sufficient evidence.
+"""
+import pytest
+
+from src.agentic.planner import _candidate_targets
+
+CLASSES = [
+    {"class_name": "OrderDao", "layer": "DAO", "source": "public class OrderDao {}"},
+    {"class_name": "DefaultOrderService", "layer": "Service",
+     "source": "public class DefaultOrderService {}"},
+]
+
+
+class _BB:
+    def __init__(self, pipeline_id=""):
+        self.pipeline_id = pipeline_id
+
+
+def _spy_on_adapter(monkeypatch):
+    """Count calls to the target adapter without changing what it returns."""
+    import src.adapters.salesforce_target as st
+    calls = []
+    original = st.SalesforceTarget.plan
+
+    def spy(self, units, config):
+        calls.append(len(units))
+        return original(self, units, config)
+
+    monkeypatch.setattr(st.SalesforceTarget, "plan", spy)
+    return calls
+
+
+def test_v2_routes_through_the_target_adapter(monkeypatch):
+    calls = _spy_on_adapter(monkeypatch)
+    targets = _candidate_targets(_BB("hybris->salesforce"), CLASSES)
+    assert calls == [2], "the target adapter was not consulted on the v2 path"
+    assert targets, "the adapter returned no candidate targets"
+
+
+def test_v1_does_not_touch_the_adapter(monkeypatch):
+    """The shipped path must keep calling plan_targets directly — no new indirection."""
+    calls = _spy_on_adapter(monkeypatch)
+    targets = _candidate_targets(_BB(""), CLASSES)
+    assert calls == [], "the v1 path should not consult the adapter"
+    assert targets
+
+
+def test_both_paths_produce_identical_targets(monkeypatch):
+    """The adapter delegates to the same function, so routing cannot change the plan.
+    If this ever fails, the seam has altered behaviour — which it is not allowed to do."""
+    v2 = _candidate_targets(_BB("hybris->salesforce"), CLASSES)
+    v1 = _candidate_targets(_BB(""), CLASSES)
+    assert v2 == v1
+
+
+def test_planner_does_not_import_plan_targets_at_module_level():
+    """The Planner must not know its target platform. A module-level import of
+    `generate.plan_targets` is exactly that knowledge, so it is asserted absent —
+    the v1 fallback imports it lazily, inside the branch that needs it."""
+    import pathlib
+    src = pathlib.Path(__file__).resolve().parent.parent / "src/agentic/planner.py"
+    header = src.read_text().split("class PlannerAgent")[0]
+    module_level = [
+        ln for ln in header.splitlines()
+        if ln.startswith("from src.generate import") or ln.startswith("import src.generate")
+    ]
+    assert not module_level, f"planner.py imports generate at module level: {module_level}"
+
+
+def test_it_works_without_the_orchestrator_registering_first(monkeypatch):
+    """The Planner is reachable by routes that never call ensure_registered().
+
+    An earlier draft looked up the pipeline without ensuring the registry was populated
+    and raised `KeyError: unknown pipeline` — caught by exercising this directly rather
+    than only through a full run, where the orchestrator happens to register first.
+    """
+    import src.pipeline as pipeline_mod
+    monkeypatch.setattr(pipeline_mod, "_REGISTRY", {})       # simulate a cold registry
+    targets = _candidate_targets(_BB("hybris->salesforce"), CLASSES)
+    assert targets, "a cold registry must self-populate rather than raise"
+
+
+def test_an_unknown_pipeline_id_still_fails_loudly(monkeypatch):
+    """Self-populating the registry must not become 'silently accept anything'. A
+    pipeline id that does not exist is a bug, and must not fall back to v1 quietly."""
+    with pytest.raises(KeyError, match="unknown pipeline"):
+        _candidate_targets(_BB("magento->sap"), CLASSES)
+
+
+# ── item 1.9 — the target adapter owns the output layout ─────────────────────
+
+class _DataModel:
+    def __init__(self, types=None):
+        self.types = types or []
+        self.relations = []
+        self.enums = []
+
+
+def test_emit_writes_the_salesforce_layout(tmp_path):
+    """The layout is the platform's business. Salesforce means an SFDX tree; a Hybris
+    target will mean bin/custom/<ext>/src, and nothing above emit() should know which."""
+    from src.adapters.salesforce_target import ADAPTER
+    artifacts = [{
+        "target_name": "OrderSelector", "layer": "DAO",
+        "main_class": "public class OrderSelector {}",
+        "test_class": "@isTest public class OrderSelectorTest {}",
+        "source_classes": [{"class_name": "OrderDao"}],
+    }]
+    ADAPTER.emit(str(tmp_path), artifacts, _DataModel(), {})
+
+    classes = tmp_path / "force-app" / "main" / "default" / "classes"
+    assert (classes / "OrderSelector.cls").exists()
+    assert (classes / "OrderSelectorTest.cls").exists()
+    assert (tmp_path / "sfdx-project.json").exists()
+
+
+def test_emit_accepts_a_data_model_not_a_bare_list():
+    """emit() takes an ir.DataModel because a package can need relations and enums as
+    well as types — Salesforce happens to need only the types today, Hybris items.xml
+    will need all three."""
+    import inspect
+    from src.adapters.salesforce_target import ADAPTER
+    params = list(inspect.signature(ADAPTER.emit).parameters)
+    assert params == ["output_dir", "artifacts", "data_model", "config"]
+
+
+def test_emit_tolerates_a_data_model_with_no_types(tmp_path):
+    """A codebase with no items.xml is a real case, not an error."""
+    from src.adapters.salesforce_target import ADAPTER
+    created = ADAPTER.emit(str(tmp_path), [], _DataModel(types=None), {})
+    assert isinstance(created, list)
+
+
+# ── item 1.12 — knowledge packs per pipeline ─────────────────────────────────
+
+def test_the_shipped_pack_is_complete():
+    """A pack is only useful if it is self-contained — prompts, mappings and RAG
+    together. A second pipeline is meant to be 'copy this directory and edit it'."""
+    from src import packs
+    d = packs.pack_dir()
+    for name in ("comprehend", "generate", "generate_system", "repair"):
+        assert (d / "prompts" / f"{name}.txt").is_file(), f"missing prompt {name}"
+    assert (d / "mappings.yaml").is_file()
+    assert list((d / "knowledge").glob("*.md")), "no RAG corpus in the pack"
+
+
+def test_pack_resolves_from_the_run_context(monkeypatch):
+    """Deep call sites get the right pack without being handed the pipeline id."""
+    from src import packs, runctx
+    import contextvars
+
+    def in_a_run():
+        runctx.set_overrides(pipeline_id="hybris->salesforce")
+        return packs.pack_name()
+
+    assert contextvars.copy_context().run(in_a_run) == "hybris_to_salesforce"
+
+
+def test_unset_context_resolves_to_the_shipped_pack():
+    """The v1 path sets no pipeline id and must behave exactly as before."""
+    from src import packs
+    assert packs.pack_name() == packs.DEFAULT_PACK
+
+
+def test_a_missing_pack_raises_rather_than_falling_back(monkeypatch):
+    """The worst possible failure here is plausible output for the wrong platform: an
+    Adobe→Hybris run that quietly generated Apex because its pack was absent."""
+    from src import packs
+    monkeypatch.setitem(packs._PACK_FOR_PIPELINE, "adobe->hybris", "does_not_exist")
+    with pytest.raises(FileNotFoundError, match="knowledge pack"):
+        packs.pack_dir("adobe->hybris")
+
+
+def test_a_missing_prompt_names_the_pack_and_the_prompt():
+    """Whoever builds pack #2 will hit this; the error should say what to create."""
+    from src import packs
+    with pytest.raises(FileNotFoundError, match="no prompt"):
+        packs.prompt("not_a_real_prompt")
+
+
+def test_every_prompt_the_engine_asks_for_exists_in_the_pack():
+    """Guards against a prompt being renamed in code but not in the pack — which would
+    only surface at generation time, mid-run, after money had been spent."""
+    from src import packs
+    import src.comprehend, src.generate, src.validate     # noqa: F401 — import side-effect free
+    for name in ("comprehend", "generate", "generate_system", "repair"):
+        assert packs.prompt(name).strip(), f"prompt {name} is empty"
+
+
+def test_mappings_come_from_the_pack_not_a_global_config_path():
+    """A single global `mappings_file` cannot serve two pipelines running at once."""
+    from src.generate import _load_mappings
+    from src import packs
+    assert _load_mappings() == packs.mappings()
+    assert (_load_mappings().get("layers") or {}), "mapping rules failed to load"
+
+
+def test_rag_corpus_comes_from_the_pack():
+    """Grounding a Hybris target in Apex governor limits would be worse than not
+    grounding it at all."""
+    from src.agentic.retriever import Retriever
+    from src import packs
+    assert Retriever().docs_dir == packs.knowledge_dir()
+
+
+# ── item 1.10 — the target adapter validates its own output ──────────────────
+
+# The loop body is on its own line deliberately: `soql_in_loop` tracks brace depth per
+# line, so a single-line body slips past it. That is a real gap in the detector, fixed
+# separately — these tests are about *routing*, so they use a form it reliably catches.
+BAD_APEX = """public class Bad {
+    public void run(List<String> codes) {
+        for (String c : codes) {
+            Product__c p = [SELECT Id FROM Product__c];
+        }
+    }
+}"""
+
+
+def test_v2_routes_validation_through_the_adapter(monkeypatch):
+    """The two deepest callers — the Critic's objective floor and the Builder's repair
+    loop — never see the Blackboard, so this resolves the target from the run context."""
+    import src.adapters.salesforce_target as st
+    from src import runctx, pipeline
+    import contextvars
+
+    calls = []
+    original = st.SalesforceTarget.validate
+
+    def spy(self, code, filename, schema, config):
+        calls.append(filename)
+        return original(self, code, filename, schema, config)
+
+    monkeypatch.setattr(st.SalesforceTarget, "validate", spy)
+
+    def in_a_run():
+        runctx.set_overrides(pipeline_id="hybris->salesforce")
+        return pipeline.validate_artifact(BAD_APEX, "Bad.cls", {})
+
+    issues = contextvars.copy_context().run(in_a_run)
+    assert calls == ["Bad.cls"], "validation did not go through the target adapter"
+    assert issues, "the SOQL-in-loop should still have been caught"
+
+
+def test_v1_validates_directly_without_the_adapter(monkeypatch):
+    import src.adapters.salesforce_target as st
+    from src import pipeline
+
+    calls = []
+    original = st.SalesforceTarget.validate
+    monkeypatch.setattr(st.SalesforceTarget, "validate",
+                        lambda self, c, f, s, cfg: calls.append(f) or original(self, c, f, s, cfg))
+
+    issues = pipeline.validate_artifact(BAD_APEX, "Bad.cls", {})
+    assert calls == [], "the v1 path should not consult the adapter"
+    assert issues
+
+
+def test_both_paths_find_the_same_issues():
+    """The adapter delegates to the same validator, so routing cannot change the verdict."""
+    from src import runctx, pipeline
+    import contextvars
+
+    def in_a_run():
+        runctx.set_overrides(pipeline_id="hybris->salesforce")
+        return pipeline.validate_artifact(BAD_APEX, "Bad.cls", {})
+
+    v2 = contextvars.copy_context().run(in_a_run)
+    v1 = pipeline.validate_artifact(BAD_APEX, "Bad.cls", {})
+    assert [i["rule"] for i in v1] == [i["rule"] for i in v2]
+
+
+def test_current_target_is_none_outside_a_v2_run():
+    from src.pipeline import current_target
+    assert current_target() is None
+
+
+def test_agentic_modules_do_not_import_validate_all_directly():
+    """The Critic and Builder must not know which platform they are checking. A direct
+    import of `validate.validate_all` is exactly that knowledge."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent / "src/agentic"
+    offenders = []
+    for f in ("critic.py", "builders.py", "orchestrator.py"):
+        for line in (root / f).read_text().splitlines():
+            if line.startswith(("from src.validate import", "import src.validate")):
+                if "validate_all" in line:
+                    offenders.append(f"{f}: {line.strip()}")
+    assert not offenders, f"agentic code imports the Salesforce validator: {offenders}"

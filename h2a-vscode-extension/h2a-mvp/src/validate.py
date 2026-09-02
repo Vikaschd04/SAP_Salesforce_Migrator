@@ -143,7 +143,8 @@ _REPAIR_SCHEMA = {
 
 
 def _load_repair_template() -> str:
-    return (Path(__file__).resolve().parent / "prompts" / "repair.txt").read_text(encoding="utf-8")
+    from src.packs import prompt
+    return prompt("repair")
 
 
 def repair(apex_code: str, issues: list, *, attempt: int = 1, offline: bool = False,
@@ -155,11 +156,8 @@ def repair(apex_code: str, issues: list, *, attempt: int = 1, offline: bool = Fa
 
     issues_str = "\n".join(f"- [{i['severity']}] {i['rule']}: {i['message']}" for i in issues)
 
-    mappings_file = config.get("mappings_file", "mappings/hybris_to_apex.yaml")
-    mappings_path = Path(__file__).resolve().parent.parent / mappings_file
-    with open(mappings_path, "r", encoding="utf-8") as f:
-        mappings = yaml.safe_load(f)
-    constraints_str = "\n".join(f"- {c}" for c in mappings.get("constraints", []))
+    from src.packs import mappings as _pack_mappings
+    constraints_str = "\n".join(f"- {c}" for c in _pack_mappings().get("constraints", []))
 
     extra = ""
     if signatures:

@@ -8,8 +8,8 @@
 export interface AlignmentData {
   rows: {
     rule: string; source_class: string; target: string | null;
-    java_method: string | null; java_lines: number[] | null;
-    apex_method: string | null; apex_lines: number[] | null;
+    source_method: string | null; source_lines: number[] | null;
+    target_method: string | null; target_lines: number[] | null;
     link_confidence: string | null; proof: string | null; proof_kind: string;
     broken_at: string | null;
   }[];
@@ -51,20 +51,20 @@ export default function Alignment({ a }: { a: AlignmentData | null }) {
           {a.rows.map((r, i) => {
             const [label, tone] = PROOF[r.proof_kind] || PROOF.none;
             return (
-              <tr key={i} className={r.apex_method ? '' : 'al-broken'}>
+              <tr key={i} className={r.target_method ? '' : 'al-broken'}>
                 <td className="rule-txt">
                   {r.rule}
                   <span className="rule-id">
-                    {r.source_class}{r.java_method ? `.${r.java_method}` : ''}
-                    {r.java_lines ? ` ${r.java_lines[0]}–${r.java_lines[1]}` : ''}
+                    {r.source_class}{r.source_method ? `.${r.source_method}` : ''}
+                    {r.source_lines ? ` ${r.source_lines[0]}–${r.source_lines[1]}` : ''}
                   </span>
                 </td>
                 <td>
-                  {r.apex_method ? (
+                  {r.target_method ? (
                     <>
-                      <code>{r.target}.{r.apex_method}</code>
+                      <code>{r.target}.{r.target_method}</code>
                       <span className="rule-id">
-                        lines {r.apex_lines![0]}–{r.apex_lines![1]} · {r.link_confidence} confidence
+                        lines {r.target_lines![0]}–{r.target_lines![1]} · {r.link_confidence} confidence
                       </span>
                     </>
                   ) : <span className="al-gap">{r.broken_at}</span>}

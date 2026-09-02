@@ -99,8 +99,8 @@ def build_alignment(bb) -> dict:
                 continue
             row = {"rule": rule, "source_class": cls_name,
                    "target": art.target_name if art else None,
-                   "java_method": None, "java_lines": None,
-                   "apex_method": None, "apex_lines": None,
+                   "source_method": None, "source_lines": None,
+                   "target_method": None, "target_lines": None,
                    "link_confidence": None, "proof": None, "proof_kind": "none",
                    "broken_at": None}
 
@@ -114,22 +114,22 @@ def build_alignment(bb) -> dict:
                 row["broken_at"] = ("could not tie this rule to a specific method — it is "
                                     "carried by the class as a whole")
             else:
-                row["java_method"] = jm["name"]
-                row["java_lines"] = [jm["line_start"], jm["line_end"]]
+                row["source_method"] = jm["name"]
+                row["source_lines"] = [jm["line_start"], jm["line_end"]]
                 row["match_score"] = round(score, 2)
 
                 link = next((l for l in prov_of[art.target_name]["links"]
-                             if l["java"] == jm["name"]), None)
+                             if l["source"] == jm["name"]), None)
                 if link:
-                    row["apex_method"] = link["apex"]
-                    row["apex_lines"] = link["apex_lines"]
+                    row["target_method"] = link["target"]
+                    row["target_lines"] = link["target_lines"]
                     row["link_confidence"] = link["confidence"]
                 else:
                     row["broken_at"] = (f"`{jm['name']}` has no traceable counterpart in "
                                         f"`{art.target_name}`")
 
             # Proof, strongest first: a replayed behaviour beats a keyword-matched test.
-            for b in behaviours.get(row["java_method"] or "", []):
+            for b in behaviours.get(row["source_method"] or "", []):
                 if b.get("mode") == "direct" or b.get("bridge"):
                     row["proof"] = f"{b['id']} — {b['label']}"
                     row["proof_kind"] = "replayed"
@@ -143,9 +143,9 @@ def build_alignment(bb) -> dict:
                     row["proof_kind"] = v["status"]
             rows.append(row)
 
-    complete = [r for r in rows if r["apex_method"]]
+    complete = [r for r in rows if r["target_method"]]
     proven = [r for r in rows if r["proof_kind"] in ("replayed", "asserted")]
-    rows.sort(key=lambda r: (bool(r["apex_method"]), r["proof_kind"] != "none",
+    rows.sort(key=lambda r: (bool(r["target_method"]), r["proof_kind"] != "none",
                              r["source_class"]))
     return {
         "rows": rows,
@@ -181,13 +181,13 @@ def write_alignment_md(output_dir: str, al: dict) -> str:
     out += ["| Intent | Implementation | Proof |", "|---|---|---|"]
     for r in al.get("rows", []):
         intent = f"{r['rule']}<br><sub>`{r['source_class']}`"
-        if r["java_method"]:
-            intent += f".{r['java_method']} {r['java_lines'][0]}–{r['java_lines'][1]}"
+        if r["source_method"]:
+            intent += f".{r['source_method']} {r['source_lines'][0]}–{r['source_lines'][1]}"
         intent += "</sub>"
 
-        if r["apex_method"]:
-            impl = (f"`{r['target']}.{r['apex_method']}`<br>"
-                    f"<sub>lines {r['apex_lines'][0]}–{r['apex_lines'][1]} · "
+        if r["target_method"]:
+            impl = (f"`{r['target']}.{r['target_method']}`<br>"
+                    f"<sub>lines {r['target_lines'][0]}–{r['target_lines'][1]} · "
                     f"{r['link_confidence']} confidence</sub>")
         else:
             impl = f"— <br><sub>{r['broken_at']}</sub>"

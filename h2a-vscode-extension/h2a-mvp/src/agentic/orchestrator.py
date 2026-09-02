@@ -25,11 +25,12 @@ from src.repo_analyzer import (get_translation_schedule, build_dependency_graph,
 from src.ingest import ingest
 from src.comprehend import comprehend_class
 from src.schema import build_schema, reconcile_schema
-from src.validate import validate_all
 from src.generate import _load_mappings, write_outputs
 from src.metadata_generator import write_schema_metadata
 from src.parity import build_parity, write_parity_md, close_parity_gaps
 from src.report import generate_report
+from src.pipeline import validate_artifact
+from src import ir
 from src.signature_registry import SignatureRegistry
 from src.llm import (reset_accounting, get_accounting, _load_config, _get_provider,
                      _get_model, reset_call_log, get_call_log, check_fatal)
@@ -566,7 +567,33 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     except Exception as ge:
         print(f"  ⚠ call graph skipped: {ge}")
 
-    ingest_result = ingest(input_dir)
+    # ── engine version switch ────────────────────────────────────────────────
+    # v1 calls ingest directly, exactly as it always has. v2 routes the same call through
+    # the source adapter, which delegates to the same function — so the two paths must
+    # produce identical output, and tests/test_golden.py asserts precisely that. The
+    # adapter layer is a seam, not a rewrite; the day it changes behaviour is the day it
+    # has a bug.
+    from src.pipeline import v2_enabled, ensure_registered, resolve
+    if v2_enabled(config):
+        ensure_registered()
+        from src.pipeline import require_runnable
+        # Refuse before reading a file or spending a token. A scaffolded pipeline would
+        # otherwise walk every stage, convert nothing, and report a clean ledger over an
+        # empty output — success-shaped failure, which is the one outcome this product
+        # exists to prevent.
+        _pl = require_runnable(resolve(input_dir))
+        bb.pipeline_id = _pl.id
+        # Publish it to the run context so prompts, mappings and RAG resolve to this
+        # pipeline's pack in call sites too deep to be handed the id explicitly.
+        from src.runctx import set_overrides as _set_run_overrides
+        _set_run_overrides(pipeline_id=_pl.id)
+        _model = _pl.source.read(input_dir)
+        ingest_result = _model.to_ingest()
+        bb.source_model = _model
+        print(f"  Engine: v2  |  pipeline: {_pl.label}"
+              + ("" if _pl.verifiable else "  (target has no compile oracle)"))
+    else:
+        ingest_result = ingest(input_dir)
     bb.all_classes = ingest_result["classes"]
     bb.item_types = ingest_result["item_types"]
     bb.relations = ingest_result.get("relations", [])
@@ -949,7 +976,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     print("  --- Reconcile + Write ---")
     emit("stage", name="reconcile", status="start")
     # Only Apex artifacts feed schema reconciliation (LWC has no SObject SOQL to check).
-    prelim = {f"{a.target_name}.cls": validate_all(a.main_class, f"{a.target_name}.cls", bb.schema)
+    prelim = {f"{a.target_name}.cls": validate_artifact(a.main_class, f"{a.target_name}.cls", bb.schema)
               for a in bb.artifacts if not a.is_lwc}
     bb.schema, bb.reconciliation = reconcile_schema(bb.schema, prelim, bb.source_corpus)
     if bb.reconciliation["added_fields"] or bb.reconciliation["added_objects"]:
@@ -993,7 +1020,19 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         except Exception as e:                          # advisory, never a blocker
             print(f"  ⚠ Flow generation skipped: {e}")
 
-    write_outputs(output_dir, bb.generated_dicts(), bb.item_types, mappings)
+    # Writing the package is the target platform's business: Salesforce wants an SFDX
+    # tree, a Hybris extension wants bin/custom/<ext>/src. v1 calls write_outputs directly;
+    # v2 asks the adapter, which delegates to the same function — so the bytes on disk are
+    # identical and the golden harness proves it.
+    _data_model = ir.DataModel(types=bb.item_types, relations=bb.relations,
+                               enums=bb.enum_types)
+    if bb.pipeline_id:
+        from src.pipeline import ensure_registered, get as get_pipeline
+        ensure_registered()
+        get_pipeline(bb.pipeline_id).target.emit(
+            output_dir, bb.generated_dicts(), _data_model, config)
+    else:
+        write_outputs(output_dir, bb.generated_dicts(), bb.item_types, mappings)
     _write_flow_outputs(output_dir, getattr(bb, "flows", []),
                         getattr(bb, "flow_invocables", {}))
     meta = write_schema_metadata(output_dir, bb.schema)
@@ -1057,8 +1096,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
             bb.validation_results[f"lwc/{a.target_name}"] = validate_lwc(a.lwc_bundle or {})
             continue
         m, t = f"{a.target_name}.cls", f"{a.target_name}Test.cls"
-        bb.validation_results[m] = validate_all(a.main_class, m, bb.schema)
-        bb.validation_results[t] = validate_all(a.test_class, t, bb.schema)
+        bb.validation_results[m] = validate_artifact(a.main_class, m, bb.schema)
+        bb.validation_results[t] = validate_artifact(a.test_class, t, bb.schema)
 
     bb.parity = build_parity([g for g in bb.generated_dicts() if g.get("layer") != "Component"])
     if parity_strengthen:

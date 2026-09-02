@@ -117,12 +117,12 @@ def map_artifact(artifact) -> dict:
                 hit, basis = cands[0], "normalised name"
 
         if hit is None:
-            orphans.append({"apex": a["name"], "apex_lines": [a["line_start"], a["line_end"]]})
+            orphans.append({"target": a["name"], "target_lines": [a["line_start"], a["line_end"]]})
             continue
         used.add((hit["source_class"], hit["name"]))
         links.append({
-            "apex": a["name"], "apex_lines": [a["line_start"], a["line_end"]],
-            "java": hit["name"], "java_lines": [hit["line_start"], hit["line_end"]],
+            "target": a["name"], "target_lines": [a["line_start"], a["line_end"]],
+            "source": hit["name"], "source_lines": [hit["line_start"], hit["line_end"]],
             "source_class": hit["source_class"], "file": hit.get("file", ""),
             "basis": basis,
             # Exact is a fact; normalised is a strong inference and labelled as such.
@@ -131,15 +131,15 @@ def map_artifact(artifact) -> dict:
 
     # Java that produced nothing is the more alarming direction: a method that existed in
     # the source and has no counterpart may be logic that was simply not carried over.
-    unmapped_java = [{"java": s["name"], "source_class": s["source_class"],
-                      "java_lines": [s["line_start"], s["line_end"]]}
+    unmapped_java = [{"source": s["name"], "source_class": s["source_class"],
+                      "source_lines": [s["line_start"], s["line_end"]]}
                      for s in java_syms if (s["source_class"], s["name"]) not in used]
 
     return {
         "target": getattr(artifact, "target_name", ""),
         "links": links,
-        "apex_without_origin": orphans,
-        "java_without_apex": unmapped_java,
+        "target_without_origin": orphans,
+        "source_without_target": unmapped_java,
         "coverage": round(100 * len(links) / len(apex)) if apex else None,
     }
 
@@ -147,16 +147,16 @@ def map_artifact(artifact) -> dict:
 def build_provenance(bb) -> dict:
     maps = [map_artifact(a) for a in bb.artifacts
             if getattr(a, "main_class", "") and not getattr(a, "is_lwc", False)]
-    maps = [m for m in maps if m["links"] or m["apex_without_origin"]]
+    maps = [m for m in maps if m["links"] or m["target_without_origin"]]
     linked = sum(len(m["links"]) for m in maps)
-    orphan = sum(len(m["apex_without_origin"]) for m in maps)
-    lost = sum(len(m["java_without_apex"]) for m in maps)
+    orphan = sum(len(m["target_without_origin"]) for m in maps)
+    lost = sum(len(m["source_without_target"]) for m in maps)
     total = linked + orphan
     return {
         "artifacts": maps,
         "summary": {
-            "artifacts": len(maps), "linked": linked, "apex_without_origin": orphan,
-            "java_without_apex": lost, "methods": total,
+            "artifacts": len(maps), "linked": linked, "target_without_origin": orphan,
+            "source_without_target": lost, "methods": total,
             "coverage": round(100 * linked / total) if total else None,
             "high": sum(1 for m in maps for l in m["links"] if l["confidence"] == "high"),
         },
@@ -169,10 +169,10 @@ def headline(s: dict) -> str:
         return "No generated methods to trace."
     line = f"{s['linked']}/{t} generated method(s) traced to their Java origin ({s.get('coverage', 0)}%)"
     tail = []
-    if s.get("apex_without_origin"):
-        tail.append(f"{s['apex_without_origin']} with no origin")
-    if s.get("java_without_apex"):
-        tail.append(f"{s['java_without_apex']} Java method(s) with no Apex counterpart")
+    if s.get("target_without_origin"):
+        tail.append(f"{s['target_without_origin']} with no origin")
+    if s.get("source_without_target"):
+        tail.append(f"{s['source_without_target']} Java method(s) with no Apex counterpart")
     return line + (" · " + ", ".join(tail) if tail else "")
 
 
@@ -183,8 +183,8 @@ def write_provenance_md(output_dir: str, prov: dict) -> str:
            "texts, so the line numbers are facts rather than a model's recollection.", "",
            f"**{headline(s)}**", ""]
 
-    if s.get("java_without_apex"):
-        out += [f"> ⚠️ **{s['java_without_apex']} Java method(s) have no Apex counterpart.** "
+    if s.get("source_without_target"):
+        out += [f"> ⚠️ **{s['source_without_target']} Java method(s) have no Apex counterpart.** "
                 "Some will be private helpers that were inlined, and some will be logic that "
                 "did not make it. This is the list to check first.", ""]
 
@@ -194,19 +194,19 @@ def write_provenance_md(output_dir: str, prov: dict) -> str:
         if m["links"]:
             out += ["| Generated | Lines | ← | From | Lines | Basis |", "|---|---|---|---|---|---|"]
             for l in m["links"]:
-                out.append(f"| `{l['apex']}` | {l['apex_lines'][0]}–{l['apex_lines'][1]} | ← | "
-                           f"`{l['source_class']}.{l['java']}` | {l['java_lines'][0]}–{l['java_lines'][1]} | "
+                out.append(f"| `{l['target']}` | {l['target_lines'][0]}–{l['target_lines'][1]} | ← | "
+                           f"`{l['source_class']}.{l['source']}` | {l['source_lines'][0]}–{l['source_lines'][1]} | "
                            f"{l['basis']} |")
             out.append("")
-        if m["apex_without_origin"]:
+        if m["target_without_origin"]:
             out += ["**Generated with no traceable origin** — scaffolding, or invented:", ""]
-            out += [f"- `{o['apex']}` (lines {o['apex_lines'][0]}–{o['apex_lines'][1]})"
-                    for o in m["apex_without_origin"]]
+            out += [f"- `{o['target']}` (lines {o['target_lines'][0]}–{o['target_lines'][1]})"
+                    for o in m["target_without_origin"]]
             out.append("")
-        if m["java_without_apex"]:
+        if m["source_without_target"]:
             out += ["**Java with no Apex counterpart** — check these were meant to disappear:", ""]
-            out += [f"- `{u['source_class']}.{u['java']}` (lines {u['java_lines'][0]}–{u['java_lines'][1]})"
-                    for u in m["java_without_apex"]]
+            out += [f"- `{u['source_class']}.{u['source']}` (lines {u['source_lines'][0]}–{u['source_lines'][1]})"
+                    for u in m["source_without_target"]]
             out.append("")
 
     out += ["---", "",

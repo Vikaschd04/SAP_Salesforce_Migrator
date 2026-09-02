@@ -33,7 +33,8 @@ COMPREHENSION_SCHEMA = {
 
 
 def _load_prompt_template() -> str:
-    return (Path(__file__).resolve().parent / "prompts" / "comprehend.txt").read_text(encoding="utf-8")
+    from src.packs import prompt
+    return prompt("comprehend")
 
 
 def _format_methods(methods: list) -> str:

@@ -173,22 +173,25 @@ def prepend_review_flag(code: str, native_alt: str, rationale: str = "") -> str:
 # ── Prompt building ───────────────────────────────────────────────────────────
 
 def _load_prompt_template() -> str:
-    return (Path(__file__).resolve().parent / "prompts" / "generate.txt").read_text(encoding="utf-8")
+    from src.packs import prompt
+    return prompt("generate")
 
 
 def _load_system_template() -> str:
-    path = Path(__file__).resolve().parent / "prompts" / "generate_system.txt"
-    if path.exists():
-        return path.read_text(encoding="utf-8")
-    return ""
+    from src.packs import prompt as _pack_prompt
+    return _pack_prompt("generate_system")
 
 
 def _load_mappings() -> dict:
-    config = _load_config()
-    mappings_file = config.get("mappings_file", "mappings/hybris_to_apex.yaml")
-    path = Path(__file__).resolve().parent.parent / mappings_file
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    """Layer→artifact rules for the migration this run is performing.
+
+    Pack-owned rather than config-owned: `mappings_file` in config.yaml was a single
+    global path, which is exactly the assumption that breaks with a second pipeline —
+    two concurrent runs migrating to different platforms need different rules, and one
+    config key cannot hold both.
+    """
+    from src.packs import mappings
+    return mappings()
 
 
 def _get_layer_rules(mappings: dict, layer: str) -> tuple[str, str]:

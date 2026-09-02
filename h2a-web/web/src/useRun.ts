@@ -48,6 +48,48 @@ export interface RunState {
   tokens: { input: number; output: number; cache_read: number } | null;
 }
 
+
+/**
+ * Runs recorded before the `apex_` and `java_` keys became `target_` and `source_`.
+ *
+ * A completed migration's report outlives the process that produced it — the API serves
+ * finished runs back from disk, and those stored events still carry the old key names.
+ * Without this, the Provenance and Alignment panels would go blank for every run that
+ * predates the rename, which is precisely the history a customer is most likely to open.
+ *
+ * Deliberately conservative: a key is only rewritten when the new name is absent, so this
+ * is a strict no-op on anything the current engine emits. The bare `apex`/`java` fields
+ * are rewritten only alongside their `_lines` sibling, so an unrelated field that happens
+ * to be called `java` somewhere else in the payload is left alone.
+ */
+const LEGACY_KEYS: Record<string, string> = {
+  apex_without_origin: 'target_without_origin',
+  java_without_apex: 'source_without_target',
+  apex_lines: 'target_lines',
+  java_lines: 'source_lines',
+  apex_method: 'target_method',
+  java_method: 'source_method',
+};
+
+function upgradeKeys(node: any): any {
+  if (Array.isArray(node)) return node.map(upgradeKeys);
+  if (!node || typeof node !== 'object') return node;
+
+  // `apex` and `java` on their own are too generic to rename blindly, so they count as
+  // legacy only when the `_lines` sibling identifies the row as a provenance link.
+  const rename: Record<string, string> = { ...LEGACY_KEYS };
+  if ('apex' in node && 'apex_lines' in node) rename.apex = 'target';
+  if ('java' in node && 'java_lines' in node) rename.java = 'source';
+
+  const out: any = {};
+  for (const [k, v] of Object.entries(node)) {
+    const to = rename[k];
+    out[to && !(to in node) ? to : k] = upgradeKeys(v);
+  }
+  return out;
+}
+
+
 const initial = (): RunState => ({
   runId: null, status: 'idle', elapsed: '', stages: {}, feed: [], plan: [],
   comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, ruleLedger: null, signoff: null, characterization: null, radar: null, triage: null, provenance: null,
@@ -141,7 +183,8 @@ export function useRun() {
             signoff: ev.signoff || null,
             characterization: ev.characterization || null,
             radar: ev.radar || s.radar, triage: ev.triage || null,
-            provenance: ev.provenance || null, alignment: ev.alignment || null,
+            provenance: upgradeKeys(ev.provenance) || null,
+            alignment: upgradeKeys(ev.alignment) || null,
             forecast: ev.forecast || s.forecast, orgfit: ev.orgfit || s.orgfit,
             blast: ev.blast || null, replay: ev.replay || null };
         case 'cancelled':
