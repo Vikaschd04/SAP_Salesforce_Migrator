@@ -113,6 +113,7 @@ class Blackboard:
     # Files we could not read or parse. Recorded rather than dropped: a migration that
     # silently forgets a file is worse than one that admits it could not read it.
     unreadable: list = field(default_factory=list)
+    generated: list = field(default_factory=list)
     # Hybris business processes (`*-process.xml`). Read but not yet converted — the
     # action classes migrate, the state machine that sequences them does not. Held here
     # so the ledger can say so, which it could not when these files went unread.
@@ -189,7 +190,8 @@ class Blackboard:
     def completeness_ledger(self) -> list:
         """Account for every ingested source class — the proof that nothing was
         silently dropped. Each row: {source, layer, outcome, target, note} where
-        outcome is converted | flagged | skipped | unaccounted | overwritten | manual."""
+        outcome is converted | flagged | skipped | unaccounted | overwritten | manual
+        | scaffolded | unreadable."""
         by_source = {}
         for a in self.artifacts:
             for c in a.source_classes:
@@ -234,6 +236,16 @@ class Blackboard:
             else:
                 rows.append({"source": name, "layer": layer, "outcome": "unaccounted",
                              "target": "—", "note": "NOT represented in output — investigate"})
+
+        # Build-generated sources. Held aside deliberately, and listed anyway: a file
+        # that leaves no row is indistinguishable from one the migration lost, and the
+        # ledger's whole claim is that no such file exists.
+        for g in self.generated:
+            rows.append({"source": g.get("class_name", "?"), "layer": "Generated",
+                         "outcome": "skipped", "target": "—",
+                         "note": f"build-generated ({g.get('reason', 'unknown')}) — the "
+                                 "target regenerates the equivalent from the migrated "
+                                 "data model, so converting it would be discarded"})
 
         # Files that never reached the parser at all. These are the rows that would
         # otherwise vanish without trace, so they are called out as needing a human.

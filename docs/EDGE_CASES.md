@@ -74,7 +74,7 @@ producing a green tick that means nothing.
 | E1 | OCC REST endpoints → `@RestResource`, with 6 MB request / 12 MB response caps and no streaming | **gap** — 1.25 |
 | E2 | PSP callbacks need a Site, guest user, and CSP/CORS entries — guest-user permissions fail silently | **gap** — 1.25 |
 | E3 | ImpEx volume and `INSERT_UPDATE` ≈ upsert on External Id, which must exist as a field | **covered** (volume) / **gap** (the External Id requirement) |
-| E4 | Generated `*Model.java` / `*Data.java` must be skipped, not converted — otherwise most of the run's budget is spent regenerating generated code | **gap** — 1.26, and the highest-value *cost* item in the register |
+| E4 | Generated `*Model.java` / `*Data.java` must be skipped, not converted — otherwise most of the run's budget is spent regenerating generated code | **covered** — 1.26. Detection uses machine-written evidence only (a build-owned directory, or a generator's banner); `extends Generated*` is deliberately *not* evidence, because Hybris generates an editable half of that pair |
 
 ## F. The migration process itself — platform-neutral
 

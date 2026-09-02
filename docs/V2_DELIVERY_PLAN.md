@@ -111,7 +111,7 @@ Ordered by **damage prevented per unit of work**, not by difficulty.
 
 | # | Work item | Register rows | Why it ranks here |
 |---|---|---|---|
-| 1.26 | **Generated-source detection** — recognise `*Model.java` / `*Data.java` (and the Magento equivalents) and skip them with a reason | E4 | Pure cost. On a real estate most files are generated; converting them is the difference between a $400 run and a $4,000 one. Cheapest item, largest saving. |
+| ~~1.26~~ | ✅ **Generated-source detection** — build-owned directories and generator banners; held aside with a reason and a ledger row | E4 | Pure cost, and the cheapest item on the list. The reference corpus contains no generated sources, so golden stayed green with no re-baseline — the saving is real but its size is unmeasured until this runs against a licensed estate. |
 | 1.17 | **Numeric-fidelity pass** — `BigDecimal` scale/`RoundingMode`, `double` money, null arithmetic | A1, A2, A5 | The only failure class in the register that is invisible to *every* other gate: it compiles, deploys, passes review, and drifts a cent per order forever. |
 | 1.18 | **Picklist metadata for dynamic enums** — emit the values, not just the field | A3 | Deploys green, fails on first use. A green deploy that fails in production is worse than a red one. |
 | 1.20 | **Name and shape ceilings** — 40-char API names, 500-field limit, 2-master-detail limit, cross-extension collisions | A6–A10, F3 | Silent *data loss*: two attributes truncating into one field deploys cleanly and merges two columns. |

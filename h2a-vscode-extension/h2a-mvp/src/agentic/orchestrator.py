@@ -601,6 +601,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     bb.frontend_skipped = ingest_result.get("frontend_skipped", [])
     bb.test_classes = ingest_result.get("test_classes", [])
     bb.unreadable = ingest_result.get("unreadable", [])
+    bb.generated = ingest_result.get("generated", [])
     bb.schema = build_schema(bb.item_types, bb.relations, bb.enum_types)
     bb.source_corpus = "\n".join(c.get("source", "") for c in bb.all_classes)
 
