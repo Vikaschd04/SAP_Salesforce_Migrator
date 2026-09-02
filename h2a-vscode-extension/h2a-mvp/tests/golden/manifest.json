@@ -1,7 +1,7 @@
 {
   "corpus": "acme-commerce-hybris",
   "files": {
-    "ANTI_PATTERNS.md": "f9c8d6afdb9b8cea",
+    "ANTI_PATTERNS.md": "eadfa74b5fa17c35",
     "BUSINESS_PROCESSES.md": "212be37d482961f8",
     "BUSINESS_RULES.md": "d78cf7815fbbe8b9",
     "CHARACTERIZATION.md": "751386aa50c5d61e",
@@ -14,8 +14,8 @@
     "MIGRATION_PLAN.md": "9a0b5647a27e5e9a",
     "PARITY.md": "6975a7567b8b0e23",
     "PROVENANCE.md": "db346182fbe921f8",
-    "SIGN_OFF.md": "b8b80bd87d07e61b",
-    "TRIAGE.md": "6583294054f2d93d",
+    "SIGN_OFF.md": "b7cb78c77d5b7620",
+    "TRIAGE.md": "2235fcb2792e404f",
     "config/project-scratch-def.json": "bed942971fa6dddc",
     "data/AcmePromotionRule__c.csv": "6da730e391d2757f",
     "data/CronJob__c.csv": "12de5224cb31059f",

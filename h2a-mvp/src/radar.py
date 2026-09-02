@@ -196,6 +196,8 @@ def _java_findings(path: Path, rel: str) -> list[dict]:
             "snippet": lines[line - 1].strip()[:120] if line <= len(lines) else "",
         })
 
+    out.extend(_money_findings(text, rel, cls, lines))
+
     for rule, sev, pat, needs_loop, hazard, fix in _LINE_RULES:
         for m in pat.finditer(text):
             line = text[:m.start()].count("\n") + 1
@@ -210,6 +212,125 @@ def _java_findings(path: Path, rel: str) -> list[dict]:
 
 
 # ── whole-project rules ───────────────────────────────────────────────────────
+
+# ── money and rounding [1.17] ─────────────────────────────────────────────────
+#
+# The failure this catches is the one no other gate can see. Everything else in the
+# engine asks whether the migrated code is *shaped* right — it compiles, it deploys, the
+# Critic approves it, the reviewer signs it off. Rounding is different: a discount that
+# rounds HALF_UP at two places in Java and lands on Apex's default instead produces code
+# that passes every one of those checks and is off by a cent. Per order. Every order.
+# Forever. Nobody finds it in review; finance finds it in a reconciliation months later.
+#
+# So the contract is extracted from the source, where it is stated explicitly, and
+# reported as something the migration must carry — rather than left for a model to
+# reproduce from memory.
+
+_SCALE_CALL = re.compile(
+    r"\.setScale\s*\(\s*(\d+)\s*,\s*(?:RoundingMode\.|BigDecimal\.ROUND_)(\w+)")
+_SCALED_DIVIDE = re.compile(
+    r"\.divide\s*\([^,()]+,\s*(\d+)\s*,\s*(?:RoundingMode\.|BigDecimal\.ROUND_)(\w+)")
+
+# `double totalPrice` — a name that means money, in a type that cannot hold it exactly.
+_FLOAT_MONEY = re.compile(
+    r"\b(?:double|float|Double|Float)\s+(\w*(?:price|amount|total|cost|rate|discount"
+    r"|tax|subtotal|fee|charge|balance|payment|refund)\w*)\b", re.IGNORECASE)
+
+
+def _divide_arity(text: str, open_paren: int) -> int:
+    """How many top-level arguments the call starting at `open_paren` was given.
+
+    Counted by balancing parentheses rather than by regex, because the divisor is often
+    itself a call — `total.divide(BigDecimal.valueOf(qty))` has one argument, not two.
+    """
+    depth, args, seen = 0, 1, False
+    for i in range(open_paren, min(len(text), open_paren + 4000)):
+        ch = text[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return args if seen else 0
+        elif ch == "," and depth == 1:
+            args += 1
+        elif depth == 1 and not ch.isspace():
+            seen = True
+    return args
+
+
+def _money_findings(text: str, rel: str, cls: str, lines: list) -> list:
+    """Rounding contracts, unscaled division, and money kept in a float."""
+    out = []
+
+    def at(pos):
+        return text[:pos].count("\n") + 1
+
+    # 1. The rounding contract, reported once per distinct (scale, mode) per class.
+    #    Five identical setScale calls are one decision, not five hazards — but the count
+    #    matters, because every one of those sites has to survive the migration.
+    contracts: dict = {}
+    for pat in (_SCALE_CALL, _SCALED_DIVIDE):
+        for m in pat.finditer(text):
+            key = (m.group(1), m.group(2).upper())
+            contracts.setdefault(key, []).append(at(m.start()))
+    for (scale, mode), where in sorted(contracts.items()):
+        first = min(where)
+        out.append({
+            "rule": "ROUNDING_CONTRACT", "severity": "high", "file": rel, "line": first,
+            "source_class": cls,
+            "hazard": f"This class states an explicit rounding contract — {scale} decimal "
+                      f"place(s), {mode} — and applies it in {len(where)} place(s). Apex "
+                      "Decimal does not round the same way by default, so if the migrated "
+                      "code drops the explicit scale the result is still a valid number, "
+                      "still passes review, and is wrong by a fraction of a cent on every "
+                      "calculation.",
+            "fix": f"Express the same contract in Apex: `value.setScale({scale}, "
+                   f"System.RoundingMode.{mode})`, applied at the same boundaries. Then "
+                   "assert it — a characterization test with a recorded value is the only "
+                   "thing that proves the rounding survived.",
+            "snippet": (lines[first - 1].strip()[:120] if first <= len(lines) else ""),
+        })
+
+    # 2. Division with no scale. Java throws on a non-terminating result; Apex has no
+    #    single-argument divide at all, so a scale gets chosen — the question is by whom.
+    for m in re.finditer(r"\.divide\s*\(", text):
+        if _divide_arity(text, m.end() - 1) == 1:
+            line = at(m.start())
+            out.append({
+                "rule": "UNSCALED_DIVIDE", "severity": "high", "file": rel, "line": line,
+                "source_class": cls,
+                "hazard": "divide() with no scale. In Java this throws ArithmeticException "
+                          "on a non-terminating result, so the legacy behaviour is either "
+                          "'exact or fail'. Apex has no single-argument divide, which means "
+                          "the migration must pick a scale — and picking one silently is "
+                          "how the drift starts.",
+                "fix": "Decide the scale here, in the source's terms, before migrating: "
+                       "`divide(divisor, <scale>, System.RoundingMode.<MODE>)`. If the "
+                       "legacy code genuinely relied on the exception, that is a business "
+                       "rule and belongs in the ledger.",
+                "snippet": (lines[line - 1].strip()[:120] if line <= len(lines) else ""),
+            })
+
+    # 3. Money in a binary float. Worth reporting even though Apex is *better* here.
+    for m in _FLOAT_MONEY.finditer(text):
+        line = at(m.start())
+        out.append({
+            "rule": "FLOAT_MONEY", "severity": "medium", "file": rel, "line": line,
+            "source_class": cls,
+            "hazard": f"`{m.group(1)}` holds money in a binary float, which cannot represent "
+                      "0.10 exactly. Apex Decimal can. That makes the migrated code more "
+                      "correct than the original — and therefore in disagreement with it: "
+                      "expect characterization replays of this value to differ, and read "
+                      "those differences as the legacy error, not a migration defect.",
+            "fix": "Migrate to Decimal, and record the expected drift against the recorded "
+                   "values so the difference is explained rather than investigated twice.",
+            "snippet": (lines[line - 1].strip()[:120] if line <= len(lines) else ""),
+        })
+
+    return out
+
+
 
 def _project_findings(root: Path, files: list[Path]) -> list[dict]:
     out = []
