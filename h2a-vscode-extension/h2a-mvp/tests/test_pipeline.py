@@ -873,7 +873,10 @@ def test_ingest_enum_and_modifiers(tmp_path):
         '<attribute qualifier="status" type="OrderStatus"><defaultvalue>NEW</defaultvalue></attribute>'
         '</attributes></itemtype></itemtypes></items>', encoding="utf-8")
     res = ingest(str(tmp_path))
-    assert res["enum_types"] == [{"name": "OrderStatus", "values": ["NEW", "SHIPPED"]}]
+    # `dynamic` decides whether the target picklist enforces the set. Absent means a
+    # closed set in Hybris, and defaulting the other way would unenforce every enum. [1.18]
+    assert res["enum_types"] == [
+        {"name": "OrderStatus", "values": ["NEW", "SHIPPED"], "dynamic": False}]
     order = res["item_types"][0]
     code_f = next(f for f in order["fields"] if f["name"] == "code")
     assert code_f["modifiers"].get("unique") == "true"

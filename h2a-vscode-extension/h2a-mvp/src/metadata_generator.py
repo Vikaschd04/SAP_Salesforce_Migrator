@@ -147,7 +147,16 @@ def _custom_field_xml(field_api: str, sf_type: str, obj_meta: dict) -> str:
 
     if sf_type == "Picklist":
         values = (obj_meta.get("picklists", {}) or {}).get(field_api, [])
+        # A Hybris enum is a closed set the platform enforces — unless it was declared
+        # dynamic, in which case values can be added at runtime without a build. Both
+        # map to a Salesforce picklist, but only one of them is restricted, and getting
+        # it backwards fails in a different direction each way: an unrestricted picklist
+        # silently accepts a typo the legacy system would have rejected, while a
+        # restricted one rejects values the legacy system happily stored — which surfaces
+        # as a failed data load at go-live, on records that were always valid. [1.18]
+        is_open = field_api in (obj_meta.get("open_picklists") or set())
         body.append("    <valueSet>")
+        body.append(f"        <restricted>{'false' if is_open else 'true'}</restricted>")
         body.append("        <valueSetDefinition>")
         body.append("            <sorted>false</sorted>")
         for v in values:

@@ -62,6 +62,7 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
             "code": "Order",
             "fields": { "OrderId__c": "Text", "Status__c": "Picklist", ... },
             "picklists": { "Status__c": ["NEW", "SHIPPED"] },   # enum values
+            "open_picklists": { "Tier__c" },                    # dynamic enums — set may grow
             "required": {"Code__c"},                            # optional="false"
             "unique":   {"Code__c"},                            # unique="true"
             "defaults": {"Status__c": "NEW"},
@@ -73,6 +74,9 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
     drive richer metadata emission (picklists, required/unique, defaults).
     """
     enum_values = {e["name"]: e.get("values", []) for e in (enum_types or [])}
+    # Enums whose value set the source lets grow at runtime. Kept separate from the
+    # values themselves because it decides whether the target enforces the set. [1.18]
+    enum_dynamic = {e["name"] for e in (enum_types or []) if e.get("dynamic")}
     schema: dict[str, dict] = {}
     for item in item_types or []:
         code = item.get("name") or item.get("code")
@@ -81,6 +85,7 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
         obj = _obj_api_name(code)
         fields: dict[str, str] = {}
         picklists: dict[str, list] = {}
+        open_picklists: set = set()
         required: set = set()
         unique: set = set()
         defaults: dict[str, str] = {}
@@ -95,6 +100,8 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
             if raw_type in enum_values or base_type in enum_values:
                 fields[api] = "Picklist"
                 picklists[api] = enum_values.get(raw_type) or enum_values.get(base_type, [])
+                if raw_type in enum_dynamic or base_type in enum_dynamic:
+                    open_picklists.add(api)
             else:
                 fields[api] = _TYPE_MAP.get(raw_type, "Text")
             mods = f.get("modifiers") or {}
@@ -105,6 +112,7 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
             if f.get("default"):
                 defaults[api] = f["default"]
         schema[obj] = {"code": code, "fields": fields, "picklists": picklists,
+                       "open_picklists": open_picklists,
                        "required": required, "unique": unique, "defaults": defaults}
 
     # Relations: one->many creates a Lookup on the child pointing to the parent.

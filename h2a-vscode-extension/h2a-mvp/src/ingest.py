@@ -402,7 +402,13 @@ def _parse_items_xml(filepath: str) -> list[dict]:
 
 
 def _parse_enum_types(filepath: str) -> list[dict]:
-    """Parse <enumtype> definitions into {name, values} — these become picklists."""
+    """Parse <enumtype> definitions into {name, values, dynamic} — these become picklists.
+
+    `dynamic` is not decoration. A Hybris enum declared `dynamic="true"` accepts values
+    added at runtime, without a build; a static one is a closed set the platform enforces.
+    Those are two different Salesforce picklists, and using the wrong one fails in a
+    different direction each way — see `_custom_field_xml`. [1.18]
+    """
     enums = []
     try:
         root = ET.parse(filepath).getroot()
@@ -414,7 +420,8 @@ def _parse_enum_types(filepath: str) -> list[dict]:
             continue
         values = [v.get("code") for v in et.findall("value") if v.get("code")]
         if values:
-            enums.append({"name": code, "values": values})
+            enums.append({"name": code, "values": values,
+                          "dynamic": str(et.get("dynamic", "")).lower() == "true"})
     return enums
 
 
