@@ -41,13 +41,101 @@ _STANDARD_FIELDS = {
 }
 
 
+# Salesforce caps a custom object or field API name at 40 characters, and the `__c`
+# suffix counts. Names are also unique per object, and the platform will not tell you
+# which of two colliding attributes it kept.
+_MAX_API = 40
+_SUFFIX = "__c"
+
+
+def _stem(qualifier: str) -> str:
+    # Salesforce convention capitalises the first letter: totalAmount -> TotalAmount.
+    return f"{qualifier[:1].upper()}{qualifier[1:]}"
+
+
+def _tag(qualifier: str) -> str:
+    """A short, stable discriminator derived from the full original name.
+
+    md5 rather than hash(): Python salts hash() per process, and a name that changes
+    between runs would make every re-run look like a schema change.
+    """
+    import hashlib
+    return hashlib.md5(qualifier.encode("utf-8")).hexdigest()[:4]
+
+
+def _fit(stem: str, qualifier: str, *, tagged: bool) -> str:
+    """An API name that is legal, and still recognisable."""
+    if tagged:
+        keep = _MAX_API - len(_SUFFIX) - 5          # room for "_" + 4 hex
+        return f"{stem[:keep]}_{_tag(qualifier)}{_SUFFIX}"
+    name = f"{stem}{_SUFFIX}"
+    if len(name) <= _MAX_API:
+        return name
+    return _fit(stem, qualifier, tagged=True)
+
+
+def _api_names(qualifiers: list[str]) -> tuple[dict, list]:
+    """Map each source attribute to a deployable, unique API name. [1.20]
+
+    Two source attributes can arrive at the same Salesforce name, and until this existed
+    the second silently overwrote the first: four attributes went in, three fields came
+    out, and the survivor kept the *later* attribute's type. Nothing warned, the metadata
+    deployed cleanly, and one column of data had nowhere to land.
+
+    Long names fail differently but just as quietly at the source: over 40 characters the
+    deploy is rejected outright, so a name nobody checked stops the whole migration at the
+    last step.
+
+    Both are handled by appending a short hash of the full original name. Collisions
+    disambiguate **symmetrically** — when two attributes clash, *both* are tagged, never
+    just the loser. Otherwise the winner depends on iteration order, which means the same
+    estate could produce different schemas on two runs, and the one that kept the clean
+    name would look authoritative for no reason.
+
+    Returns `{qualifier: api_name}` and a list of the adjustments made, so every rename is
+    something the customer can read rather than something they discover in an org.
+    """
+    naive: dict = {}
+    for q in qualifiers:
+        naive.setdefault(f"{_stem(q)}{_SUFFIX}", []).append(q)
+
+    names, notes = {}, []
+    for api, group in naive.items():
+        clash = len(group) > 1
+        for q in group:
+            final = _fit(_stem(q), q, tagged=clash)
+            names[q] = final
+            if clash:
+                notes.append({
+                    "qualifier": q, "api": final, "reason": "collision",
+                    "detail": f"`{q}` and {len(group) - 1} other attribute(s) all map to "
+                              f"`{api}`. Salesforce keeps one field per name, so without a "
+                              f"discriminator the others would have no column to write to.",
+                })
+            elif final != api:
+                notes.append({
+                    "qualifier": q, "api": final, "reason": "length",
+                    "detail": f"`{api}` is {len(api)} characters; Salesforce allows "
+                              f"{_MAX_API} including `__c`. Shortened with a hash of the "
+                              "full name so two long names cannot truncate onto each other.",
+                })
+
+    # Truncation can itself create a clash between names that were distinct before.
+    seen: dict = {}
+    for q, api in sorted(names.items()):
+        if api in seen:
+            names[q] = _fit(_stem(q), q + "#", tagged=True)
+        seen.setdefault(api, q)
+    return names, notes
+
+
 def _obj_api_name(code: str) -> str:
     return f"{code}__c"
 
 
 def _field_api_name(qualifier: str) -> str:
-    # Salesforce convention capitalises the first letter: totalAmount -> TotalAmount__c.
-    return f"{qualifier[:1].upper()}{qualifier[1:]}__c"
+    """The plain form. Use `_api_names` where collisions and length must be handled."""
+    return f"{_stem(qualifier)}{_SUFFIX}"
 
 
 def build_schema(item_types: list[dict], relations: list[dict] | None = None,
@@ -89,11 +177,13 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
         required: set = set()
         unique: set = set()
         defaults: dict[str, str] = {}
+        quals = [f.get("name") or f.get("qualifier") for f in (item.get("fields") or [])]
+        api_of, name_notes = _api_names([q for q in quals if q])
         for f in item.get("fields", []) or []:
             qualifier = f.get("name") or f.get("qualifier")
             if not qualifier:
                 continue
-            api = _field_api_name(qualifier)
+            api = api_of[qualifier]
             raw_type = (f.get("type") or "").strip()
             # An attribute typed as an enum becomes a Picklist with those values.
             base_type = raw_type.split(".")[-1] if raw_type else ""
@@ -112,7 +202,7 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
             if f.get("default"):
                 defaults[api] = f["default"]
         schema[obj] = {"code": code, "fields": fields, "picklists": picklists,
-                       "open_picklists": open_picklists,
+                       "open_picklists": open_picklists, "name_notes": name_notes,
                        "required": required, "unique": unique, "defaults": defaults}
 
     # Relations: one->many creates a Lookup on the child pointing to the parent.

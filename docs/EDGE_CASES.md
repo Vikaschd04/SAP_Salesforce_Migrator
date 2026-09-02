@@ -30,8 +30,8 @@ producing a green tick that means nothing.
 | A6 | Many-to-many relations | Become junction objects — but Salesforce allows a maximum of **2 master-detail** relationships per object. A Hybris type with three owning relations cannot be mapped 1:1 and needs an explicit modelling decision recorded, not a silent lookup downgrade. | **gap** — 1.20 |
 | A7 | 500-custom-field ceiling | Hybris `Product` in a real estate routinely exceeds Salesforce's per-object field limit. The overflow needs a documented split (related object / JSON blob), decided once and applied consistently. | **gap** — 1.20 |
 | A8 | Reserved and standard API names | Hybris attributes named `Status`, `Type`, `Currency`, `Owner`, `Name` collide with Salesforce reserved words or standard fields. | **partial** — validator catches some at deploy; not at plan time |
-| A9 | 40-character API name limit | `deliveryModeForAlternativeDeliveryAddress__c` exceeds it. Naive truncation makes two distinct attributes collide into one field — data loss that deploys cleanly. | **gap** — 1.20 |
-| A10 | Attribute-name collisions across extensions | Two extensions defining the same attribute on related types flatten to one API name. | **gap** — 1.20 |
+| A9 | 40-character API name limit | `deliveryModeForAlternativeDeliveryAddress__c` exceeds it. Naive truncation makes two distinct attributes collide into one field — data loss that deploys cleanly. | **covered** — 1.20. Over-length names are shortened with a hash of the full original, so two long names cannot truncate onto each other |
+| A10 | Attribute-name collisions across extensions | Two extensions defining the same attribute on related types flatten to one API name. | **covered** — 1.20. *The engine had this bug:* four attributes went in and three fields came out, the survivor keeping the later attribute's type. Colliding names are now tagged **symmetrically**, so neither side wins on iteration order |
 
 ## B. Governor limits and execution shape
 
@@ -75,6 +75,13 @@ producing a green tick that means nothing.
 | E2 | PSP callbacks need a Site, guest user, and CSP/CORS entries — guest-user permissions fail silently | **gap** — 1.25 |
 | E3 | ImpEx volume and `INSERT_UPDATE` ≈ upsert on External Id, which must exist as a field | **covered** (volume) / **gap** (the External Id requirement) |
 | E4 | Generated `*Model.java` / `*Data.java` must be skipped, not converted — otherwise most of the run's budget is spent regenerating generated code | **covered** — 1.26. Detection uses machine-written evidence only (a build-owned directory, or a generator's banner); `extends Generated*` is deliberately *not* evidence, because Hybris generates an editable half of that pair |
+
+### Found while building 1.20
+
+`MAPPING.md` derives its field names and types independently of the schema the metadata is
+actually built from, so the report and the output disagree: the report says
+`fulfilmentState__c · Text(255)` where the emitted metadata says `FulfilmentState__c ·
+Picklist`. A customer reads that report to understand the migration. It is now item 1.31.
 
 ## F. The migration process itself — platform-neutral
 
