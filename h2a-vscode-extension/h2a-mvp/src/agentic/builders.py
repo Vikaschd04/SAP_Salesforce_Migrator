@@ -159,25 +159,28 @@ class VerifierAgent:
     name = "Verifier"
 
     def run(self, bb, config: dict, log=print) -> dict | None:
-        from src.verify import deploy_and_heal
-        vcfg = config.get("verify", {})
         all_sigs = []
         for a in bb.artifacts:
             all_sigs += extract_method_signatures(a.main_class, a.target_name)
         # LWC bundles are already on disk and deploy as-is; only Apex feeds the
         # code-healing loop (which rewrites .cls files from these dicts).
         generated = [g for g in bb.generated_dicts() if g.get("layer") != "Component"]
-        result = deploy_and_heal(
-            bb.output_dir, generated,
-            schema=bb.schema, signatures=all_sigs, offline=bb.offline,
-            target_org=vcfg.get("target_org") or None,
-            run_tests=vcfg.get("run_tests", False),
-            auto_repair=vcfg.get("auto_repair", True),
-            max_attempts=vcfg.get("max_deploy_attempts", config.get("max_repair_attempts", 2)),
-            source_corpus=bb.source_corpus,
-            coverage_threshold=vcfg.get("coverage_threshold", 75.0),
-            log=log,
-        )
+
+        # Whether an oracle exists at all is a property of the target platform, not of
+        # this agent. Salesforce has a free hosted compiler; SAP does not. The agent
+        # still owns the loop around it — collecting signatures, mirroring healed code
+        # back onto the artifacts — because that part is platform-neutral.
+        from src.pipeline import VerifyRequest, current_target
+        request = VerifyRequest(
+            output_dir=bb.output_dir, artifacts=generated, schema=bb.schema,
+            signatures=all_sigs, source_corpus=bb.source_corpus, offline=bb.offline)
+
+        target = current_target()
+        if target is not None:
+            result = target.verify(request, config, log=log)
+        else:
+            from src.adapters.salesforce_target import ADAPTER as _sf
+            result = _sf.verify(request, config, log=log)
         # deploy_and_heal mutates the generated dicts in place; mirror back to artifacts.
         by_name = {g["target_name"]: g for g in generated}
         for a in bb.artifacts:

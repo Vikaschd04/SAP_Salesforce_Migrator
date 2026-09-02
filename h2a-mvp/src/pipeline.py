@@ -99,8 +99,33 @@ class TargetAdapter(Protocol):
         and no FlexibleSearch in a loop. Same question, different answers per platform.
         """
 
-    def verify(self, output_dir: str, config: dict) -> dict:
-        """Ask the oracle. `{"ran": False}` when there is none to ask."""
+    def verify(self, request: "VerifyRequest", config: dict, log=print) -> dict:
+        """Ask the oracle whether this output is real.
+
+        Returns `{"ran": False, ...}` when there is no oracle to ask — which is a fact
+        about the platform, not a failure, and the sign-off contract reports the
+        difference rather than blurring it.
+        """
+
+
+@dataclass
+class VerifyRequest:
+    """Everything a target needs to ask its oracle whether the output is real.
+
+    A request object rather than a widening parameter list, because what an oracle needs
+    differs by platform and the difference is not cosmetic. Salesforce needs the generated
+    artifacts, the SObject schema and the method signatures so its self-heal loop can
+    rewrite a class and redeploy. A Hybris target will instead need the path to a licensed
+    platform distribution and a Gradle invocation. Neither is a subset of the other, so a
+    shared signature would be a union of two platforms' needs — which is exactly the
+    coupling the adapters exist to remove.
+    """
+    output_dir: str
+    artifacts: list = field(default_factory=list)
+    schema: dict = field(default_factory=dict)
+    signatures: list = field(default_factory=list)
+    source_corpus: str = ""
+    offline: bool = False
 
 
 @dataclass(frozen=True)

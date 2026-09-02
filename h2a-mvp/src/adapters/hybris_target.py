@@ -30,6 +30,7 @@ class HybrisTarget:
 
     #: No free compile oracle. See the module docstring — this is honest, not pending.
     has_oracle = False
+    code_language = "Java"
 
     def plan(self, units: list, config: dict) -> list:
         raise NotImplementedYet("Planning Hybris targets", "3.2")
@@ -40,7 +41,7 @@ class HybrisTarget:
     def validate(self, code: str, filename: str, schema: dict, config: dict) -> list:
         raise NotImplementedYet("Validating generated Java", "3.10")
 
-    def verify(self, output_dir: str, config: dict) -> dict:
+    def verify(self, request, config: dict, log=print) -> dict:
         """No oracle yet. Reports that plainly rather than claiming a clean verification."""
         return {
             "ran": False,
@@ -50,5 +51,16 @@ class HybrisTarget:
                         "available (items 3.10–3.12)."),
         }
 
+    def find_method(self, code: str, name: str) -> dict | None:
+        raise NotImplementedYet("Locating a method in generated Java", "3.11")
+
+    def emit_characterization(self, runnable_by_target: dict) -> dict:
+        raise NotImplementedYet("Emitting JUnit characterization tests", "3.11")
+
+    def literal(self, value: dict | None) -> str | None:
+        raise NotImplementedYet("Rendering a recorded value as a Java literal", "3.11")
+
+    def bridge_request(self, target: str, code: str, rows: list) -> dict:
+        raise NotImplementedYet("Bridging reshaped calls onto Java", "3.11")
 
 ADAPTER = HybrisTarget()

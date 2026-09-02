@@ -72,5 +72,7 @@ class AdobeCommerceSource:
     def read(self, root: str):
         raise NotImplementedYet("Reading an Adobe Commerce codebase", "2.3–2.9")
 
+    def mine_behaviours(self, test_classes: list) -> list:
+        raise NotImplementedYet("Mining recorded behaviour from PHPUnit", "2.6")
 
 ADAPTER = AdobeCommerceSource()

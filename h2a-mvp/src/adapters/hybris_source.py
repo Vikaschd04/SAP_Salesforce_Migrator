@@ -61,5 +61,13 @@ class HybrisSource:
                           detail=f.get("detail", ""), fix=f.get("fix", ""))
                 for f in (scan(root).get("findings") or [])]
 
+    def mine_behaviours(self, test_classes: list) -> list:
+        """Recorded input→output facts from the customer's JUnit suite.
+
+        A source adapter owns this because reading a test suite is a source skill:
+        PHPUnit records the same kind of fact in an entirely different shape.
+        """
+        from src.adapters import java_junit_mining as jm
+        return jm.mine(test_classes)
 
 ADAPTER = HybrisSource()

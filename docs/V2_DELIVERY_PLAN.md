@@ -44,7 +44,7 @@ has only ever run against the `mock` provider. The first real attempt found a de
 
 ---
 
-## Phase 1 — The seam · ~40% delivered
+## Phase 1 — The seam · **complete**
 
 ### Delivered
 
@@ -62,20 +62,30 @@ has only ever run against the `mock` provider. The first real attempt found a de
 | 1.12 | **Knowledge packs per pipeline** — prompts, mappings and RAG moved to `packs/<pair>/`, resolved from the run context | 8 tests; golden green after moving 14 files and rewiring 7 call sites |
 | 1.10 | **Target adapter validates its own output** — 4 agentic call sites routed via `validate_artifact()` | 5 tests + a spy showing 43 real calls through the adapter; golden green |
 | 1.15 | **CI purity rule** — the assurance layer may not import an adapter, enforced as a ratchet on platform vocabulary | 24 tests; zero adapter imports today, 4 modules carry vocabulary debt tied to 1.13/1.14 |
+| 1.11 | **Verifier moves behind `target.verify()`** — the agent hands over a `VerifyRequest`, not a Salesforce CLI call | Golden green; `--verify` unchanged |
+| 1.14 | **`provenance` / `alignment` internals renamed** `apex_*` → `target_*`, `java_*` → `source_*` (cockpit components too) | Golden caught a real bug: `signoff` was reading the old keys, silently dropping every caveat |
+| 1.13 | **`characterize` split into mine / plan / emit** — `adapters/java_junit_mining.py` (source), `adapters/apex_characterization.py` (target), neutral planner between | 25 tests; only diff in 128 golden files was one intended word |
+| 1.16 | **Comprehension prompt selected per pipeline** — already satisfied by 1.12's packs | Prompt resolves through `packs.prompt()`, verified per pipeline |
 | — | **Second pipeline registered (scaffolded)** — `adobe->hybris` with honest stubs, a runnable guard, and its own pack directory | 18 tests; detection/resolution/packs exercised against two platforms |
 
-### Remaining
+### What Phase 1 cost, and what it bought
 
-Each item moves one stage behind the seam. **Every one is a separate commit, and the
-golden harness must stay green across it** — that is what makes this safe to do
-incrementally rather than in one irreversible change.
+Sixteen items, each a separate commit, each with the golden harness green across it. The
+harness was built first and earned it: it caught **three** regressions the 444-test unit
+suite did not — a non-deterministic recipe hash that would have re-billed every
+incremental re-run, a rename that silently deleted every sign-off caveat, and a
+report-wording drift. None of the three would have failed a unit test.
 
-| # | Work item | Files | Done when |
-|---|---|---|---|
-| 1.11 | Verifier moves behind `target.verify()` | `builders.py::VerifierAgent` | Golden green; `--verify` unchanged |
-| 1.13 | Split `characterize` into mine / plan / emit | `characterize.py` → 3 units | Golden green; mining is source-side, emission target-side |
-| 1.14 | Rename `provenance` / `alignment` internals `apex_*` → `target_*` | 2 modules + their tests | Golden green; report wording unchanged |
-| 1.16 | Comprehension prompt selected per pipeline | `comprehend.py`, packs | Golden green |
+The purity ratchet now stands at **one module clear and three carrying wording debt**:
+
+| Module | Platform vocabulary in code | Owner |
+|---|---|---|
+| `characterize` | none — cleared by 1.13 | — |
+| `provenance`, `alignment`, `signoff` | `apex`, `salesforce` in *report prose* only | 4.4 |
+
+That distinction matters: the keys, the logic and the control flow are neutral. What is
+left is the sentence a Salesforce customer reads, which *should* say Apex — making it
+follow the pipeline is a feature (4.4), not debt pretending to be one.
 
 **Exit:** every stage reachable through an adapter; v2 still byte-identical to v1; the
 purity rule enforced.
