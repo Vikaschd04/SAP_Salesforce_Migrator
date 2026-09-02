@@ -100,6 +100,39 @@ purity rule enforced.
 
 ---
 
+## Phase 1.5 — Edge-case hardening · the differentiator
+
+Phase 1 made a second migration *possible*. This phase is what makes the first one worth
+paying for. Every item comes from [`EDGE_CASES.md`](EDGE_CASES.md), which is the register
+of places where a plausible-looking conversion is silently wrong — and which is the honest
+answer to "why this and not a generic code translator".
+
+Ordered by **damage prevented per unit of work**, not by difficulty.
+
+| # | Work item | Register rows | Why it ranks here |
+|---|---|---|---|
+| 1.26 | **Generated-source detection** — recognise `*Model.java` / `*Data.java` (and the Magento equivalents) and skip them with a reason | E4 | Pure cost. On a real estate most files are generated; converting them is the difference between a $400 run and a $4,000 one. Cheapest item, largest saving. |
+| 1.17 | **Numeric-fidelity pass** — `BigDecimal` scale/`RoundingMode`, `double` money, null arithmetic | A1, A2, A5 | The only failure class in the register that is invisible to *every* other gate: it compiles, deploys, passes review, and drifts a cent per order forever. |
+| 1.18 | **Picklist metadata for dynamic enums** — emit the values, not just the field | A3 | Deploys green, fails on first use. A green deploy that fails in production is worse than a red one. |
+| 1.20 | **Name and shape ceilings** — 40-char API names, 500-field limit, 2-master-detail limit, cross-extension collisions | A6–A10, F3 | Silent *data loss*: two attributes truncating into one field deploys cleanly and merges two columns. |
+| 1.23 | **FlexibleSearch → SOQL translator** with an honest refusal | C1–C4 | The most-used single feature in a Hybris estate, and the one where a model most confidently produces text that cannot work. Refusing with a named reason beats guessing. |
+| 1.21 | **Transaction and re-entry semantics** — savepoint mapping, recursive-trigger guards | B4, B6 | `maximum trigger depth exceeded` in production, from code that passed every test. |
+| 1.22 | **Heap-pressure rule** — a query under the row cap and over the 6 MB heap cap | B10 | Falls between the two rules that exist today. |
+| 1.19 | **Localized attributes → Translation Workbench** | A4 | For an EU retailer this is most of their content, and flattening loses it without a warning. |
+| 1.27 | **Cycle-breaking in the wavefront planner**, recorded where it broke | F1 | Correctness of the run itself; applies to both pipelines. |
+| 1.28 | **Oversized-unit chunking** — comprehend and stitch rather than truncate | F4 | Silent truncation is the worst failure mode there is: output looks complete. |
+| 1.29 | **Dead-code flagging** — units referenced only by their own tests | F7 | Budget, and a genuinely useful finding for the customer. |
+| 1.24 | **Frontend gaps** — RxJS chains, slot selectors, CMS-driven instantiation | D2–D4 | Lower rank only because the frontend path already refuses more honestly than the backend one. |
+| 1.25 | **Integration surface** — `@RestResource` caps, guest-user/CSP prerequisites, External Id for upsert | E1–E3 | Deployment-time prerequisites; better as a checklist in the sign-off than as generated code. |
+
+**The rule this phase follows:** *a detector that explains beats a rewrite that guesses.*
+Several items above deliberately stop at "flag it, name the fix" — because a flagged
+hazard is actionable and a confidently wrong rewrite is a liability the customer discovers
+in production. Each new detector ships with a `Testing/` fixture that actually trips it.
+
+**Exit:** every row in the register is `covered` or `partial`; no row is an undocumented
+gap; the run tells the customer which of these applied to *their* estate.
+
 ## Phase 2 — Adobe Commerce source adapter
 
 Delivers the source half. Validated against the **Salesforce** target as a test fixture —
