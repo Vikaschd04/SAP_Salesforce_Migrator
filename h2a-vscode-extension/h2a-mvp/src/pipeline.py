@@ -113,6 +113,18 @@ class Pipeline:
     shipped: bool = False         # is this the path customers already run?
 
     @property
+    def implemented(self) -> bool:
+        """Can this pipeline actually run a migration?
+
+        A registered-but-scaffolded pipeline exercises detection, resolution and the pack
+        machinery without being able to convert anything. Registering it is how the
+        architecture is proven to hold two platforms; letting it *run* would produce a
+        migration that reports success and emits nothing.
+        """
+        return (getattr(self.source, "implemented", True)
+                and getattr(self.target, "implemented", True))
+
+    @property
     def source_platform(self) -> str:
         return getattr(self.source, "platform", "")
 
@@ -206,6 +218,26 @@ def resolve(root: str = "", pipeline_id: str = "") -> Pipeline:
     return default_pipeline()
 
 
+def require_runnable(p: "Pipeline") -> "Pipeline":
+    """Refuse to start a migration on a pipeline that cannot perform one.
+
+    Fails at the moment a run is resolved, before any file is read or any token spent,
+    and names what is missing. The alternative is a run that walks every stage, converts
+    nothing, and reports a clean ledger over an empty output.
+    """
+    if not p.implemented:
+        missing = []
+        if not getattr(p.source, "implemented", True):
+            missing.append(f"{p.source_platform} source")
+        if not getattr(p.target, "implemented", True):
+            missing.append(f"{p.target_platform} target")
+        raise NotImplementedError(
+            f"{p.label} is registered but not implemented yet — the "
+            f"{' and '.join(missing)} adapter(s) are scaffolds. "
+            "See docs/V2_DELIVERY_PLAN.md phases 2 and 3.")
+    return p
+
+
 def current_target():
     """The target adapter for the run in progress, or None on the v1 path.
 
@@ -240,7 +272,7 @@ def _register_builtins() -> None:
     """Import the shipped adapters. Deferred so importing this module stays cheap."""
     if _REGISTRY:
         return
-    from src.adapters import hybris_source, salesforce_target
+    from src.adapters import hybris_source, salesforce_target, adobe_source, hybris_target
     register(Pipeline(
         id="hybris->salesforce",
         source=hybris_source.ADAPTER,
@@ -248,6 +280,18 @@ def _register_builtins() -> None:
         label="SAP Hybris → Salesforce",
         knowledge_pack="hybris_to_salesforce",
         shipped=True,
+    ))
+    # Registered while still scaffolded, on purpose: it is what proves detection,
+    # resolution, pack loading and the purity rule work against two platforms rather than
+    # one. `implemented` is False, so `require_runnable()` refuses to start a migration
+    # with it — the architecture is exercised without anything being able to pretend.
+    register(Pipeline(
+        id="adobe->hybris",
+        source=adobe_source.ADAPTER,
+        target=hybris_target.ADAPTER,
+        label="Adobe Commerce → SAP Hybris",
+        knowledge_pack="adobe_to_hybris",
+        shipped=False,
     ))
 
 

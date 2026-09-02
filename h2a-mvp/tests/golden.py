@@ -40,7 +40,19 @@ MANIFEST = Path(__file__).resolve().parent / "golden" / "manifest.json"
 
 # Regenerated per run by design — a snapshot of them would be noise, not signal.
 SKIP_DIRS = {"checkpoints", "__pycache__"}
-SKIP_FILES = {".h2a_agentic_state.json", ".call_graph.json"}
+SKIP_FILES = {
+    ".h2a_agentic_state.json",
+    ".call_graph.json",
+    # ORG_FIT.md reports on a *live Salesforce org* read through the `sf` CLI: its
+    # username, API version, object count and collision findings are facts about an
+    # external system that changes without this repository changing. It is not
+    # reproducible by definition — it differs between machines, and between today and
+    # tomorrow on the same machine after someone deploys. Excluded rather than
+    # normalised, because normalising away the org identity, the API version and the
+    # findings leaves no content to compare. Its rendering is covered by the 11 unit
+    # tests in test_orgfit.py, which use a fixed org payload and are reproducible.
+    "ORG_FIT.md",
+}
 
 _ISO = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?(\s*UTC|Z|[+-]\d{2}:\d{2})?")
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")

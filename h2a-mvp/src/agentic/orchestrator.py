@@ -576,7 +576,12 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     from src.pipeline import v2_enabled, ensure_registered, resolve
     if v2_enabled(config):
         ensure_registered()
-        _pl = resolve(input_dir)
+        from src.pipeline import require_runnable
+        # Refuse before reading a file or spending a token. A scaffolded pipeline would
+        # otherwise walk every stage, convert nothing, and report a clean ledger over an
+        # empty output — success-shaped failure, which is the one outcome this product
+        # exists to prevent.
+        _pl = require_runnable(resolve(input_dir))
         bb.pipeline_id = _pl.id
         # Publish it to the run context so prompts, mappings and RAG resolve to this
         # pipeline's pack in call sites too deep to be handed the id explicitly.

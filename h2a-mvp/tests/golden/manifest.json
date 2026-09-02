@@ -12,7 +12,6 @@
     "FORECAST.md": "566f18e066319a3a",
     "MAPPING.md": "d6118ca9cd4f93de",
     "MIGRATION_PLAN.md": "9a0b5647a27e5e9a",
-    "ORG_FIT.md": "3a48e37a6e6181e2",
     "PARITY.md": "6975a7567b8b0e23",
     "PROVENANCE.md": "db346182fbe921f8",
     "SIGN_OFF.md": "a9aca2b622e54002",
@@ -130,5 +129,5 @@
     "schedule.apex": "6d09f8da5a1fd303",
     "sfdx-project.json": "64ccb2be45d41950"
   },
-  "note": "Baseline of the shipped Hybris->Salesforce migration, captured on branch v2 BEFORE any adapter refactoring, with the recipe-hash determinism fix applied (without it the output is not reproducible and no baseline is possible). Any diff to this file in a commit must be deliberate and explained. Regenerate with: H2A_GOLDEN_UPDATE=1 pytest tests/test_golden.py"
+  "note": "Baseline of the reference migration. Regenerate deliberately: H2A_GOLDEN_UPDATE=1 pytest tests/test_golden.py"
 }
