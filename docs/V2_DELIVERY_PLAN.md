@@ -208,8 +208,9 @@ construction rather than by later correction.
 | # | Work item | Done when |
 |---|---|---|
 | ~~3.1~~ | ✅ **Extension scaffolding** — `adapters/hybris_extension.py` | `extensioninfo.xml` with core/commerceservices, `build.xml`, `*-spring.xml`, and `src`/`testsrc` package trees. An extension that is *nearly* the right shape is worse than an obviously incomplete one: the platform's build finds nothing and says little. |
-| 3.2 | Java service + interface generation | Idiomatic Spring services from IR units |
-| 3.3 | DAO generation with FlexibleSearch | Queries shaped as a Hybris developer would write them |
+| ~~3.2a~~ | ✅ **Service interface, impl skeleton and Spring wiring** — `adapters/hybris_service.py` | `PricingService` / `DefaultPricingService`, SAP's own convention. Signatures derived from 2.12's resolutions; an undeclared type is emitted as `/* TYPE-UNRESOLVED */ Object` with the names listed, never guessed. PHP docblocks carried verbatim. Unmigrated bodies **throw** rather than returning a default, which would let the extension build and read as "migrated to do nothing". |
+| 3.2b | **`plan()`** — which *kind* of target each unit becomes | Not built. Today every unit renders as a service, which is right for a Model and wrong for a Plugin: a Magento plugin should become an interceptor or a decorator bean, and the `AROUND_PLUGIN` hazard already says which. `SubtotalPluginService` is a placeholder for that decision, not the decision. |
+| ~~3.3~~ | ✅ **DAO with FlexibleSearch** | Query constants, parameterised via `addQueryParameter`, `setCount(1)` on a find-by-unique-key, setter injection. Bounded deliberately: `QUERY_NO_LIMIT` would otherwise fire on our own output, and emitting a DAO that trips our own hazard rules would be an odd thing to do. |
 | ~~3.4~~ | ✅ **`*-items.xml` emission** | Declared tables become generated item types with their own deployment table and a typecode above 10000; a Magento EAV entity becomes `autocreate="false" generate="false"` on the type SAP already owns. Emitting the second as the first produces a parallel `Customer` holding half a customer — it deploys perfectly and splits the entity. The "attribute set is open" note reaches the emitted XML. |
 | 3.5 | ImpEx emission | Seed data, idempotent |
 | 3.6 | Spring cron trigger + `AbstractJobPerformable` emission | Same timing as the source |
