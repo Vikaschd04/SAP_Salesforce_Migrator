@@ -89,8 +89,17 @@ def build_signoff(bb, *, accounting: dict | None = None, cost: dict | None = Non
 
     shape_notes = [n for meta in (getattr(bb, "schema", None) or {}).values()
                    for n in (meta.get("shape_notes") or [])]
+    # A relation is recorded on both of the objects it joins, so the same decision arrives
+    # twice. Dedupe on the relation's own name rather than reporting it twice. [1.32]
+    seen, relation_notes = set(), []
+    for meta in (getattr(bb, "schema", None) or {}).values():
+        for n in (meta.get("relation_notes") or []):
+            if n.get("code") in seen:
+                continue
+            seen.add(n.get("code"))
+            relation_notes.append(n)
     caveats = _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
-                       getattr(bb, "cycle_cuts", None) or [], shape_notes)
+                       getattr(bb, "cycle_cuts", None) or [], shape_notes, relation_notes)
 
     contract = {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
@@ -175,7 +184,7 @@ def _languages() -> tuple:
 
 
 def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
-             cycle_cuts=(), shape_notes=()) -> list[str]:
+             cycle_cuts=(), shape_notes=(), relation_notes=()) -> list[str]:
     """Everything this document does not certify. Assembled from the same data as the
     claims, so it cannot drift out of step with them."""
     src, tgt = _languages()
@@ -241,6 +250,19 @@ def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
         # it belongs at the top of the document rather than in a field-mapping table
         # nobody reads before scheduling the cutover. [1.20b]
         out.append(f"**{note['detail']}**")
+
+    for note in relation_notes or ():
+        # Two relation outcomes are invisible everywhere else. An unconverted relation
+        # leaves both sides' records intact and the link between them absent, which looks
+        # like a clean migration until someone opens a parent and finds no children. A
+        # demoted one keeps the link but drops the delete rule that came with it. The
+        # rest of the decisions are ordinary and belong in the mapping tables. [1.32, A6]
+        if note.get("kind") == "Unresolved":
+            out.append(f"**The `{note['code']}` relation is not in the output.** "
+                       f"{note['why']} {note['lost']}")
+        elif note.get("demoted"):
+            out.append(f"**`{note['code']}` no longer deletes its children with their "
+                       f"parent.** {note['lost']}")
 
     for cut in cycle_cuts or ():
         # A cycle had to be cut somewhere or nothing could be scheduled. Which side was

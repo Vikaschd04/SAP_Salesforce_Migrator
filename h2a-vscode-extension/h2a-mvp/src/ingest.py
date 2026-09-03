@@ -437,22 +437,49 @@ def _parse_enum_types(filepath: str) -> list[dict]:
 
 
 def _parse_relations(filepath: str) -> list[dict]:
-    """Parse <relation> definitions from items.xml into source/target cardinality dicts."""
+    """Parse <relation> definitions from items.xml, keeping what decides the mapping.
+
+    Cardinality alone does not determine the target relationship. `partof="true"` on an
+    end says the relation is a *composition*: those children belong to the parent and are
+    deleted with it. That is the one Hybris fact that separates a relationship which
+    cascades from one which does not, and only one Salesforce relationship type cascades.
+    Dropping it here — as this parser used to — makes the distinction unrecoverable
+    downstream, and every relation silently becomes the non-cascading kind. [1.32, A6]
+
+    `optional="false"` is kept for the same reason: a master-detail child field is
+    implicitly required, so a required parent end corroborates the composition reading,
+    and an *optional* one warns that existing rows may not survive the constraint.
+    """
     relations = []
     try:
         root = ET.parse(filepath).getroot()
     except Exception:
         return relations
+
+    def _end(el) -> dict:
+        mods = el.find("modifiers")
+        get = (lambda k: str(mods.get(k, "")).lower()) if mods is not None else (lambda k: "")
+        return {
+            "type": el.get("type"),
+            "qualifier": el.get("qualifier") or "",
+            "cardinality": el.get("cardinality", "many"),
+            "partof": get("partof") == "true",
+            "optional": get("optional") != "false",   # Hybris default is optional
+        }
+
     for rel in root.iter("relation"):
-        src = rel.find("sourceElement")
-        tgt = rel.find("targetElement")
-        if src is not None and tgt is not None:
-            relations.append({
-                "source_type": src.get("type"),
-                "source_card": src.get("cardinality", "many"),
-                "target_type": tgt.get("type"),
-                "target_card": tgt.get("cardinality", "many"),
-            })
+        src, tgt = rel.find("sourceElement"), rel.find("targetElement")
+        if src is None or tgt is None:
+            continue
+        s, t = _end(src), _end(tgt)
+        relations.append({
+            "code": rel.get("code") or "",
+            "source_type": s["type"], "source_card": s["cardinality"],
+            "target_type": t["type"], "target_card": t["cardinality"],
+            "source_qualifier": s["qualifier"], "target_qualifier": t["qualifier"],
+            "source_partof": s["partof"], "target_partof": t["partof"],
+            "source_optional": s["optional"], "target_optional": t["optional"],
+        })
     return relations
 
 

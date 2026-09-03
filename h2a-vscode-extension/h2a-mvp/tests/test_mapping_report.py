@@ -40,6 +40,11 @@ def _rows(md: str):
     """(object, hybris_field, apex_field, apex_type) for every SObject-mapping row."""
     obj, out = None, []
     for line in md.splitlines():
+        # A new top-level section ends the current object. Without this the parser kept
+        # reading past the field tables and treated the first 5-column table it met after
+        # them — Relation Mapping's — as more fields of the last object. [1.32]
+        if line.startswith("## "):
+            obj = None
         head = re.match(r"### \w+ -> (\w+__c)", line)
         if head:
             obj = head.group(1)

@@ -736,6 +736,60 @@ def write_outputs(output_dir: str, generated: list[dict], item_types: list[dict]
     return created
 
 
+def _relation_section(schema: dict) -> list[str]:
+    """What each `<relation>` became, including the ones that became nothing. [1.32, A6]
+
+    The field tables above list attributes, and a relation is not an attribute — so before
+    this section a relation that was dropped left no trace anywhere a customer reads. On
+    the reference corpus that was two of three relations: both objects converted, the link
+    between them absent, and the report showing a clean run.
+    """
+    seen, rows = set(), []
+    for meta in (schema or {}).values():
+        for note in (meta.get("relation_notes") or []):
+            if note.get("code") in seen:
+                continue
+            seen.add(note.get("code"))
+            rows.append(note)
+    if not rows:
+        return []
+
+    kind_label = {
+        "MasterDetail": "Master-Detail",
+        "Lookup": "Lookup",
+        "Junction": "Junction object",
+        "Unresolved": "**not converted**",
+    }
+    lines = ["## Relation Mapping", "",
+             "Cardinality alone does not decide these. A Hybris end marked `partof` is a "
+             "composition — the children are deleted with the parent — and Master-Detail "
+             "is the only Salesforce relationship that carries that. A relation whose "
+             "other end is an out-of-the-box type is a modelling decision, not a "
+             "conversion, and is listed here rather than guessed at.", "",
+             "| Relation | Hybris Shape | Becomes | Cascades | Where |",
+             "|---|---|---|---|---|"]
+    for r in sorted(rows, key=lambda r: r.get("code") or ""):
+        where = r.get("junction_api") or (
+            f"`{r['child_api']}.{r['field_api']}`" if r.get("field_api") else "—")
+        if r.get("junction_api"):
+            where = f"`{r['junction_api']}`"
+        label = kind_label.get(r["kind"], r["kind"])
+        if r.get("demoted"):
+            label += " (demoted)"
+        lines.append(f"| `{r['code']}` | {r['shape']} | {label} | "
+                     f"{'yes' if r.get('cascade') else 'no'} | {where} |")
+    lines.append("")
+
+    for r in sorted(rows, key=lambda r: r.get("code") or ""):
+        lines.append(f"### `{r['code']}` — {r['source_type']} to {r['target_type']}")
+        lines.append("")
+        lines.append(r.get("why") or "")
+        if r.get("lost"):
+            lines += ["", f"**What does not carry across:** {r['lost']}"]
+        lines.append("")
+    return lines
+
+
 def _build_mapping_md(generated: list[dict], item_types: list[dict], mappings: dict,
                       schema: dict | None = None) -> str:
     """The mapping report, read from the schema the metadata is emitted from. [1.31]
@@ -781,6 +835,8 @@ def _build_mapping_md(generated: list[dict], item_types: list[dict], mappings: d
                 api, apex_type, note = "—", "—", "not in the emitted schema"
             lines.append(f"| {q} | {field['type']} | {api} | {apex_type} | {note} |")
         lines.append("")
+
+    lines += _relation_section(schema)
 
     lines += ["## Layer Mapping", "", "| Hybris Layer | Hybris Class | Apex Class | Apex Kind |", "|---|---|---|---|"]
     layer_info = mappings.get("layers", {})

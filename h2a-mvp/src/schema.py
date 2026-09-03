@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import re
 
+from src import relations as relations_mod
+
 # Java/Hybris type -> Salesforce field type (kept in sync with metadata_generator).
 _TYPE_MAP = {
     "java.lang.String": "Text",
@@ -225,32 +227,90 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
                        "field_api": dict(api_of),
                        "required": required, "unique": unique, "defaults": defaults}
 
-    # Relations: one->many creates a Lookup on the child pointing to the parent.
+    # Relations. Which Salesforce relationship a Hybris `<relation>` becomes is decided
+    # in `src/relations.py`; this block does the naming and puts the result in the schema.
+    #
+    # It used to be one branch — one->many became a Lookup, everything else was dropped
+    # without a word. On the reference corpus that converted one relation of three and
+    # lost the other two in silence. [1.32, A6]
     #
     # Every relation field is a *field*, so it competes for a name with the attributes
-    # already on that object — and this path used to write straight into `fields`, which
-    # meant a relation from `Order` onto a type that already had an `order` attribute
-    # replaced it. Two source facts, one field, and the survivor typed Lookup instead of
-    # Text: the same silent loss 1.20a fixed one path over. [1.20b]
-    for rel in relations or []:
-        if rel.get("source_card") != "one" or rel.get("target_card") != "many":
-            continue
-        child = _obj_api_name(rel["target_type"])
-        parent_field = _field_api_name(rel["source_type"])
-        meta = schema.setdefault(child, _empty_object(rel["target_type"]))
+    # already on that object — this path used to write straight into `fields`, which meant
+    # a relation from `Order` onto a type that already had an `order` attribute replaced
+    # it. Two source facts, one field, and the survivor typed Lookup instead of Text: the
+    # same silent loss 1.20a fixed one path over. [1.20b]
+    # Same key precedence as the item-type loop above: `name` is what the parser
+    # emits, `code` is what a hand-built fixture tends to use.
+    declared = {c for it in (item_types or [])
+                if (c := (it.get("name") or it.get("code")))}
+    decisions = relations_mod.decide(relations or [], declared)
 
-        if parent_field in meta["fields"]:
-            taken = parent_field
-            parent_field = _fit(_stem(rel["source_type"] + "Ref"),
-                                f"rel:{rel['source_type']}", tagged=True)
+    def _note(obj_code: str, row: dict) -> None:
+        """Record a relation's fate on a declared object, so a report can read it back."""
+        api = _obj_api_name(obj_code)
+        if api not in schema:
+            return
+        schema[api].setdefault("relation_notes", []).append(row)
+
+    def _relation_field(child_code: str, parent_code: str, sf_type: str, row: dict) -> str:
+        child_api = _obj_api_name(child_code)
+        field = _field_api_name(parent_code)
+        meta = schema.setdefault(child_api, _empty_object(child_code))
+
+        if field in meta["fields"]:
+            taken = field
+            field = _fit(_stem(parent_code + "Ref"), f"rel:{parent_code}", tagged=True)
             meta["name_notes"].append({
-                "qualifier": rel["source_type"], "api": parent_field, "reason": "collision",
-                "detail": f"the relation from `{rel['source_type']}` wants `{taken}`, and an "
+                "qualifier": parent_code, "api": field, "reason": "collision",
+                "detail": f"the relation from `{parent_code}` wants `{taken}`, and an "
                           "attribute of the same name is already there. Both are kept; the "
                           "relation field is the renamed one, because the attribute was "
                           "declared on this type and the relation was declared elsewhere.",
             })
-        meta["fields"][parent_field] = "Lookup"
+        meta["fields"][field] = sf_type
+        if sf_type == relations_mod.MASTER_DETAIL:
+            # A master-detail child is required by definition and takes its sharing from
+            # the parent. Leaving `sharingModel` at ReadWrite is not a cosmetic mismatch:
+            # the deploy is rejected.
+            meta["required"].add(field)
+            meta["sharing"] = "ControlledByParent"
+        row["field_api"] = field
+        row["child_api"] = child_api
+        row["parent_api"] = _obj_api_name(parent_code)
+        return field
+
+    for row in decisions:
+        kind = row["kind"]
+
+        if kind == relations_mod.UNRESOLVED:
+            # Nothing is emitted: a lookup to an object that will not exist fails the
+            # deploy. Both ends are recorded so the loss is visible on whichever object
+            # this extension actually declares.
+            for end in (row["source_type"], row["target_type"]):
+                _note(end, row)
+            continue
+
+        if kind == relations_mod.JUNCTION:
+            stem = _stem(row["source_type"] + row["target_type"])
+            junction = _fit(stem, f"junction:{row['code']}", tagged=False)
+            meta = schema.setdefault(junction, _empty_object(
+                f"{row['source_type']}{row['target_type']}"))
+            meta["junction"] = True
+            meta["sharing"] = "ControlledByParent"
+            for parent in (row["source_type"], row["target_type"]):
+                field = _field_api_name(parent)
+                meta["fields"][field] = relations_mod.MASTER_DETAIL
+                meta["required"].add(field)
+            row["junction_api"] = junction
+            row["child_api"] = junction
+            for end in (row["source_type"], row["target_type"]):
+                _note(end, row)
+            continue
+
+        _relation_field(row["child"], row["parent"], kind, row)
+        _note(row["child"], row)
+        if row["parent"] != row["child"]:
+            _note(row["parent"], row)
 
     # Salesforce caps custom fields per object. Reported rather than trimmed: which
     # attributes to drop, merge or move to a child object is a modelling decision, and an

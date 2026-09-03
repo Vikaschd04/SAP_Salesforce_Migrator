@@ -210,40 +210,67 @@ def write_schema_metadata(output_dir: str, schema: dict) -> list[str]:
         fields_dir = obj_dir / "fields"
         fields_dir.mkdir(parents=True, exist_ok=True)
 
+        # An object holding a master-detail field takes its sharing from the parent.
+        # Leaving this at ReadWrite is not a cosmetic mismatch — the deploy is rejected
+        # with "sharing model must be ControlledByParent". [1.32]
+        sharing = meta.get("sharing") or "ReadWrite"
+        # A junction row is identified by the pair it links, not by a name anyone types,
+        # so it gets an auto-number rather than a Text name nobody would populate.
+        if meta.get("junction"):
+            name_field = ("    <nameField>\n        <label>{label} Name</label>\n"
+                          "        <type>AutoNumber</type>\n"
+                          "        <displayFormat>{label}-{{0000}}</displayFormat>\n"
+                          "    </nameField>\n").format(label=code)
+        else:
+            name_field = ("    <nameField>\n        <label>{label} Name</label>\n"
+                          "        <type>Text</type>\n    </nameField>\n").format(label=code)
         obj_meta_xml = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">\n'
             "    <deploymentStatus>Deployed</deploymentStatus>\n"
             "    <label>{label}</label>\n"
             "    <pluralLabel>{label}s</pluralLabel>\n"
-            "    <nameField>\n        <label>{label} Name</label>\n        <type>Text</type>\n    </nameField>\n"
-            "    <sharingModel>ReadWrite</sharingModel>\n"
+            "{name_field}"
+            "    <sharingModel>{sharing}</sharingModel>\n"
             "    <visibility>Public</visibility>\n"
             "</CustomObject>\n"
-        ).format(label=code)
+        ).format(label=code, name_field=name_field, sharing=sharing)
         obj_file = obj_dir / f"{obj_api}.object-meta.xml"
         obj_file.write_text(obj_meta_xml, encoding="utf-8")
         written.append(str(obj_file))
 
+        md_order = 0
         for field_api, sf_type in sorted(meta.get("fields", {}).items()):
-            if sf_type == "Lookup":
-                # build_schema names a relation's lookup field after the parent
-                # object (e.g. Order__c gets a `Customer__c` lookup -> Customer__c).
+            if sf_type in ("Lookup", "MasterDetail"):
+                # build_schema names a relation's field after the parent object
+                # (e.g. FulfilmentEvent__c gets an `Order__c` field -> Order__c).
                 parent = field_api
                 label = field_api[:-3] if field_api.endswith("__c") else field_api
-                lookup_xml = (
+                if sf_type == "MasterDetail":
+                    # A master-detail field is required by definition, so `<required>` is
+                    # rejected on it. `relationshipOrder` is not optional either: on a
+                    # junction it names which parent controls sharing, and 0 must be
+                    # unique across the object's master-details.
+                    extra = (f"    <relationshipOrder>{md_order}</relationshipOrder>\n"
+                             "    <reparentableMasterDetail>false</reparentableMasterDetail>\n"
+                             "    <writeRequiresMasterRead>false</writeRequiresMasterRead>\n")
+                    md_order += 1
+                else:
+                    extra = ""
+                rel_xml = (
                     '<?xml version="1.0" encoding="UTF-8"?>\n'
                     '<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">\n'
                     f"    <fullName>{field_api}</fullName>\n"
                     f"    <label>{label}</label>\n"
-                    f"    <type>Lookup</type>\n"
+                    f"    <type>{sf_type}</type>\n"
                     f"    <referenceTo>{parent}</referenceTo>\n"
                     f"    <relationshipLabel>{code}s</relationshipLabel>\n"
                     f"    <relationshipName>{code}s</relationshipName>\n"
+                    f"{extra}"
                     "</CustomField>\n"
                 )
                 lf = fields_dir / f"{field_api}.field-meta.xml"
-                lf.write_text(lookup_xml, encoding="utf-8")
+                lf.write_text(rel_xml, encoding="utf-8")
                 written.append(str(lf))
                 continue
             field_file = fields_dir / f"{field_api}.field-meta.xml"
