@@ -83,6 +83,11 @@ class SalesforceTarget:
     # The neutral layer decides which behaviours are worth replaying; these four say
     # what a replay looks like in Apex. See adapters/apex_characterization.py.
 
+    def symbols(self, code: str) -> list:
+        """Apex method declarations, for provenance. Apex is Java-shaped. [2.11]"""
+        from src.adapters.braced_symbols import symbols as _s
+        return _s(code)
+
     def find_method(self, code: str, name: str) -> dict | None:
         from src.adapters import apex_characterization as ac
         return ac.find_method(code, name)

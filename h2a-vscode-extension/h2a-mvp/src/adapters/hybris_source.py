@@ -61,6 +61,11 @@ class HybrisSource:
                           detail=f.get("detail", ""), fix=f.get("fix", ""))
                 for f in (scan(root).get("findings") or [])]
 
+    def symbols(self, text: str) -> list:
+        """Java method declarations, for provenance. [2.11]"""
+        from src.adapters.braced_symbols import symbols as _s
+        return _s(text)
+
     def mine_behaviours(self, test_classes: list) -> list:
         """Recorded input→output facts from the customer's JUnit suite.
 

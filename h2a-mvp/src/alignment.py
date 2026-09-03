@@ -54,10 +54,10 @@ def _best_method(rule: str, methods: list[dict]) -> tuple[dict | None, float]:
 
 def _methods_of(source: str) -> list[dict]:
     """Java methods with their bodies, so a rule can be matched against what code does."""
-    from src.provenance import _symbols
+    from src.provenance import _source_symbols
     lines = (source or "").splitlines()
     out = []
-    for s in _symbols(source or ""):
+    for s in _source_symbols(source or ""):
         body = "\n".join(lines[s["line_start"] - 1: s["line_end"]])
         out.append({**s, "body": body})
     return out

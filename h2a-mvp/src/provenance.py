@@ -25,42 +25,35 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-# A method declaration in Apex or Java. Deliberately conservative — it is better to miss
-# an exotic signature than to claim a `for` loop is a method.
-_METHOD = re.compile(
-    r"^[ \t]*(?:@\w+[^\n]*\n[ \t]*)*"                       # annotations on their own lines
-    r"(?:public|private|protected|global)\s+"
-    r"(?:static\s+|final\s+|override\s+|virtual\s+|abstract\s+|synchronized\s+)*"
-    r"(?:[\w<>\[\],.\s]+?\s+)?"                             # return type (absent on ctors)
-    r"(\w+)\s*\([^)]*\)\s*(?:throws\s[\w,.\s]+)?\{",
-    re.MULTILINE,
-)
 
-# Names that carry no signal — matching on these would pair unrelated code.
+#: Names too common to carry evidence. A `getX` on both sides is not a traceable link.
 _GENERIC = {"get", "set", "run", "execute", "perform", "handle", "process", "toString",
             "equals", "hashCode", "init", "main"}
 
 
-def _symbols(text: str) -> list[dict]:
-    """Every method in a source text, with the line range of its body."""
-    out = []
-    for m in _METHOD.finditer(text or ""):
-        name = m.group(1)
-        start = (text[:m.start()].count("\n")) + 1
-        # Walk braces from the opening one to find the real end of the body.
-        i = text.index("{", m.end() - 1)
-        depth, j = 0, i
-        while j < len(text):
-            if text[j] == "{":
-                depth += 1
-            elif text[j] == "}":
-                depth -= 1
-                if depth == 0:
-                    break
-            j += 1
-        end = text[:j].count("\n") + 1
-        out.append({"name": name, "line_start": start, "line_end": max(start, end)})
-    return out
+def _source_symbols(text: str) -> list[dict]:
+    """Methods in the *source*, located by the source platform's own reader. [2.11]
+
+    Split from `_target_symbols` because they used to be one function serving two
+    platforms, and that only worked while both were C-family. A PHP source read with a
+    Java-shaped regex returns one method in six: it does not fail, it under-reports — in
+    the module whose entire output is how much of the source can be accounted for.
+    """
+    from src import pipeline, runctx
+    pipeline.ensure_registered()
+    pid = runctx.pipeline_id()
+    src = (pipeline.get(pid) if pid else pipeline.default_pipeline()).source
+    return src.symbols(text)
+
+
+def _target_symbols(text: str) -> list[dict]:
+    """Methods in the *generated* code, located by the target platform's own reader."""
+    from src import pipeline
+    target = pipeline.current_target()
+    if target is None:
+        pipeline.ensure_registered()
+        target = pipeline.default_pipeline().target
+    return target.symbols(text)
 
 
 def _norm(name: str) -> str:
@@ -91,10 +84,10 @@ def map_artifact(artifact) -> dict:
     # A constructor has no Java origin by definition and listing it as unexplained
     # would be noise in exactly the column that is supposed to mean something.
     ctor = _class_name(apex_src)
-    apex = [s for s in _symbols(apex_src) if s["name"] != ctor]
+    apex = [s for s in _target_symbols(apex_src) if s["name"] != ctor]
     java_syms: list[dict] = []
     for c in getattr(artifact, "source_classes", []) or []:
-        for s in _symbols(c.get("source", "") or ""):
+        for s in _source_symbols(c.get("source", "") or ""):
             java_syms.append({**s, "source_class": c.get("class_name", ""),
                               "file": c.get("file", "")})
 

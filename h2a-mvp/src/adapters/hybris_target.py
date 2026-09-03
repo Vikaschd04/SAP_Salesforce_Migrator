@@ -51,6 +51,11 @@ class HybrisTarget:
                         "available (items 3.10–3.12)."),
         }
 
+    def symbols(self, code: str) -> list:
+        """Generated Java method declarations, for provenance. [2.11]"""
+        from src.adapters.braced_symbols import symbols as _s
+        return _s(code)
+
     def find_method(self, code: str, name: str) -> dict | None:
         raise NotImplementedYet("Locating a method in generated Java", "3.11")
 

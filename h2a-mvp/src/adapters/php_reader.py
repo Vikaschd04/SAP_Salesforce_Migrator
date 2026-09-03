@@ -273,3 +273,31 @@ def read_tree(root: str) -> list:
             continue
         units += read_file(str(p), str(base))
     return units
+
+
+def symbols(text: str) -> list:
+    """Every method in a PHP source text, with the line range of its body. [2.11]
+
+    The provenance layer's contract, answered from the AST rather than a regex — PHP
+    declares a method as `public function name()`, with no return type where a Java-shaped
+    pattern expects one, so a regex written for Java finds roughly one method in six here.
+    """
+    try:
+        tree = _parser().parse((text or "").encode("utf-8"))
+    except Exception:
+        return []
+
+    out = []
+
+    def visit(node):
+        if node.type == "method_declaration":
+            name = _text(_first(node, "name"))
+            if name:
+                out.append({"name": name,
+                            "line_start": node.start_point[0] + 1,
+                            "line_end": node.end_point[0] + 1})
+        for c in node.children:
+            visit(c)
+
+    visit(tree.root_node)
+    return out

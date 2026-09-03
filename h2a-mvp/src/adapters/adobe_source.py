@@ -180,6 +180,11 @@ class AdobeCommerceSource:
     def read(self, root: str):
         raise NotImplementedYet("Reading an Adobe Commerce codebase", "2.3–2.9")
 
+    def symbols(self, text: str) -> list:
+        """PHP method declarations, from the AST. [2.11]"""
+        from src.adapters import php_reader
+        return php_reader.symbols(text)
+
     def mine_behaviours(self, test_classes: list) -> list:
         """Recorded input→output facts from the customer's PHPUnit suite. [2.9]
 
