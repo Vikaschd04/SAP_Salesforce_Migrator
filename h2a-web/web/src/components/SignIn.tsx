@@ -10,6 +10,10 @@ import { login, signup, demoLogin } from '../api';
  * about to upload proprietary source, so the isolation promise belongs *here*, not
  * buried in docs); the right does the one job. On narrow screens the showcase drops
  * away entirely rather than pushing the form below the fold.
+ *
+ * The showcase names both migrations. It used to promise "SAP Hybris to Salesforce",
+ * which is the first thing a visitor read — so someone arriving with a Magento codebase
+ * learned this was not their tool before ever reaching the form, and was wrong.
  */
 
 const MIN_PW = 10;
@@ -57,11 +61,16 @@ export default function SignIn({ me, onIn }: { me: Me; onIn: (u: NonNullable<Me[
             <div className="signin-brand">
               <Logo size={38} />
               <div>
-                <h1><span className="wm grad-text">H2A</span></h1>
-                <div className="sub">Migration Cockpit</div>
+                <h1><span className="wm grad-text">Portage</span></h1>
+                <div className="sub">Commerce migration cockpit</div>
               </div>
             </div>
-            <h2 className="auth-tag">SAP Hybris to Salesforce, with a human at every gate.</h2>
+            <h2 className="auth-tag">Move a commerce platform, with a human at every gate.</h2>
+
+            <div className="auth-routes">
+              <span className="auth-route"><b>SAP Hybris</b><i>→</i><b>Salesforce</b></span>
+              <span className="auth-route"><b>Adobe Commerce</b><i>→</i><b>SAP Hybris</b></span>
+            </div>
           </div>
 
           <ul className="auth-points">
