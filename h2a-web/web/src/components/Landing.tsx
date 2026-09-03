@@ -66,7 +66,7 @@ type SourceMode = 'sample' | 'upload' | 'path';
  */
 export default function Landing({ hosted, defaultProvider, starting, error, onStart,
                                   stoppedAt, onRunAgain, onDismissStopped }: Props) {
-  const [mode, setMode] = useState<SourceMode>('sample');
+  const [mode, setMode] = useState<SourceMode>('upload');
   const [sample, setSample] = useState(SAMPLES[0].path);
   const [file, setFile] = useState<File | null>(null);
   const [path, setPath] = useState('');
@@ -164,8 +164,8 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
           <div className="sec-h">
             <h3>Your codebase</h3>
             <div className="seg seg-sm">
-              <button className={mode === 'sample' ? 'on' : ''} onClick={() => setMode('sample')}>Sample</button>
               <button className={mode === 'upload' ? 'on' : ''} onClick={() => setMode('upload')}>Upload</button>
+              <button className={mode === 'sample' ? 'on' : ''} onClick={() => setMode('sample')}>Sample project</button>
               {!hosted && (
                 <button className={mode === 'path' ? 'on' : ''} onClick={() => setMode('path')}>Server path</button>
               )}
@@ -206,6 +206,16 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
             </div>
           )}
 
+          {mode === 'upload' && !file && (
+            <p className="sec-aside">
+              No codebase to hand?{' '}
+              <button type="button" className="link-btn inline" onClick={() => setMode('sample')}>
+                Run a sample project
+              </button>{' '}
+              — one for each migration, with the awkward parts left in.
+            </p>
+          )}
+
           {mode === 'path' && (
             <div className="field full">
               <label>Path on the server</label>
@@ -218,18 +228,18 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
 
         {/* ── what it is, and what it becomes ──────────────────────────────── */}
         {mode === 'upload' && file && (
-          <div className="ident ident-pending">
+          <div className="sec"><div className="ident ident-pending">
             <div className="ident-head"><span className="ident-dot pending" />
               <b>Identified on the server when the run starts</b></div>
             <p>An archive cannot be inspected until it is uploaded. Portage will refuse
               before anything is charged if it is not a codebase it can migrate.</p>
-          </div>
+          </div></div>
         )}
 
         {mode !== 'upload' && looking && (
-          <div className="ident ident-pending">
+          <div className="sec"><div className="ident ident-pending">
             <div className="ident-head"><span className="ident-dot pending" /> Inspecting…</div>
-          </div>
+          </div></div>
         )}
 
         {mode !== 'upload' && !looking && ident && (
@@ -310,7 +320,7 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
             {starting ? 'Starting…' : blocked ? 'Not migratable yet' : '▶ Start migration'}
           </button>
         </div>
-        {error && <div style={{ color: 'var(--danger)', fontSize: 12.5 }}>{error}</div>}
+        {error && <div className="start-error" role="alert">{error}</div>}
       </div>
 
       <div className="feature-row">
