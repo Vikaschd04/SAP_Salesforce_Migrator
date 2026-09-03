@@ -87,7 +87,8 @@ def build_signoff(bb, *, accounting: dict | None = None, cost: dict | None = Non
         _platform, _language = "the target platform", "code"
     assurance_claim = assurance.describe(v, platform=_platform, language=_language)
 
-    caveats = _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim)
+    caveats = _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
+                       getattr(bb, "cycle_cuts", None) or [])
 
     contract = {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
@@ -171,7 +172,8 @@ def _languages() -> tuple:
         return "source", "target"
 
 
-def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim) -> list[str]:
+def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
+             cycle_cuts=()) -> list[str]:
     """Everything this document does not certify. Assembled from the same data as the
     claims, so it cannot drift out of step with them."""
     src, tgt = _languages()
@@ -231,6 +233,15 @@ def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim) -> l
     if crit:
         out.append(f"{crit} critical/high migration hazard(s) were found in the source. "
                    "Conversion does not resolve them.")
+
+    for cut in cycle_cuts or ():
+        # A cycle had to be cut somewhere or nothing could be scheduled. Which side was
+        # cut decides which artifact was built with less information, and that belongs in
+        # the document that lists what this migration does not certify. [1.27]
+        out.append(
+            f"`{cut['domain']}` and `{cut['depends_on']}` depend on each other. The cycle "
+            f"was cut at `{cut['domain']}`, which was therefore built without the other's "
+            "signatures — check that artifact more closely than the rest.")
 
     from src import assurance
 

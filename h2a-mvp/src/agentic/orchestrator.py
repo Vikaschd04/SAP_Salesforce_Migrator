@@ -209,27 +209,46 @@ def _map_parallel(fn, items: list, workers: int) -> list:
         return list(pool.map(propagate(fn), items))
 
 
-def _domain_levels(schedule: list, adjacency: dict) -> list:
-    """Group domains into dependency *wavefronts*: every domain in a level is mutually
-    independent (if A depended on B they'd be at different depths), so a whole level can
-    be built concurrently while cross-level ordering is still respected."""
-    known, memo = set(schedule or []), {}
+def _domain_levels(schedule: list, adjacency: dict) -> tuple:
+    """Group domains into dependency *wavefronts*, and say where a cycle was cut. [1.27]
 
-    def depth(d: str, stack: set) -> int:
+    Every domain in a level is mutually independent (if A depended on B they would be at
+    different depths), so a whole level builds concurrently while cross-level ordering is
+    still respected.
+
+    A cycle has to be broken somewhere or nothing can be scheduled at all. Breaking it is
+    not the problem; breaking it **silently** is. The domain that gets cut loose is built
+    without its dependency's signatures — the Builder sees less than it would have, and
+    the difference shows up as a lower-quality artifact with no explanation attached.
+    So each cut is recorded with both ends and reported, and a reviewer can decide whether
+    the pairing was real or an artifact of how the code is organised.
+
+    Returns `(levels, cuts)` where a cut is `{"domain", "depends_on"}`.
+    """
+    known, memo, cuts = set(schedule or []), {}, []
+    seen_cut = set()
+
+    def depth(d: str, stack: list) -> int:
         if d in memo:
             return memo[d]
-        if d in stack:          # dependency cycle — treat as a root so we still progress
+        if d in stack:
+            # The edge that closed the loop: this domain depends on something already
+            # part-way through being measured, so `stack[-1] -> d` is where it was cut.
+            pair = (stack[-1], d)
+            if pair not in seen_cut:
+                seen_cut.add(pair)
+                cuts.append({"domain": stack[-1], "depends_on": d})
             return 0
-        stack.add(d)
+        stack.append(d)
         deps = [x for x in (adjacency.get(d) or []) if x in known and x != d]
         memo[d] = 0 if not deps else 1 + max(depth(x, stack) for x in deps)
-        stack.discard(d)
+        stack.pop()
         return memo[d]
 
     buckets: dict[int, list] = {}
     for d in (schedule or []):
-        buckets.setdefault(depth(d, set()), []).append(d)
-    return [buckets[k] for k in sorted(buckets)]
+        buckets.setdefault(depth(d, []), []).append(d)
+    return [buckets[k] for k in sorted(buckets)], cuts
 
 
 def _transitive_deps(adjacency: dict, domain: str) -> set:
@@ -816,9 +835,18 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # Build runs as dependency *wavefronts*: domains at the same depth are mutually
     # independent, so every target in a level is built+reviewed concurrently, while
     # cross-level ordering (signatures from dependencies) is still guaranteed.
-    levels = _domain_levels(bb.schedule, bb.adjacency)
+    levels, cycle_cuts = _domain_levels(bb.schedule, bb.adjacency)
+    bb.cycle_cuts = cycle_cuts
     if conc > 1:
         print(f"    · concurrency {conc} over {len(levels)} dependency wavefront(s)")
+    for cut in cycle_cuts:
+        # Said out loud rather than left in the data. The domain named here was built
+        # without the other's signatures, and that is a fact about the output.
+        print(f"    ⚠ dependency cycle: `{cut['domain']}` ↔ `{cut['depends_on']}` — cut at "
+              f"`{cut['domain']}`, which is built without the other's signatures")
+        bb.record("Planner", "flagged",
+                  f"dependency cycle between {cut['domain']} and {cut['depends_on']}; "
+                  f"built {cut['domain']} first, without the other's signatures")
 
     for level in levels:
         _ck()

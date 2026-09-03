@@ -116,6 +116,8 @@ class Blackboard:
     generated: list = field(default_factory=list)
     #: {unit: [where, ...]} — types no declaration could resolve. [2.12]
     unresolved_types: dict = field(default_factory=dict)
+    #: Dependency cycles the wavefront planner had to cut, and where. [1.27]
+    cycle_cuts: list = field(default_factory=list)
     # Hybris business processes (`*-process.xml`). Read but not yet converted — the
     # action classes migrate, the state machine that sequences them does not. Held here
     # so the ledger can say so, which it could not when these files went unread.
