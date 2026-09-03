@@ -103,3 +103,66 @@ def test_the_reference_corpus_queries_all_translate():
     assert len(found) == 5
     assert all(analyse(q)["verdict"] == "direct" for _, q in found), \
         "the corpus is deliberately simple; a blocked query here would change golden"
+
+
+# ── the derived SOQL reaching the Builder [1.23b] ─────────────────────────────
+
+def _dao_source():
+    from pathlib import Path
+
+    return (Path(__file__).resolve().parents[2] / "Testing" / "acme-commerce-hybris" /
+            "core-customize/hybris/bin/custom/acmecore/src/com/acme/core/dao/impl/"
+            "DefaultOrderDao.java").read_text(encoding="utf-8")
+
+
+def test_every_translatable_query_reaches_the_builder():
+    """The analyser derived correct SOQL from the first day of 1.23a and it went nowhere:
+    only the blocking cases reached a report, and the Builder translated FlexibleSearch
+    from raw source — generating the one part of this migration that can be derived."""
+    from src.adapters.hybris_flexsearch import grounding_for
+
+    block = grounding_for([_dao_source()])
+    assert "SELECT Id FROM Order__c WHERE Code__c = :code" in block
+    assert block.count("→") == 5
+
+
+def test_the_block_tells_the_model_not_to_re_translate():
+    from src.adapters.hybris_flexsearch import grounding_for
+
+    assert "do not re-translate the original" in grounding_for([_dao_source()])
+
+
+def test_a_blocked_query_is_named_rather_than_left_silent():
+    """Silence invites the model to try. Naming what cannot be expressed is worth more."""
+    from src.adapters.hybris_flexsearch import grounding_for
+
+    src = ('class D { String Q = "SELECT {o:pk} FROM {Order AS o}, {Customer AS c} '
+           'WHERE {o:user}={c:pk}"; }')
+    block = grounding_for([src])
+    assert "no SOQL equivalent" in block
+    assert "FS_JOIN" in block
+    assert "Do not invent one" in block
+
+
+def test_a_source_with_no_queries_contributes_nothing():
+    """An empty heading in the prompt is noise that costs tokens on every target."""
+    from src.adapters.hybris_flexsearch import grounding_for
+
+    assert grounding_for(["class Plain { void f() {} }"]) == ""
+    assert grounding_for([]) == ""
+
+
+def test_the_builder_asks_the_running_source_platform():
+    """A Magento source has collections and raw SQL, not FlexibleSearch. Its own analyser
+    is what would answer, and a platform with nothing to contribute returns nothing."""
+    from src import runctx
+    from src.agentic.builders import _derived_queries
+
+    classes = [{"class_name": "DefaultOrderDao", "source": _dao_source()}]
+    assert "SELECT Id FROM Order__c" in _derived_queries(classes)
+
+    token = runctx._pipeline_id.set("adobe->hybris")
+    try:
+        assert _derived_queries(classes) == ""
+    finally:
+        runctx._pipeline_id.reset(token)

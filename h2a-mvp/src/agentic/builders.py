@@ -16,6 +16,27 @@ from src.validate import repair
 from src.pipeline import validate_artifact
 
 
+def _derived_queries(source_classes: list) -> str:
+    """Translated queries for these sources, from the running source platform's analyser.
+
+    Asked of the pipeline rather than imported directly: a Magento source has collections
+    and raw SQL, not FlexibleSearch, and its own analyser is what would answer here. A
+    platform with nothing to contribute returns nothing rather than erroring. [1.23b]
+    """
+    try:
+        from src.adapters.hybris_flexsearch import grounding_for
+        from src import pipeline, runctx
+
+        pipeline.ensure_registered()
+        pid = runctx.pipeline_id()
+        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        if p.source_platform != "hybris":
+            return ""
+        return grounding_for([c.get("source", "") for c in (source_classes or [])])
+    except Exception:
+        return ""
+
+
 class BuilderAgent:
     """Generates one target's Apex, then repairs objective (governor/schema) issues."""
     name = "Builder"
@@ -34,6 +55,12 @@ class BuilderAgent:
             grounding = retriever.grounding_block(
                 f"{plan_item.apex_pattern} apex fflib governor limits SOQL DML security "
                 f"bulkification testing {' '.join(rules)}")
+
+        # Queries this target's own source contains, already translated. Derived, not
+        # generated — and a query that can be derived should never be generated. [1.23b]
+        queries = _derived_queries(plan_item.source_classes)
+        if queries:
+            grounding = (grounding + "\n\n" + queries) if grounding else queries
         gen = generate_apex(target, bb.comprehensions, scoped_sigs,
                             offline=bb.offline, schema=bb.schema, mappings=mappings,
                             grounding=grounding)

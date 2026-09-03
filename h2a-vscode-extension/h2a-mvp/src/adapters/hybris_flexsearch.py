@@ -155,3 +155,43 @@ def _to_soql(query: str, types: list[str]) -> str | None:
         parts.append(f"ORDER BY {o}")
 
     return " ".join(" ".join(parts).split())
+
+
+def grounding_for(sources: list) -> str:
+    """The derived SOQL for a target's own queries, as a block for the Builder. [1.23b]
+
+    Until this existed the analyser's work went nowhere: `analyse()` produced correct SOQL
+    for every simple query and only the *blocking* cases reached a report. The Builder was
+    left to translate FlexibleSearch from the raw source — which is the one part of this
+    migration that can be derived rather than generated, and generating something
+    derivable is how a query ends up plausible instead of right.
+
+    Blocked queries are included too, and deliberately: telling the model what cannot be
+    expressed is worth more than silence, because silence invites it to try.
+    """
+    direct, blocked = [], []
+    for src in sources or []:
+        for line, query in find_queries(src or ""):
+            got = analyse(query)
+            if got["verdict"] == "direct" and got["soql"]:
+                direct.append((query, got["soql"]))
+            elif got["reasons"]:
+                blocked.append((query, got["reasons"]))
+
+    if not direct and not blocked:
+        return ""
+
+    out = ["## FlexibleSearch already translated for you", "",
+           "These were derived mechanically from the source, not guessed. Use them as "
+           "written; do not re-translate the original.", ""]
+    for query, soql in direct:
+        out += [f"- `{query.strip()}`", f"  → `{soql}`"]
+
+    if blocked:
+        out += ["", "These have **no SOQL equivalent**. Do not invent one — call the "
+                    "helper out and leave the method throwing, with the reason:", ""]
+        for query, reasons in blocked:
+            out.append(f"- `{query.strip()}`")
+            for r in reasons:
+                out.append(f"  · {r['code']}: {r['detail']}")
+    return "\n".join(out) + "\n"
