@@ -151,6 +151,7 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
             "fields": { "OrderId__c": "Text", "Status__c": "Picklist", ... },
             "picklists": { "Status__c": ["NEW", "SHIPPED"] },   # enum values
             "open_picklists": { "Tier__c" },                    # dynamic enums — set may grow
+            "localized": { "Name__c" },                        # only the default locale survives
             "required": {"Code__c"},                            # optional="false"
             "unique":   {"Code__c"},                            # unique="true"
             "defaults": {"Status__c": "NEW"},
@@ -174,6 +175,7 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
         fields: dict[str, str] = {}
         picklists: dict[str, list] = {}
         open_picklists: set = set()
+        localized_fields: set = set()
         required: set = set()
         unique: set = set()
         defaults: dict[str, str] = {}
@@ -185,6 +187,17 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
                 continue
             api = api_of[qualifier]
             raw_type = (f.get("type") or "").strip()
+
+            # `localized:java.lang.String` is one attribute holding a value per locale.
+            # Salesforce has no such field, so only the default locale survives — and the
+            # prefix also has to come off before the type is resolved, or every localized
+            # attribute lands as Text: a localized Integer became a Text field, and any
+            # arithmetic the migration generated against it would not compile. [1.19]
+            localized = raw_type.startswith("localized:")
+            if localized:
+                raw_type = raw_type[len("localized:"):].strip()
+                localized_fields.add(api)
+
             # An attribute typed as an enum becomes a Picklist with those values.
             base_type = raw_type.split(".")[-1] if raw_type else ""
             if raw_type in enum_values or base_type in enum_values:
@@ -203,6 +216,7 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
                 defaults[api] = f["default"]
         schema[obj] = {"code": code, "fields": fields, "picklists": picklists,
                        "open_picklists": open_picklists, "name_notes": name_notes,
+                       "localized": localized_fields,
                        # Kept so a report can say what a source attribute *became*
                        # rather than re-deriving it and disagreeing. [1.31]
                        "field_api": dict(api_of),

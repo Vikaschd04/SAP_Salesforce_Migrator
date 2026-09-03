@@ -713,6 +713,7 @@ def _build_mapping_md(generated: list[dict], item_types: list[dict], mappings: d
         api_of = meta.get("field_api", {})
         sf_types = meta.get("fields", {})
         adjusted = {n["qualifier"]: n["reason"] for n in meta.get("name_notes", [])}
+        localized = meta.get("localized") or set()
 
         lines.append(f"### {item['name']} -> {obj}")
         lines.append("")
@@ -726,6 +727,9 @@ def _build_mapping_md(generated: list[dict], item_types: list[dict], mappings: d
                 note = {"length": "renamed — over the 40-character limit",
                         "collision": "renamed — another attribute claimed this name"}.get(
                             adjusted.get(q), "")
+                if api in localized:
+                    note = ("**localized in Hybris — only the default locale is carried**"
+                            + (f"; {note}" if note else ""))
             else:
                 # No schema for this object: say so rather than invent a column.
                 api, apex_type, note = "—", "—", "not in the emitted schema"

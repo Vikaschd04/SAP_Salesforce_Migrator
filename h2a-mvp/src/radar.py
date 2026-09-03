@@ -405,6 +405,34 @@ def _project_findings(root: Path, files: list[Path]) -> list[dict]:
 
         if suffix == ".xml":
             text = _strip_xml(read_text_or_empty(p))
+
+            # A localized attribute holds one value per locale in a single attribute.
+            # Salesforce has no equivalent field, so a straight conversion keeps the
+            # default locale and drops the rest — for an EU retailer, most of their
+            # content, with nothing in the output showing it went missing. [1.19]
+            if p.name.endswith("items.xml"):
+                raw = read_text_or_empty(p)
+                attrs = (re.findall(r'qualifier="(\w+)"[^>]*type="localized:', raw)
+                         + re.findall(r'type="localized:[^"]*"[^>]*qualifier="(\w+)"', raw))
+                if attrs:
+                    names = sorted(set(attrs))
+                    out.append({
+                        "rule": "LOCALIZED_ATTRIBUTE", "severity": "high", "file": rel,
+                        "line": 1, "source_class": p.stem,
+                        "hazard": f"{len(names)} localized attribute(s) — "
+                                  f"{', '.join(names[:6])}"
+                                  f"{' and others' if len(names) > 6 else ''}. Each holds a "
+                                  "separate value per locale. A Salesforce custom field "
+                                  "holds one value, so the migration carries the default "
+                                  "locale and every other translation is dropped without "
+                                  "appearing anywhere as a loss.",
+                        "fix": "Decide per attribute, because the two right answers "
+                               "differ: UI labels belong in Translation Workbench, while "
+                               "translated *content* needs a child object keyed by "
+                               "locale. Neither is automatic, and doing nothing ships an "
+                               "English-only org.",
+                        "snippet": "",
+                    })
             for m in re.finditer(r"InterceptorMapping|ValidateInterceptor|PrepareInterceptor"
                                  r"|LoadInterceptor|InitDefaultsInterceptor|RemoveInterceptor", text):
                 out.append({
@@ -531,6 +559,7 @@ _RULE_TITLES = {
     "INTERCEPTOR": "Interceptor chain",
     "LIFECYCLE_HOOK": "Platform-invoked hook",
     "SESSION_SCOPED_BEAN": "Session-scoped bean",
+    "LOCALIZED_ATTRIBUTE": "Localized attribute",
     "IMPEX_VOLUME": "Large ImpEx load",
     "CRONJOB_CONCURRENCY": "Cronjob concurrency",
 }
