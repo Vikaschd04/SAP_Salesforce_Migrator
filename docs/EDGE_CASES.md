@@ -110,7 +110,7 @@ Registered now because they shape the adapter design, not after the adapter is w
 | G1 | **EAV → typed items** | Magento attributes are *runtime rows*; Hybris `items.xml` is *build time*. Attribute sets must be mined from data, not code, and become item types. The single largest structural difference between the platforms. |
 | G2 | **`around` plugins that skip `$proceed`** | Magento's `around` interceptor can decline to call the original. Hybris interceptors cannot — this needs a decorator bean, and a converter that maps `around` → interceptor produces code that always calls through. |
 | G3 | **Events mutate their payload** | Magento observers are synchronous and can modify the event object. Hybris `EventService` is asynchronous by default — a literal port loses both the ordering and the mutation. |
-| G4 | **PHP dynamic typing** | `$product->getData('price')` is `mixed`. Types must be inferred per attribute from the EAV schema, not from the call site. |
+| G4 | **PHP dynamic typing** | `$product->getData('price')` is `mixed`. Types must be inferred per attribute from the EAV schema, not from the call site. **Covered by 2.12** — resolved only from a declaration (signature, docblock, or schema); anything else forces must-review rather than being guessed. |
 | G5 | **`di.xml` preferences** | Global type substitution, closer to bytecode weaving than to a Spring bean override. |
 | G6 | **Layout XML** | Blocks are moved and removed by reference at runtime; there is no static equivalent to resolve against. |
 | G7 | **Store-view scoping** | Magento's website/store/store-view config cascade does not line up with BaseSite/BaseStore/Catalog. Some values have no Hybris peer at all. |

@@ -62,9 +62,23 @@ def build_triage(bb) -> dict:
         if f.get("source_class"):
             hazards_by_class.setdefault(f["source_class"], []).append(f)
 
+    # Types no declaration could resolve. On a dynamically typed source this is the
+    # difference between a migration and a guess: PHP allows an untyped parameter, Java
+    # does not, so every one of these has to become *some* Java type before the target
+    # compiles. Filling it from usage would produce a field that compiles and is wrong,
+    # and that failure is silent — so it is a human's decision, forced. [2.12]
+    unresolved_types = getattr(bb, "unresolved_types", None) or {}
+
     items = []
     for a in bb.artifacts:
         score, reasons = 0, []
+        untyped = []
+        for c in getattr(a, "source_classes", None) or []:
+            untyped += unresolved_types.get(c.get("class_name", ""), [])
+        if untyped:
+            reasons.append(
+                f"{len(untyped)} type(s) no declaration resolves — "
+                + ", ".join(untyped[:3]) + ("…" if len(untyped) > 3 else ""))
 
         if getattr(a, "status", "") == "error":
             score += _W_FAILED
@@ -133,7 +147,8 @@ def build_triage(bb) -> dict:
         # holding the moment any other weight changed.
         forced = (getattr(a, "status", "") == "error"      # it does not build
                   or crit > 0                              # breaches a limit at volume
-                  or errs > 0)                             # the Critic still objects
+                  or errs > 0                              # the Critic still objects
+                  or bool(untyped))                        # a type would have to be guessed
         mechanical = (a.layer in _MECHANICAL and not reasons)
         band = ("must" if (forced or score >= MUST_REVIEW)
                 else "review" if score >= ELEVATED
