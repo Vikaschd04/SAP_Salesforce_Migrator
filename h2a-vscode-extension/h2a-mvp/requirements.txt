@@ -5,3 +5,9 @@ pyyaml>=6.0
 pydantic>=2.0
 rich>=13.7
 pytest>=7.0
+
+# PHP parsing for the Adobe Commerce source adapter [2.3]. Optional: the reader
+# reports itself unavailable rather than failing the import, so a Hybris-only
+# install does not need it.
+tree-sitter>=0.25.0
+tree-sitter-php>=0.24.0

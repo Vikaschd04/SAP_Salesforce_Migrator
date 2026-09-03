@@ -50,6 +50,11 @@ class Method:
     visibility: str = ""
     line_start: int = 0
     line_end: int = 0
+    #: The docblock or javadoc immediately above the method, verbatim. Kept because on
+    #: both platforms it is frequently the only written statement of what the method is
+    #: *for* — and on a dynamically typed source it may be the only statement of type.
+    doc: str = ""
+    is_static: bool = False
 
 
 @dataclass
