@@ -177,8 +177,13 @@ because every file was well-formed and individually valid.
 | Flow pointed at `__NOT_MIGRATED__` | A placeholder that read well and named nothing. A Flow whose action Salesforce cannot find is rejected **in full** — the dangling placeholder cost the whole flow, topology and wired steps included. |
 | `recordIds` input vs `recordId` variable, and `.outcome` without `storeOutputAutomatically` | Both spelled correctly; it is the *combination* the platform refuses. |
 
-The one remaining failure is `Order__c` colliding with pre-existing `Test_ApexSharing`
-components in that particular org — not our output.
+Re-verified against a clean Developer Edition org: **106 of 106 validate, zero failures.**
+The single failure in the first run was `Order__c` colliding with pre-existing
+`Test_ApexSharing` components in that particular org, not our output.
+
+**Deploy-verify against the CLI's default org** (`sf project deploy start --dry-run
+--source-dir force-app`, no `--target-org`). Two of the authorised orgs are *client*
+sandboxes whose usernames do not say so — check the instance URL, never the username.
 **Efficiency gate:** PHP slimming ≥30%; comprehension on the cheap tier.
 **Estimate:** 8–10 weeks.
 
