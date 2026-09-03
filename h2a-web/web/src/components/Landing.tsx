@@ -34,20 +34,14 @@ const SAMPLES = [
   {
     path: 'Testing/acme-commerce-hybris',
     from: 'hybris', to: 'salesforce',
-    title: 'Acme Commerce · SAP Hybris',
-    blurb: 'A Java/Spring storefront back end with a Spartacus front end — services, DAOs '
-         + 'with FlexibleSearch, a ValidateInterceptor, cronjobs, an order-fulfilment '
-         + 'process and a JUnit suite.',
-    stats: '20 Java files · 2 Angular components · 21 recorded behaviours',
+    title: 'Acme Commerce',
+    detail: '20 Java files, 2 Angular components, a JUnit suite',
   },
   {
     path: 'Testing/acme-commerce-magento',
     from: 'adobe-commerce', to: 'hybris',
-    title: 'Acme Loyalty · Adobe Commerce',
-    blurb: 'A Magento 2 module with the constructs that make this pair hard — an `around` '
-         + 'plugin that skips $proceed, an observer that mutates its event, EAV attributes '
-         + 'added by a data patch, and cluster cron.',
-    stats: '11 PHP files · 13 hazards · 7 recorded behaviours',
+    title: 'Acme Loyalty',
+    detail: '11 PHP files, an around plugin, EAV attributes, cluster cron',
   },
 ];
 
@@ -159,36 +153,13 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
       </div>
 
       <div className="start-card">
-        {/* ── source ───────────────────────────────────────────────────────── */}
+        {/* ── source ───────────────────────────────────────────────────────
+            One question — where is your code — asked once. It used to be asked through
+            a heading, a segmented control, a tall dropzone, an aside paragraph and
+            four-block cards: five pieces of chrome for one answer. The primary way in
+            is the only thing at full weight now, and the alternatives are a line of
+            text beneath it. */}
         <div className="sec">
-          <div className="sec-h">
-            <h3>Your codebase</h3>
-            <div className="seg seg-sm">
-              <button className={mode === 'upload' ? 'on' : ''} onClick={() => setMode('upload')}>Upload</button>
-              <button className={mode === 'sample' ? 'on' : ''} onClick={() => setMode('sample')}>Sample project</button>
-              {!hosted && (
-                <button className={mode === 'path' ? 'on' : ''} onClick={() => setMode('path')}>Server path</button>
-              )}
-            </div>
-          </div>
-
-          {mode === 'sample' && (
-            <div className="sample-grid">
-              {SAMPLES.map((s) => (
-                <button key={s.path} type="button" onClick={() => setSample(s.path)}
-                  className={`sample-card ${sample === s.path ? 'on' : ''}`}
-                  aria-pressed={sample === s.path}>
-                  <div className="sample-route">
-                    <span>{name(s.from)}</span><i className="pipe-arrow">→</i><b>{name(s.to)}</b>
-                  </div>
-                  <div className="sample-title">{s.title}</div>
-                  <p className="sample-blurb">{s.blurb}</p>
-                  <div className="sample-stats">{s.stats}</div>
-                </button>
-              ))}
-            </div>
-          )}
-
           {mode === 'upload' && (
             <div className={`dropzone ${drag ? 'drag' : ''}`}
               onClick={() => fileRef.current?.click()}
@@ -197,33 +168,59 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
               <input ref={fileRef} type="file" accept=".zip" hidden
                 onChange={(e) => { setFile(e.target.files?.[0] || null); setIdent(null); }} />
               <div className="dz-ico">⤒</div>
-              <div className="dz-t">{file ? 'Ready to migrate' : 'Drop your codebase .zip here'}</div>
-              <div className="dz-s">
-                {file ? 'Click to choose a different file'
-                      : 'or click to browse — SAP Hybris, Spartacus, or Adobe Commerce'}
-              </div>
-              {file && <div className="dz-file">📦 {file.name} · {(file.size / 1024).toFixed(0)} KB</div>}
+              {file
+                ? <>
+                    <div className="dz-t">{file.name}</div>
+                    <div className="dz-s">{(file.size / 1024).toFixed(0)} KB · click to replace</div>
+                  </>
+                : <>
+                    <div className="dz-t">Drop your codebase .zip</div>
+                    <div className="dz-s">or click to browse</div>
+                  </>}
             </div>
           )}
 
-          {mode === 'upload' && !file && (
-            <p className="sec-aside">
-              No codebase to hand?{' '}
-              <button type="button" className="link-btn inline" onClick={() => setMode('sample')}>
-                Run a sample project
-              </button>{' '}
-              — one for each migration, with the awkward parts left in.
-            </p>
+          {mode === 'sample' && (
+            <div className="sample-list">
+              {SAMPLES.map((s) => (
+                <button key={s.path} type="button" onClick={() => setSample(s.path)}
+                  className={`sample-row ${sample === s.path ? 'on' : ''}`}
+                  aria-pressed={sample === s.path}>
+                  <span className="sample-tick" aria-hidden />
+                  <span className="sample-body">
+                    <span className="sample-route">
+                      <b>{name(s.from)}</b><i className="pipe-arrow">→</i><b>{name(s.to)}</b>
+                    </span>
+                    <span className="sample-detail">{s.title} · {s.detail}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
           )}
 
           {mode === 'path' && (
-            <div className="field full">
-              <label>Path on the server</label>
-              <input className="inp" type="text" value={path} spellCheck={false}
-                placeholder="/srv/projects/my-storefront"
-                onChange={(e) => setPath(e.target.value)} />
-            </div>
+            <input className="inp inp-lg" type="text" value={path} spellCheck={false} autoFocus
+              placeholder="/srv/projects/my-storefront"
+              onChange={(e) => setPath(e.target.value)} />
           )}
+
+          <div className="src-alt">
+            {mode !== 'upload' && (
+              <button type="button" className="link-btn inline" onClick={() => setMode('upload')}>
+                Upload a .zip
+              </button>
+            )}
+            {mode !== 'sample' && (
+              <button type="button" className="link-btn inline" onClick={() => setMode('sample')}>
+                Try a sample project
+              </button>
+            )}
+            {!hosted && mode !== 'path' && (
+              <button type="button" className="link-btn inline" onClick={() => setMode('path')}>
+                Use a server path
+              </button>
+            )}
+          </div>
         </div>
 
         {/* ── what it is, and what it becomes ──────────────────────────────── */}

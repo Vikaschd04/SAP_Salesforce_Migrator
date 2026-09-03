@@ -162,12 +162,12 @@ input, select, textarea { font-family: inherit; }
    was pressed rather than in a section of its own below a rule. */
 .start-card > .start-actions { padding-bottom: 2px; }
 .start-card > .start-error { padding: 0 0 2px; border-top: 0; font-size: 12.5px; color: var(--danger); }
-.dropzone { border: 1.5px dashed var(--border-strong); border-radius: var(--r-lg); padding: 30px 20px;
+.dropzone { border: 1.5px dashed var(--border-strong); border-radius: var(--r-lg); padding: 22px 20px;
   text-align: center; cursor: pointer; transition: .2s; background: linear-gradient(var(--panel-2), var(--panel)); }
 .dropzone:hover { border-color: var(--accent); background: var(--accent-bg); }
 .dropzone.drag { border-color: var(--accent); background: var(--accent-bg); box-shadow: 0 0 0 4px var(--glow); }
-.dropzone .dz-ico { width: 48px; height: 48px; margin: 0 auto 10px; border-radius: 14px; display: grid; place-items: center;
-  background: var(--grad-soft); color: var(--accent); font-size: 22px; }
+.dropzone .dz-ico { width: 38px; height: 38px; margin: 0 auto 9px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--grad-soft); color: var(--accent); font-size: 18px; }
 .dropzone .dz-t { font-weight: 650; font-size: 14.5px; }
 .dropzone .dz-s { font-size: 12.5px; color: var(--text-dim); margin-top: 4px; }
 .dropzone .dz-file { color: var(--accent); font-family: var(--mono); font-size: 12.5px; margin-top: 8px; }
@@ -1127,16 +1127,115 @@ textarea:focus { outline: none; border-color: var(--accent); }
 
 .seg.seg-sm button { padding: 5px 11px; font-size: 11.5px; }
 
-/* sample projects — one per migration */
-.sample-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-.sample-card {
+/* sample projects — one per migration.
+   These were cards with a route, a title, a three-line blurb and a stats row: four
+   stacked blocks each, two abreast. For a choice between two things that is a wall of
+   text where a list would do. */
+.sample-list { display: flex; flex-direction: column; gap: 8px; }
+.sample-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
   text-align: left; cursor: pointer; font: inherit; color: inherit;
-  border: 1px solid var(--border); border-radius: 12px;
-  padding: 14px 15px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 11px;
+  padding: 12px 14px; background: var(--panel);
   transition: border-color .15s, background .15s;
 }
-.sample-card:hover { background: var(--panel-hover); border-color: var(--border-strong); }
-.sample-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sample-row:hover { background: var(--panel-hover); border-color: var(--border-strong); }
+.sample-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sample-row.on { border-color: rgba(52, 226, 192, .45); background: var(--accent-bg); }
+
+.sample-tick {
+  width: 16px; height: 16px; border-radius: 999px; flex: none;
+  border: 1.5px solid var(--border-strong); background: var(--bg);
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+.sample-row.on .sample-tick {
+  background: var(--grad); border-color: transparent;
+  box-shadow: inset 0 0 0 3.5px var(--panel);
+}
+
+.sample-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sample-route { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text); }
+.sample-route b { font-weight: 600; }
+.sample-detail { font-size: 11.5px; color: var(--text-dim); }
+
+/* the ways in that are not the one on screen */
+.src-alt { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; }
+
+.inp-lg { padding: 13px 14px; font-size: 13.5px; }
+
+/* what the source turned out to be */
+.ident {
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: 13px 15px; background: var(--panel);
+}
+.ident p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--text-dim); }
+.ident-head { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text); }
+.ident-dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+.ident-dot.runnable { background: var(--good); box-shadow: 0 0 0 4px var(--good-bg); }
+.ident-dot.recognised { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-bg); }
+.ident-dot.unrecognised { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-bg); }
+.ident-dot.pending { background: var(--text-faint); animation: identpulse 1.4s ease-in-out infinite; }
+@keyframes identpulse { 0%, 100% { opacity: .35 } 50% { opacity: 1 } }
+.ident-runnable { border-color: rgba(63, 213, 138, 0.3); }
+.ident-recognised { border-color: rgba(240, 180, 41, 0.3); }
+.ident-unrecognised { border-color: rgba(255, 111, 111, 0.3); }
+
+/* the destinations on offer */
+.pipe-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+
+.pipe-card {
+  position: relative; text-align: left; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 15px; background: var(--panel); color: inherit;
+  font: inherit; transition: border-color .15s, background .15s, transform .15s;
+}
+.pipe-card:hover:not(.off) { background: var(--panel-hover); border-color: var(--border-strong); }
+.pipe-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pipe-card.on {
+  border-color: var(--accent);
+  background: linear-gradient(var(--panel), var(--panel)) padding-box, var(--grad) border-box;
+  box-shadow: 0 0 0 1px var(--accent-bg), 0 8px 26px rgba(0, 0, 0, .28);
+}
+.pipe-card.off { cursor: not-allowed; opacity: .62; }
+
+.pipe-route { display: flex; align-items: center; gap: 9px; font-size: 13.5px; }
+.pipe-route b { color: var(--text); }
+.pipe-route span { color: var(--text-dim); }
+.pipe-arrow { font-style: normal; color: var(--accent); }
+
+.pipe-claim {
+  display: flex; align-items: center; gap: 7px;
+  margin-top: 9px; font-size: 11.5px; color: var(--text-dim);
+}
+.pipe-claim .fdot.good { background: var(--good); }
+.pipe-claim .fdot.warn { background: var(--warn); }
+
+.pipe-soon {
+  margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border);
+  font-size: 11.5px; line-height: 1.5; color: var(--text-faint);
+}
+
+.pipe-tag {
+  position: absolute; top: 12px; right: 13px;
+  font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 999px;
+  color: var(--accent); background: var(--accent-bg);
+}
+
+/* ── landing sections ────────────────────────────────────────────────────────
+   The numbered steps that were here are gone: their number changed depending on
+   whether a destination panel happened to be showing, so the same heading was "2"
+   or "3" from one moment to the next. */
+
+.sec { display: flex; flex-direction: column; gap: 12px; }
+.sec-h { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.sec-h h3 { margin: 0; font-size: 13.5px; font-weight: 650; letter-spacing: .01em; color: var(--text); }
+.sec-h-plain { margin-bottom: -2px; }
+
+.seg.seg-sm button { padding: 5px 11px; font-size: 11.5px; }
+
+/* sample projects — one per migration */
+
 .sample-card.on {
   border-color: transparent;
   background: linear-gradient(var(--panel), var(--panel)) padding-box, var(--grad) border-box;
@@ -1144,12 +1243,6 @@ textarea:focus { outline: none; border-color: var(--accent); }
 }
 .sample-route { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-dim); }
 .sample-route b { color: var(--text); }
-.sample-title { margin-top: 7px; font-size: 13.5px; font-weight: 620; color: var(--text); }
-.sample-blurb { margin: 6px 0 0; font-size: 12px; line-height: 1.55; color: var(--text-dim); }
-.sample-stats {
-  margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border);
-  font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums;
-}
 
 /* what the source turned out to be */
 .ident { border: 1px solid var(--border); border-radius: 12px; padding: 13px 15px; background: var(--panel); }
@@ -1239,5 +1332,5 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .ident-pending { border-style: dashed; }
 
 /* an aside inside a section — the way out for someone with nothing to upload */
-.sec-aside { margin: 0; font-size: 12px; line-height: 1.6; color: var(--text-faint); }
 .link-btn.inline { display: inline; padding: 0; font-size: inherit; vertical-align: baseline; }
+
