@@ -71,7 +71,23 @@ def build_signoff(bb, *, accounting: dict | None = None, cost: dict | None = Non
     v = verified or {}
     org_verified = bool(v.get("verified"))
 
-    caveats = _caveats(counts, rules, chars, prov, radar, approvals, org_verified)
+    # How strongly the output was actually checked, in the running target's own terms.
+    # "Not verified" used to cover two different situations — nobody asked, and it is not
+    # available here — and a contract that gives those one word is misleading in the
+    # direction that flatters us. [3.9]
+    from src import assurance
+    from src import pipeline as _pl
+    try:
+        _pl.ensure_registered()
+        _t = _pl.current_target() or _pl.default_pipeline().target
+        # The label is descriptive — "Salesforce (Apex · LWC · metadata)".
+        # A claim wants the platform's name, not its contents.
+        _platform, _language = _t.label.split(" (")[0], _t.code_language
+    except Exception:
+        _platform, _language = "the target platform", "code"
+    assurance_claim = assurance.describe(v, platform=_platform, language=_language)
+
+    caveats = _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim)
 
     contract = {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
@@ -90,6 +106,7 @@ def build_signoff(bb, *, accounting: dict | None = None, cost: dict | None = Non
         "provenance": prov,
         "hazards": radar,
         "org_verified": org_verified,
+        "assurance": assurance_claim,
         "verification": v,
         "cost": cost or {},
         "requests": (accounting or {}).get("requests", 0),
@@ -105,7 +122,7 @@ def build_signoff(bb, *, accounting: dict | None = None, cost: dict | None = Non
     return contract
 
 
-def _caveats(counts, rules, chars, prov, radar, approvals, org_verified) -> list[str]:
+def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim) -> list[str]:
     """Everything this document does not certify. Assembled from the same data as the
     claims, so it cannot drift out of step with them."""
     out = []
@@ -165,9 +182,11 @@ def _caveats(counts, rules, chars, prov, radar, approvals, org_verified) -> list
         out.append(f"{crit} critical/high migration hazard(s) were found in the source. "
                    "Conversion does not resolve them.")
 
-    if not org_verified:
-        out.append("**This code was never deployed to a Salesforce org.** It has not been "
-                   "compiled by Salesforce, so it is not known to be deployable.")
+    from src import assurance
+
+    if assurance_claim["rung"] != assurance.REPLAYED:
+        out.append(f"**This output {assurance_claim['claim']}.** "
+                   + assurance_claim["limit"])
     return out
 
 
@@ -176,8 +195,7 @@ def headline(c: dict) -> str:
         return "Unreviewed — no human approved any stage of this run."
     who = ", ".join(c["reviewers"]) if c["reviewers"] else "an unnamed reviewer"
     gates = len(c["gates_reviewed_by_a_human"])
-    tail = "deploy-verified against a Salesforce org" if c["org_verified"] \
-        else "not deploy-verified"
+    tail = (c.get("assurance") or {}).get("claim", "not verified")
     return f"{gates} of 3 gate(s) approved by {who} · {tail}"
 
 
@@ -251,9 +269,8 @@ def write_signoff_md(output_dir: str, c: dict) -> str:
         out.append(f"| Methods traced to origin | {linked}/{pr['methods']} "
                    f"({pr.get('coverage', 0)}%) | symbols located in both texts — "
                    f"{basis} |")
-    out.append(f"| Deploy-verified | {'yes' if c['org_verified'] else '**no**'} | "
-               + ("validate-only deploy accepted by a Salesforce org |"
-                  if c["org_verified"] else "not attempted — no org was connected |"))
+    a = c.get("assurance") or {}
+    out.append(f"| Assurance | `{a.get('rung', 'none')}` | {a.get('limit', '')} |")
     cost = c.get("cost") or {}
     if cost.get("total_usd") is not None:
         from src import pricing

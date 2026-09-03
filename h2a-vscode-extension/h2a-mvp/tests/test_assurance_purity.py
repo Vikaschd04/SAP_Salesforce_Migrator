@@ -51,7 +51,10 @@ KNOWN_DEBT = {
     # item 4.4, which is where this debt actually belongs.
     "provenance":   ({"apex"},               "4.4 — pipeline-aware report wording"),
     "alignment":    ({"apex"},               "4.4 — pipeline-aware report wording"),
-    "signoff":      ({"apex", "salesforce"}, "4.4 — pipeline-aware report wording"),
+    # 3.9 paid off half of this: the verification claim now comes from the running
+    # target's own label and language, so signoff no longer names Salesforce. What is
+    # left is `apex` in prose elsewhere in the document.
+    "signoff":      ({"apex"},               "4.4 — pipeline-aware report wording"),
 }
 
 

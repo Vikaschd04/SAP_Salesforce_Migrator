@@ -215,7 +215,7 @@ construction rather than by later correction.
 | 3.6 | Spring cron trigger + `AbstractJobPerformable` emission | Same timing as the source |
 | 3.7 | Business-process XML emission | The inverse of the Flow generator already built |
 | 3.8 | Hybris Critic knowledge pack | Reviews against Hybris idiom, not Salesforce |
-| 3.9 | `has_oracle` reflects reality per rung | Sign-off never claims more than the rung that ran |
+| ~~3.9~~ | ✅ **The assurance ladder** — `src/assurance.py`, four rungs | `none / static / compiled / replayed`. Sign-off states the rung *and what it does not establish*, in the running target's own name. An unknown rung defaults **down**, so a typo cannot promote a claim, and a legacy boolean result means `compiled` and never `replayed`. Also paid off half of 4.4: `signoff` no longer says "Salesforce". |
 
 ### The oracle — three rungs, in order
 

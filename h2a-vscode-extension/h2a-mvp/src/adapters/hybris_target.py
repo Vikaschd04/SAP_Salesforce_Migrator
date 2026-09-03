@@ -54,9 +54,14 @@ class HybrisTarget:
 
     def verify(self, request, config: dict, log=print) -> dict:
         """No oracle yet. Reports that plainly rather than claiming a clean verification."""
+        from src import assurance
+
         return {
             "ran": False,
             "success": False,
+            # Not "we did not verify" — "verification is not available here". The rung
+            # ladder exists so those two stop sharing a word. [3.9]
+            "rung": assurance.NONE,
             "message": ("SAP Commerce has no hosted compile oracle. Generated Java is "
                         "statically checked, not verified, until a licensed platform is "
                         "available (items 3.10–3.12)."),

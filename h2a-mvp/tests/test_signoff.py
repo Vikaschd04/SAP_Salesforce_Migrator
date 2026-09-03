@@ -69,14 +69,25 @@ def test_partial_supervision_names_the_gates_nobody_reviewed():
 
 # ── unproven things stay listed as unproven ───────────────────────────────────
 
-def test_never_deployed_is_always_called_out():
+def test_an_unchecked_output_says_so_in_the_running_target_s_own_terms():
+    """It used to say "never deployed to a Salesforce org" whatever the target was.
+
+    Worse, "not verified" covered two different situations — nobody asked for it, and it
+    is not available on this platform — and giving those one word misleads in the
+    direction that flatters us. [3.9]
+    """
     c = build_signoff(_bb())
-    assert c["org_verified"] is False
-    assert any("never deployed" in x for x in c["caveats"])
+    assert c["assurance"]["rung"] == "none"
+    assert any("was not checked by" in x for x in c["caveats"])
+    assert any("not known to compile" in x for x in c["caveats"])
 
 
-def test_deploy_verification_is_recorded_when_the_org_accepted_it():
+def test_a_compile_is_recorded_as_a_compile_and_not_as_more():
+    """Accepting a deploy establishes it builds. It says nothing about behaviour, and the
+    contract must not let the reader infer otherwise."""
     c = build_signoff(_bb(), verified={"verified": True, "message": "Compiled cleanly."})
+    assert c["assurance"]["rung"] == "compiled"
+    assert "says nothing about whether it behaves" in c["assurance"]["limit"]
     assert c["org_verified"] is True
     assert not any("never deployed" in x for x in c["caveats"])
 

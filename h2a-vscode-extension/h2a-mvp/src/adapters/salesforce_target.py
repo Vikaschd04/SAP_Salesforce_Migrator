@@ -65,7 +65,7 @@ class SalesforceTarget:
         if not sf_available():
             return {"ran": False, "success": False,
                     "message": "Salesforce CLI not on PATH — nothing was deploy-verified"}
-        return deploy_and_heal(
+        result = deploy_and_heal(
             request.output_dir, request.artifacts,
             schema=request.schema, signatures=request.signatures,
             offline=request.offline,
@@ -78,6 +78,14 @@ class SalesforceTarget:
             coverage_threshold=vcfg.get("coverage_threshold", 75.0),
             log=log,
         )
+        # A dry-run deploy is a compile. Running the generated tests is a rung higher,
+        # and only that rung may be described as behaviour having been checked. [3.9]
+        from src import assurance
+        ran_tests = bool(vcfg.get("run_tests", False)) and result.get("success")
+        result["rung"] = (assurance.REPLAYED if ran_tests
+                          else assurance.COMPILED if result.get("success")
+                          else assurance.NONE)
+        return result
 
     # ── characterization: recorded facts → replayable Apex ────────────────────
     # The neutral layer decides which behaviours are worth replaying; these four say
