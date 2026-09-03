@@ -200,6 +200,11 @@ def _java_findings(path: Path, rel: str) -> list[dict]:
     out.extend(_flexsearch_findings(text, rel, cls, lines))
     out.extend(_lifecycle_findings(text, rel, cls, lines))
 
+    # Parsed rather than matched: whether a getter is guarded is a question about the
+    # method around it, and every regex answer to that is wrong in one direction. [1.30]
+    from src.adapters.java_nullability import findings as _null_findings
+    out.extend(_null_findings(raw, rel, cls, lines))
+
     for rule, sev, pat, needs_loop, hazard, fix in _LINE_RULES:
         for m in pat.finditer(text):
             line = text[:m.start()].count("\n") + 1
@@ -558,6 +563,7 @@ _RULE_TITLES = {
     "STATIC_MUTABLE_STATE": "Mutable static state",
     "INTERCEPTOR": "Interceptor chain",
     "LIFECYCLE_HOOK": "Platform-invoked hook",
+    "UNGUARDED_NULL": "Unguarded getter result",
     "SESSION_SCOPED_BEAN": "Session-scoped bean",
     "LOCALIZED_ATTRIBUTE": "Localized attribute",
     "IMPEX_VOLUME": "Large ImpEx load",
