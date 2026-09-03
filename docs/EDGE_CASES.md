@@ -52,10 +52,10 @@ producing a green tick that means nothing.
 
 | # | Edge case | Why a plausible conversion is wrong | Status |
 |---|---|---|---|
-| C1 | FlexibleSearch JOINs | SOQL has no JOIN. A three-table FS query must become relationship traversal (max 5 levels up, 1 down) or two queries plus an in-memory join. A model asked to "convert this query" will produce SOQL-shaped text that does not compile — or worse, compiles against the wrong relationship. | **gap** — 1.23 |
-| C2 | Leading-wildcard `LIKE '%x%'` | Not indexed in SOQL and disallowed in some contexts; needs SOSL, which has different result semantics. | **gap** — 1.23 |
-| C3 | `IN` lists over 2,000 ids | FS handles it; SOQL fails. | **gap** — 1.23 |
-| C4 | Arbitrary subqueries | FS allows them anywhere; SOQL semi-joins are one level deep and cannot be nested. | **gap** — 1.23 |
+| C1 | FlexibleSearch JOINs | SOQL has no JOIN. A three-table FS query must become relationship traversal (max 5 levels up, 1 down) or two queries plus an in-memory join. A model asked to "convert this query" will produce SOQL-shaped text that does not compile — or worse, compiles against the wrong relationship. | **covered** — 1.23. Blocked with the reason named; no SOQL is attempted, because an attempt looks like an answer |
+| C2 | Leading-wildcard `LIKE '%x%'` | Not indexed in SOQL and disallowed in some contexts; needs SOSL, which has different result semantics. | **covered** — 1.23. Leading wildcard blocked; trailing is fine and passes |
+| C3 | `IN` lists over 2,000 ids | FS handles it; SOQL fails. | **partial** — 1.23 names the 2,000-id ceiling in the subquery fix; it cannot be detected statically from the query alone |
+| C4 | Arbitrary subqueries | FS allows them anywhere; SOQL semi-joins are one level deep and cannot be nested. | **covered** — 1.23. All blocking reasons are reported at once, so fixing one does not reveal the next |
 
 ## D. Frontend — Spartacus/Angular → LWC
 

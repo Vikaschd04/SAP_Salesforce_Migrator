@@ -197,6 +197,7 @@ def _java_findings(path: Path, rel: str) -> list[dict]:
         })
 
     out.extend(_money_findings(text, rel, cls, lines))
+    out.extend(_flexsearch_findings(text, rel, cls, lines))
 
     for rule, sev, pat, needs_loop, hazard, fix in _LINE_RULES:
         for m in pat.finditer(text):
@@ -332,6 +333,31 @@ def _money_findings(text: str, rel: str, cls: str, lines: list) -> list:
 
 
 
+def _flexsearch_findings(text: str, rel: str, cls: str, lines: list) -> list:
+    """Queries SOQL cannot express, named rather than attempted. [1.23]
+
+    The existing QUERY_NO_LIMIT rule looks at the *call site*; this reads the query
+    itself. A query that no SOQL construct can express is worth flagging loudly, because
+    the alternative is a model producing SOQL-shaped text that either fails to compile or
+    compiles against the wrong relationship and silently returns different rows.
+    """
+    from src.adapters.hybris_flexsearch import analyse, find_queries
+
+    out = []
+    for line, query in find_queries(text):
+        verdict = analyse(query)
+        for r in verdict["reasons"]:
+            out.append({
+                "rule": r["code"],
+                "severity": "critical" if r["code"] == "FS_JOIN" else "high",
+                "file": rel, "line": line, "source_class": cls,
+                "hazard": f"This FlexibleSearch {r['detail']}",
+                "fix": r["fix"],
+                "snippet": query.strip()[:120],
+            })
+    return out
+
+
 def _project_findings(root: Path, files: list[Path]) -> list[dict]:
     out = []
     for p in files:
@@ -457,6 +483,9 @@ _RULE_TITLES = {
     "DML_IN_LOOP": "Save inside a loop",
     "DAO_CALL_IN_LOOP": "DAO call inside a loop",
     "QUERY_NO_LIMIT": "Unbounded query",
+    "FS_JOIN": "Query joins types",
+    "FS_SUBQUERY": "Query has a subquery",
+    "FS_LEADING_WILDCARD": "Leading-wildcard match",
     "TRANSACTIONAL": "@Transactional boundary",
     "THREADING": "Threads or async execution",
     "STATIC_MUTABLE_STATE": "Mutable static state",
