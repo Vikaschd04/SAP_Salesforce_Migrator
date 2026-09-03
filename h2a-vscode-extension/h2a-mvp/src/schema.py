@@ -203,6 +203,9 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
                 defaults[api] = f["default"]
         schema[obj] = {"code": code, "fields": fields, "picklists": picklists,
                        "open_picklists": open_picklists, "name_notes": name_notes,
+                       # Kept so a report can say what a source attribute *became*
+                       # rather than re-deriving it and disagreeing. [1.31]
+                       "field_api": dict(api_of),
                        "required": required, "unique": unique, "defaults": defaults}
 
     # Relations: one->many creates a Lookup on the child pointing to the parent.

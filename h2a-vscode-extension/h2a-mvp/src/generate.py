@@ -606,8 +606,12 @@ def _write_lwc_bundle(lwc_dir, name: str, bundle: dict) -> list[str]:
 
 
 def write_outputs(output_dir: str, generated: list[dict], item_types: list[dict],
-                  mappings: dict) -> list[str]:
-    """Write generated Apex + SFDX config + MAPPING.md in standard SFDX layout."""
+                  mappings: dict, schema: dict | None = None) -> list[str]:
+    """Write generated Apex + SFDX config + MAPPING.md in standard SFDX layout.
+
+    `schema` is what the object/field metadata is emitted from; the mapping report is
+    built from the same dict so the two cannot disagree. [1.31]
+    """
     out = Path(output_dir)
     classes_dir = out / "force-app" / "main" / "default" / "classes"
     config_dir = out / "config"
@@ -679,24 +683,53 @@ def write_outputs(output_dir: str, generated: list[dict], item_types: list[dict]
                 path.write_text(body, encoding="utf-8")
                 created.append(str(path))
 
-    mapping_md = _build_mapping_md(generated, item_types, mappings)
+    mapping_md = _build_mapping_md(generated, item_types, mappings, schema)
     p = out / "MAPPING.md"
     p.write_text(mapping_md, encoding="utf-8")
     created.append(str(p))
     return created
 
 
-def _build_mapping_md(generated: list[dict], item_types: list[dict], mappings: dict) -> str:
+def _build_mapping_md(generated: list[dict], item_types: list[dict], mappings: dict,
+                      schema: dict | None = None) -> str:
+    """The mapping report, read from the schema the metadata is emitted from. [1.31]
+
+    It used to derive the Apex column independently: a Java-type lookup table with
+    `Text(255)` as the fallback, and the source attribute name with `__c` stapled on. Both
+    were wrong wherever anything interesting happened — every enum was reported as
+    `Text(255)` where a Picklist was emitted, every name was reported uncapitalised, and
+    after 1.20a a name adjusted for length or collision would have been reported under a
+    name that does not exist in the org.
+
+    A customer reads this file to understand what the migration did. Two sources of truth
+    for the same fact is how a report starts describing a migration that did not happen.
+    """
+    schema = schema or {}
     lines = ["# Hybris-to-Apex Mapping Report", "", "## SObject Mapping", ""]
     type_map = mappings.get("types", {})
     for item in item_types:
-        lines.append(f"### {item['name']} -> {item['name']}__c")
+        obj = f"{item['name']}__c"
+        meta = schema.get(obj, {})
+        api_of = meta.get("field_api", {})
+        sf_types = meta.get("fields", {})
+        adjusted = {n["qualifier"]: n["reason"] for n in meta.get("name_notes", [])}
+
+        lines.append(f"### {item['name']} -> {obj}")
         lines.append("")
-        lines.append("| Hybris Field | Java Type | Apex Field | Apex Type |")
-        lines.append("|---|---|---|---|")
+        lines.append("| Hybris Field | Java Type | Apex Field | Apex Type | Note |")
+        lines.append("|---|---|---|---|---|")
         for field in item.get("fields", []):
-            apex_type = type_map.get(field["type"], "Text(255)")
-            lines.append(f"| {field['name']} | {field['type']} | {field['name']}__c | {apex_type} |")
+            q = field["name"]
+            api = api_of.get(q)
+            if api:
+                apex_type = sf_types.get(api, "Text")
+                note = {"length": "renamed — over the 40-character limit",
+                        "collision": "renamed — another attribute claimed this name"}.get(
+                            adjusted.get(q), "")
+            else:
+                # No schema for this object: say so rather than invent a column.
+                api, apex_type, note = "—", "—", "not in the emitted schema"
+            lines.append(f"| {q} | {field['type']} | {api} | {apex_type} | {note} |")
         lines.append("")
 
     lines += ["## Layer Mapping", "", "| Hybris Layer | Hybris Class | Apex Class | Apex Kind |", "|---|---|---|---|"]

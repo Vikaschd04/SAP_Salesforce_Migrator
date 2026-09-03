@@ -35,8 +35,14 @@ class SalesforceTarget:
         adapter cannot change what lands on disk.
         """
         from src.generate import write_outputs, _load_mappings
+        from src.schema import build_schema
         types = list(getattr(data_model, "types", None) or [])
-        return write_outputs(output_dir, artifacts, types, _load_mappings())
+        # Built from the same DataModel the metadata comes from, so MAPPING.md reports
+        # the fields that were actually emitted rather than a second guess at them. [1.31]
+        schema = build_schema(types,
+                              list(getattr(data_model, "relations", None) or []),
+                              list(getattr(data_model, "enums", None) or []))
+        return write_outputs(output_dir, artifacts, types, _load_mappings(), schema)
 
     def validate(self, code: str, filename: str, schema: dict, config: dict) -> list:
         """Governor limits, structural checks, and SOQL grounded in the SObject schema.

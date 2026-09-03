@@ -1033,7 +1033,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         get_pipeline(bb.pipeline_id).target.emit(
             output_dir, bb.generated_dicts(), _data_model, config)
     else:
-        write_outputs(output_dir, bb.generated_dicts(), bb.item_types, mappings)
+        write_outputs(output_dir, bb.generated_dicts(), bb.item_types, mappings,
+                      bb.schema)
     _write_flow_outputs(output_dir, getattr(bb, "flows", []),
                         getattr(bb, "flow_invocables", {}))
     meta = write_schema_metadata(output_dir, bb.schema)

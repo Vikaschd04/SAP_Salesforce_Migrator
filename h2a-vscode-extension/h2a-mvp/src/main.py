@@ -158,7 +158,7 @@ def cmd_run(args):
 
     # Write outputs
     print("\n═══ Writing Output ═══")
-    created = write_outputs(args.output, generated, item_types, mappings)
+    created = write_outputs(args.output, generated, item_types, mappings, schema)
     for f in created:
         print(f"  ✓ {f}")
 

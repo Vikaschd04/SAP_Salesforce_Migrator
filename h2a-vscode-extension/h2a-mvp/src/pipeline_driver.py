@@ -211,7 +211,8 @@ def run_repo_migration(input_dir: str, output_dir: str, *, offline: bool = False
         print(f"\n  ℹ Skipped domains ({len(skipped_domains)}): {skipped_domains[:10]}")
 
     print("\n═══ Writing Repository Outputs ═══")
-    created = write_outputs(output_dir, global_generated, item_types, mappings)
+    created = write_outputs(output_dir, global_generated, item_types, mappings,
+                            schema)
     for f in created:
         print(f"  ✓ {f}")
 

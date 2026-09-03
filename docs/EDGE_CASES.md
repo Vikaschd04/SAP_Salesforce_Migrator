@@ -79,10 +79,12 @@ producing a green tick that means nothing.
 
 ### Found while building 1.20
 
-`MAPPING.md` derives its field names and types independently of the schema the metadata is
-actually built from, so the report and the output disagree: the report says
-`fulfilmentState__c · Text(255)` where the emitted metadata says `FulfilmentState__c ·
-Picklist`. A customer reads that report to understand the migration. It is now item 1.31.
+`MAPPING.md` derived its field names and types independently of the schema the metadata is
+built from, so the report and the output disagreed: it said `fulfilmentState__c ·
+Text(255)` where the metadata said `FulfilmentState__c · Picklist`. **Fixed in 1.31** —
+both now read the same schema, and tests assert every reported field and type against the
+metadata actually emitted. Two sources of truth for one fact is how a report starts
+describing a migration that did not happen.
 
 ## F. The migration process itself — platform-neutral
 
