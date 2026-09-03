@@ -100,6 +100,21 @@
           "type": "boolean",
           "default": false,
           "description": "Verify by deploying to Salesforce. After generating, run a validate-only (check-only) deploy against your default Salesforce org and self-heal real compiler/coverage errors. Requires the Salesforce CLI (sf) installed and a default org set: 'sf org login web' then 'sf config set target-org <alias>'. Nothing is written to the org."
+        },
+        "h2aMigrator.pipeline": {
+          "type": "string",
+          "enum": [
+            "",
+            "hybris->salesforce",
+            "adobe->hybris"
+          ],
+          "enumDescriptions": [
+            "Detect the source and use the migration for it. Right whenever there is one valid answer, which is usually.",
+            "SAP Hybris (Java) \u2192 Salesforce (Apex, LWC, metadata). Compile-verified against a real org.",
+            "Adobe Commerce (Magento 2, PHP) \u2192 SAP Hybris (Java, Spring, items.xml). Statically checked only \u2014 SAP has no hosted compiler."
+          ],
+          "default": "",
+          "description": "Which migration to run. Leave empty to detect the source and choose for you; set it only when detection has no single valid answer."
         }
       }
     }

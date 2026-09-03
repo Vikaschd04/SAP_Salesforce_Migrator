@@ -84,6 +84,7 @@ export function activate(context: vscode.ExtensionContext) {
         let provider: string = extConfig.get<string>('provider') || 'anthropic';
         let incrementalMode: boolean = extConfig.get<boolean>('incrementalMode') ?? true;
         let customModel: string = extConfig.get<string>('customModel') || '';
+        const pipelineChoice: string = extConfig.get<string>('pipeline') || '';
         let engine: string = extConfig.get<string>('engine') || 'agentic';
         // Strict: only an explicit boolean true enables org verification. Any other
         // stored value (undefined, a stray string like "false", null) means OFF, so an
@@ -148,6 +149,12 @@ export function activate(context: vscode.ExtensionContext) {
                 //   linear  → repo-migrate  (the deterministic pipeline)
                 const command = engine === 'linear' ? 'repo-migrate' : 'agent-migrate';
                 const argsRun = ['-m', 'src.main', command, '--input', inputPath, '--output', outputPath];
+                // Empty means "detect the source and choose", which is the right default:
+                // there is one valid answer for almost every codebase, and offering a
+                // dropdown of source/target pairs would mostly offer invalid ones. [4.5]
+                if (pipelineChoice) {
+                    argsRun.push('--pipeline', pipelineChoice);
+                }
                 if (verifyDeploy) {
                     // Validate-only deploy to the default Salesforce org + self-heal (see README).
                     argsRun.push('--verify');

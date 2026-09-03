@@ -244,14 +244,89 @@ def cmd_repo_migrate(args):
 
 
 def cmd_agent_migrate(args):
+    """Run the agentic migration (Planner + Builder + Critic + Verifier).
+
+    The docstring was below the engine-version block, which made it a bare expression and
+    left this function undocumented. Small, and the kind of thing that stays wrong.
+    """
+    from src import pipeline, runctx
+    from src.agentic import run_agentic_migration
+
     if getattr(args, "engine_version", None):
         import os as _os
         _os.environ["H2A_ENGINE_VERSION"] = args.engine_version
-    """Run the Phase-1 agentic migration (Planner + Builder + Critic + Verifier)."""
-    from src.agentic import run_agentic_migration
+
+    chosen = _resolve_pipeline(args.input, getattr(args, "pipeline", None))
+    runctx.set_overrides(pipeline_id=chosen.id)
+    pipeline.require_runnable(chosen)
+
     offline = getattr(args, "offline", False)
     verify = True if getattr(args, "verify", False) else None
     run_agentic_migration(args.input, args.output, offline=offline, verify=verify)
+
+
+def cmd_identify(args):
+    """Say what a codebase is and which migrations are available for it. [4.5]
+
+    Separate from starting one, because the answer is worth having on its own — and
+    because "recognised, and nothing can migrate it yet" is a sentence somebody needs to
+    read before they plan work around this tool.
+    """
+    from src import pipeline
+
+    ident = pipeline.identify(args.input)
+    print(f"\n  {ident['summary']}\n")
+
+    for o in ident["pipelines"]:
+        if o is ident["pipelines"][0]:
+            print("  Available migrations:")
+        state = "ready" if o["implemented"] else "not implemented yet"
+        oracle = ("compile-verified against the target platform" if o["has_oracle"]
+                  else "statically checked only — no compiler for this target")
+        print(f"    {o['id']:<22} {state}")
+        print(f"      {oracle}")
+    if not ident["pipelines"]:
+        print("  No migration is available for this source.")
+    print()
+
+    # Three answers, three exit codes, so a script can act on the difference rather than
+    # parsing the prose:
+    #   0  a migration can run now
+    #   1  nothing recognised this
+    #   2  recognised, and no migration from it can run yet
+    raise SystemExit({"runnable": 0, "unrecognised": 1}.get(ident["status"], 2))
+
+
+def _resolve_pipeline(root: str, requested: str | None):
+    """Which migration to run: what was asked for, else what the source is. [4.5]
+
+    An explicit choice is honoured even when detection disagrees — the operator may know
+    something the detector does not — but a mismatch is said out loud rather than
+    silently accepted, because the likeliest cause is a wrong flag.
+    """
+    from src import pipeline
+
+    pipeline.ensure_registered()
+    ident = pipeline.identify(root)
+
+    if requested:
+        chosen = pipeline.get(requested)
+        if ident["platform"] and chosen.source_platform != ident["platform"]:
+            print(f"  ⚠ --pipeline {requested} expects a {chosen.source_platform} source, "
+                  f"and this looks like {ident['platform']}. Continuing as asked.")
+        return chosen
+
+    if ident["status"] == "unrecognised":
+        raise SystemExit(f"  ✗ {ident['summary']}")
+    runnable = [o for o in ident["pipelines"] if o["implemented"]]
+    if not runnable:
+        offered = ", ".join(o["id"] for o in ident["pipelines"]) or "none"
+        raise SystemExit(
+            f"  ✗ {ident['summary']}\n"
+            f"    Recognised, and no migration from it can run yet ({offered}). "
+            "This is a roadmap fact, not a detection failure.")
+    print(f"  Detected {ident['platform']} → migrating with `{runnable[0]['id']}`")
+    return pipeline.get(runnable[0]["id"])
 
 
 def cmd_impex(args):
@@ -398,12 +473,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_agent.add_argument("--offline", action="store_true", help="Replay cached responses only")
     p_agent.add_argument("--verify", action="store_true",
                          help="Dry-run deploy + self-heal against a Salesforce org (needs `sf` CLI)")
+    p_agent.add_argument("--pipeline", default=None,
+                         help="Which migration to run, e.g. `hybris->salesforce`. "
+                              "Omitted, the source is detected and the migration for it "
+                              "is chosen — which is right whenever there is one valid "
+                              "answer, and this flag is for when there is not.")
     p_agent.add_argument("--engine-version", choices=["v1", "v2"], default=None,
                          help="v1 (default) = the shipped single-pipeline engine. "
                               "v2 = the same work routed through the pipeline adapters, "
                               "which is what the second migration path is built on. Both "
                               "produce identical output today; v1 stays available until "
                               "v2 has proven itself.")
+
+    p_ident = subparsers.add_parser(
+        "identify", help="What is this codebase, and which migrations can run on it?")
+    p_ident.add_argument("--input", required=True, help="Path to codebase root directory")
 
     # impex (Phase 2: data migration)
     p_impex = subparsers.add_parser(
@@ -445,6 +529,7 @@ def main():
         "metadata": cmd_metadata,
         "repo-migrate": cmd_repo_migrate,
         "agent-migrate": cmd_agent_migrate,
+        "identify": cmd_identify,
         "impex": cmd_impex,
         "cronjob": cmd_cronjob,
         "checkpoints": cmd_checkpoints,
