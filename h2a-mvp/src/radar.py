@@ -198,6 +198,7 @@ def _java_findings(path: Path, rel: str) -> list[dict]:
 
     out.extend(_money_findings(text, rel, cls, lines))
     out.extend(_flexsearch_findings(text, rel, cls, lines))
+    out.extend(_lifecycle_findings(text, rel, cls, lines))
 
     for rule, sev, pat, needs_loop, hazard, fix in _LINE_RULES:
         for m in pat.finditer(text):
@@ -358,6 +359,42 @@ def _flexsearch_findings(text: str, rel: str, cls: str, lines: list) -> list:
     return out
 
 
+def _lifecycle_findings(text: str, rel: str, cls: str, lines: list) -> list:
+    """Code the platform invoked, which the target will not. [1.21]
+
+    The existing INTERCEPTOR rule fires on the Spring wiring that registers a hook. This
+    fires on the hook itself, because the two are found at different times by different
+    people: the wiring is a configuration file nobody reads, and the class is where the
+    business rules actually live.
+    """
+    from src.ingest import _LIFECYCLE_HOOKS
+
+    out = []
+    for hook, what in _LIFECYCLE_HOOKS.items():
+        m = re.search(rf"\b(?:implements|extends)\s+[\w<>,\s\.]*\b{hook}\b", text)
+        if not m:
+            continue
+        line = text[:m.start()].count("\n") + 1
+        out.append({
+            "rule": "LIFECYCLE_HOOK", "severity": "critical", "file": rel, "line": line,
+            "source_class": cls,
+            "hazard": f"This is a {hook}: the Hybris persistence layer ran it "
+                      f"automatically — it {what} — without anything in the codebase "
+                      "calling it. Converted to Apex it becomes an ordinary class, and an "
+                      "ordinary class runs only when something calls it. Every rule in "
+                      "here stops being enforced, while the code still exists and still "
+                      "reads correctly.",
+            "fix": "Re-home the logic in a before-insert/before-update trigger on the "
+                   "migrated object, keeping the class as the trigger's handler. Note the "
+                   "shape change: a Hybris interceptor sees one record, an Apex trigger "
+                   "sees up to 200, so the body must be bulkified rather than transcribed. "
+                   "Add a static re-entry guard — interceptor chains do not re-enter, "
+                   "triggers do.",
+            "snippet": (lines[line - 1].strip()[:120] if line <= len(lines) else ""),
+        })
+    return out
+
+
 def _project_findings(root: Path, files: list[Path]) -> list[dict]:
     out = []
     for p in files:
@@ -490,6 +527,7 @@ _RULE_TITLES = {
     "THREADING": "Threads or async execution",
     "STATIC_MUTABLE_STATE": "Mutable static state",
     "INTERCEPTOR": "Interceptor chain",
+    "LIFECYCLE_HOOK": "Platform-invoked hook",
     "SESSION_SCOPED_BEAN": "Session-scoped bean",
     "IMPEX_VOLUME": "Large ImpEx load",
     "CRONJOB_CONCURRENCY": "Cronjob concurrency",

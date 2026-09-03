@@ -217,7 +217,25 @@ class Blackboard:
                 continue
             art = by_source.get(name)
             if art is not None:
-                flagged = bool(art.review_flags)
+                # A platform-invoked hook loses its *invocation*, not its logic. The Apex
+                # is written correctly and then nothing ever calls it, so the rules it
+                # enforced stop being enforced — silently, while this row said
+                # "converted". A success-shaped failure is the one outcome this ledger
+                # exists to make impossible, so it is never plain converted. [1.21]
+                #
+                # Derived, never appended to the artifact: building a ledger is a
+                # question, and a question that mutates its subject gives a different
+                # answer the second time it is asked. It did, once — the note appeared
+                # twice in the report.
+                hook = cls.get("lifecycle_hook")
+                notes = list(art.review_flags)
+                if hook:
+                    notes.append(
+                        f"`{hook}` — the platform invoked this on every affected record "
+                        f"({cls.get('lifecycle_note', 'automatically')}). Nothing on the "
+                        "target invokes the converted class: until it is wired to a "
+                        "trigger, the rules it enforced are not enforced.")
+                flagged = bool(notes)
                 target = self.output_path(art)
                 if id(art) in collided:
                     rows.append({
@@ -229,7 +247,7 @@ class Blackboard:
                     rows.append({"source": name, "layer": layer,
                                  "outcome": "flagged" if flagged else "converted",
                                  "target": target,
-                                 "note": "; ".join(art.review_flags) if flagged else ""})
+                                 "note": "; ".join(notes) if flagged else ""})
             elif name in skipped:
                 rows.append({"source": name, "layer": layer, "outcome": "skipped",
                              "target": "—", "note": skipped[name]})
