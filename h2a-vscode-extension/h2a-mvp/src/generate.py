@@ -661,6 +661,24 @@ def write_outputs(output_dir: str, generated: list[dict], item_types: list[dict]
             meta_path.write_text(cls_meta, encoding="utf-8")
             created.append(str(meta_path))
 
+    # Lifecycle hooks: the converted class carries the rules, and nothing calls it. The
+    # missing invocation is written here rather than left as advice in a report. [1.21b]
+    from src.adapters.apex_triggers import emit_for
+    from src.adapters.hybris_lifecycle import detect as _detect_hook
+
+    base = out / "force-app" / "main" / "default"
+    for gen in generated:
+        for sc in (gen.get("source_classes") or []):
+            hook = _detect_hook(sc.get("source") or "")
+            if not hook:
+                continue
+            for rel, body in emit_for(sc.get("class_name", ""),
+                                      gen.get("target_name", ""), hook).items():
+                path = base / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(body, encoding="utf-8")
+                created.append(str(path))
+
     mapping_md = _build_mapping_md(generated, item_types, mappings)
     p = out / "MAPPING.md"
     p.write_text(mapping_md, encoding="utf-8")

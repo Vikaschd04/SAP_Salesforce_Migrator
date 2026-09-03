@@ -53,17 +53,6 @@ LAYER_ORDER = ["Model", "DAO", "Service", "Facade", "Controller", "Job", "Utilit
 # regardless of its name — the strongest, least false-positive-prone signal.
 _JOB_BASE_MARKERS = ("AbstractJobPerformable", "JobPerformable", "Performable")
 
-# Hybris interfaces the *platform* invokes. Nothing in the customer's code calls these —
-# the persistence layer does, on every save, load or remove of the modelled type. That is
-# the part a conversion loses first, because the Apex it becomes is only ever a class, and
-# a class runs when something calls it. [1.21]
-_LIFECYCLE_HOOKS = {
-    "ValidateInterceptor": "validated every save",
-    "PrepareInterceptor": "prepared every save",
-    "InitDefaultsInterceptor": "populated defaults on creation",
-    "LoadInterceptor": "ran on every load",
-    "RemoveInterceptor": "ran on every remove",
-}
 
 
 def _infer_layer(class_name: str, annotations: list[str],
@@ -170,9 +159,8 @@ def _parse_java_file(filepath: str) -> dict | None:
     # A platform-invoked hook. Recorded before layer inference, because the layer says
     # what the code *is* and this says what used to *run* it — and only the second one
     # explains why the migrated class sits there doing nothing. [1.21]
-    lifecycle_hook = next(
-        ((h, w) for name in implements_names + ([extends_name] if extends_name else [])
-         for h, w in _LIFECYCLE_HOOKS.items() if h in (name or "")), None)
+    from src.adapters.hybris_lifecycle import detect as _detect_hook
+    lifecycle = _detect_hook(source) or {}
 
     # Infer layer
     layer = _infer_layer(class_name, annotations, extends_name, implements_names)
@@ -220,8 +208,10 @@ def _parse_java_file(filepath: str) -> dict | None:
     referenced_types -= common
 
     return {
-        "lifecycle_hook": lifecycle_hook[0] if lifecycle_hook else "",
-        "lifecycle_note": lifecycle_hook[1] if lifecycle_hook else "",
+        "lifecycle_hook": lifecycle.get("hook", ""),
+        "lifecycle_note": lifecycle.get("note", ""),
+        "lifecycle_events": lifecycle.get("events") or "",
+        "lifecycle_type": lifecycle.get("type", ""),
         "class_name": class_name,
         "layer": layer,
         "annotations": annotations,

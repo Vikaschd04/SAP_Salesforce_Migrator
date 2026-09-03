@@ -367,32 +367,34 @@ def _lifecycle_findings(text: str, rel: str, cls: str, lines: list) -> list:
     people: the wiring is a configuration file nobody reads, and the class is where the
     business rules actually live.
     """
-    from src.ingest import _LIFECYCLE_HOOKS
+    from src.adapters.hybris_lifecycle import detect
 
-    out = []
-    for hook, what in _LIFECYCLE_HOOKS.items():
-        m = re.search(rf"\b(?:implements|extends)\s+[\w<>,\s\.]*\b{hook}\b", text)
-        if not m:
-            continue
-        line = text[:m.start()].count("\n") + 1
-        out.append({
-            "rule": "LIFECYCLE_HOOK", "severity": "critical", "file": rel, "line": line,
-            "source_class": cls,
-            "hazard": f"This is a {hook}: the Hybris persistence layer ran it "
-                      f"automatically — it {what} — without anything in the codebase "
-                      "calling it. Converted to Apex it becomes an ordinary class, and an "
-                      "ordinary class runs only when something calls it. Every rule in "
-                      "here stops being enforced, while the code still exists and still "
-                      "reads correctly.",
-            "fix": "Re-home the logic in a before-insert/before-update trigger on the "
-                   "migrated object, keeping the class as the trigger's handler. Note the "
-                   "shape change: a Hybris interceptor sees one record, an Apex trigger "
-                   "sees up to 200, so the body must be bulkified rather than transcribed. "
-                   "Add a static re-entry guard — interceptor chains do not re-enter, "
-                   "triggers do.",
-            "snippet": (lines[line - 1].strip()[:120] if line <= len(lines) else ""),
-        })
-    return out
+    hook = detect(text)
+    if not hook:
+        return []
+    line = hook["line"]
+    if hook["events"]:
+        fix = (f"A trigger scaffold is emitted for this ({hook['type']}LifecycleTrigger on "
+               f"{hook['type']}__c, {hook['events']}) with the re-entry guard in place. "
+               "Wire the converted class into its handler, and keep queries out of the "
+               "per-record loop — the platform handed this one record, a trigger receives "
+               "up to 200.")
+    else:
+        fix = ("Apex has no equivalent hook — there is no after-read trigger — so no "
+               "scaffold is emitted. This logic needs a different home entirely: move it "
+               "to the point of use, or accept that it cannot be automatic.")
+    return [{
+        "rule": "LIFECYCLE_HOOK", "severity": "critical", "file": rel, "line": line,
+        "source_class": cls,
+        "hazard": f"This is a {hook['hook']}: the Hybris persistence layer ran it "
+                  f"automatically — it {hook['note']} — without anything in the codebase "
+                  "calling it. Converted to Apex it becomes an ordinary class, and an "
+                  "ordinary class runs only when something calls it. Every rule in here "
+                  "stops being enforced, while the code still exists and still reads "
+                  "correctly.",
+        "fix": fix,
+        "snippet": (lines[line - 1].strip()[:120] if line <= len(lines) else ""),
+    }]
 
 
 def _project_findings(root: Path, files: list[Path]) -> list[dict]:

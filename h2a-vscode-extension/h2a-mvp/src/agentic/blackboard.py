@@ -229,12 +229,22 @@ class Blackboard:
                 # twice in the report.
                 hook = cls.get("lifecycle_hook")
                 notes = list(art.review_flags)
-                if hook:
+                scaffolded = False
+                if hook and cls.get("lifecycle_events"):
+                    scaffolded = True
                     notes.append(
                         f"`{hook}` — the platform invoked this on every affected record "
-                        f"({cls.get('lifecycle_note', 'automatically')}). Nothing on the "
-                        "target invokes the converted class: until it is wired to a "
-                        "trigger, the rules it enforced are not enforced.")
+                        f"({cls.get('lifecycle_note', 'automatically')}). Apex has no such "
+                        f"mechanism, so `{cls.get('lifecycle_type', '')}LifecycleTrigger` "
+                        "was emitted to restore the invocation. Its handler is a scaffold: "
+                        "the rules are not enforced until the converted class is wired into "
+                        "it.")
+                elif hook:
+                    notes.append(
+                        f"`{hook}` — the platform invoked this automatically "
+                        f"({cls.get('lifecycle_note', '')}), and Apex has no equivalent "
+                        "hook to restore it with. This logic needs a different home; "
+                        "nothing on the target runs it today.")
                 flagged = bool(notes)
                 target = self.output_path(art)
                 if id(art) in collided:
@@ -245,7 +255,8 @@ class Blackboard:
                                 "survived, so this class's logic may not be in the output"})
                 else:
                     rows.append({"source": name, "layer": layer,
-                                 "outcome": "flagged" if flagged else "converted",
+                                 "outcome": ("scaffolded" if scaffolded
+                                             else "flagged" if flagged else "converted"),
                                  "target": target,
                                  "note": "; ".join(notes) if flagged else ""})
             elif name in skipped:
