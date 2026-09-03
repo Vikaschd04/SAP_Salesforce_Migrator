@@ -26,6 +26,12 @@ from src.adapters.adobe_source import NotImplementedYet
 class HybrisTarget:
     platform = "hybris"
     label = "SAP Hybris (Java · Spring · items.xml)"
+    #: The target can now scaffold a whole extension — skeleton, items.xml, services,
+    #: DAOs, jobs, configuration and wiring — and check it at the `static` rung. What it
+    #: cannot yet do is *fill method bodies*: that needs a Hybris prompt pack (3.8), so a
+    #: run would produce an extension whose logic is all `UnsupportedOperationException`.
+    #: Claiming `implemented` for that would be the success-shaped failure this product is
+    #: arranged against, so it stays false until 3.8.
     implemented = False
 
     #: No free compile oracle. See the module docstring — this is honest, not pending.
@@ -42,18 +48,34 @@ class HybrisTarget:
         return plan_targets(units or [], (config or {}).get("wiring"))
 
     def emit(self, output_dir: str, artifacts: list, data_model, config: dict) -> list:
-        """Still raises, and the scaffolding underneath it is real. [3.1, 3.4 done]
+        """Assemble the extension. [3.1–3.6]
 
-        `hybris_extension.build_extension` emits the extension skeleton and the whole
-        data model today. This does not call it, because emit() is the *whole* job: a run
-        that wrote items.xml and no services would finish, report files created, and hand
-        over an extension with a data model and no behaviour. That reads as success.
-
-        It becomes the assembly point once services and DAOs exist (3.2, 3.3).
+        `config` carries what the target list cannot: `source_model` for the jobs and the
+        data model, and `plan` for the kind each unit was routed to. Without a source
+        model this refuses rather than writing a skeleton — an extension with a data model
+        and no services reads as a finished migration of a codebase that had no logic.
         """
-        raise NotImplementedYet(
-            "Emitting a Hybris extension — the skeleton and items.xml are built (3.1, "
-            "3.4); services, DAOs, ImpEx and cron are not", "3.2–3.7")
+        cfg = config or {}
+        source_model = cfg.get("source_model")
+        if source_model is None:
+            raise NotImplementedYet(
+                "Emitting a Hybris extension needs the SourceModel (config['source_model'])"
+                " — the jobs and the data model are not derivable from the artifact list",
+                "3.1–3.6")
+
+        from src.adapters.hybris_emit import emit_extension
+
+        result = emit_extension(
+            output_dir,
+            name=cfg.get("extension_name", "migrated"),
+            package=cfg.get("package", "com.migrated"),
+            source_model=source_model,
+            targets=cfg.get("plan") or [],
+        )
+        # Kept for the caller: what was written, what was planned and deliberately not
+        # written, and how strongly the result was checked.
+        self.last_emit = result
+        return result["created"]
 
     def validate(self, code: str, filename: str, schema: dict, config: dict) -> list:
         """Parse, and resolve every named type. [3.10]

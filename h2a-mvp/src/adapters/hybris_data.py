@@ -121,9 +121,15 @@ def build_seed_impex(extension: str, data_types: list) -> str:
 
 # ── 3.6 · scheduled jobs ──────────────────────────────────────────────────────
 
-def build_job_performable(job, package: str) -> str:
-    """`AbstractJobPerformable` for one scheduled job. [3.6]"""
-    name = f"{pascal(job.name)}JobPerformable"
+def build_job_performable(job, package: str, class_name: str = "") -> str:
+    """`AbstractJobPerformable` for one scheduled job. [3.6]
+
+    `class_name` comes from the planner when there is one. A job has two names in the
+    source — the PHP class the planner routed and the crontab entry that schedules it —
+    and they must resolve to one Java class, or the ImpEx wires a springId nothing
+    defines.
+    """
+    name = class_name or f"{pascal(job.name)}JobPerformable"
     return f"""package {package}.jobs;
 
 import de.hybris.platform.cronjob.enums.CronJobResult;
@@ -187,7 +193,7 @@ def _cron_to_quartz(cron: str) -> str:
     return f"0 {minute} {hour} {dom} {month} {dow}"
 
 
-def build_cron_impex(jobs: list, package: str, extension: str) -> str:
+def build_cron_impex(jobs, package: str, extension: str) -> str:
     """The ImpEx that creates each job and its trigger. [3.6]
 
     Hybris cronjobs are *data*, not configuration: the job and its trigger are rows, which
@@ -204,12 +210,18 @@ def build_cron_impex(jobs: list, package: str, extension: str) -> str:
            "# runs on every node unless a trigger names one. Which node should own each",
            "# job is a deployment decision, so it is left visible rather than guessed.",
            ""]
-    for j in jobs or []:
+    # `jobs` is {performable_class: ScheduledJob} once the planner has reconciled the two
+    # names, or a plain list otherwise. Either way the springId written here has to be the
+    # bean the emitter actually defines.
+    pairs = (sorted(jobs.items()) if isinstance(jobs, dict)
+             else [(f"{pascal(j.name)}JobPerformable", j) for j in (jobs or [])])
+
+    for performable, j in pairs:
         code = pascal(j.name)
         quartz = _cron_to_quartz(j.cron)
         out += [f"# {j.name} — was `{j.cron}` (Unix cron)",
                 "INSERT_UPDATE ServicelayerJob;code[unique=true];springId",
-                f";{code}Job;{pascal(j.name)[:1].lower()}{pascal(j.name)[1:]}JobPerformable",
+                f";{code}Job;{performable[:1].lower()}{performable[1:]}",
                 "",
                 "INSERT_UPDATE CronJob;code[unique=true];job(code);sessionLanguage(isocode)",
                 f";{code}CronJob;{code}Job;en",

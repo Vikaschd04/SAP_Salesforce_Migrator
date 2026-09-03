@@ -150,12 +150,13 @@ def test_extensioninfo_declares_the_platform_dependencies(tmp_path, model):
 
 # ── the guard that has to stay ────────────────────────────────────────────────
 
-def test_emit_still_refuses_while_services_are_missing(tmp_path, model):
-    """A run that wrote items.xml and no services would report files created and hand
-    over an extension with a data model and no behaviour. That reads as success."""
+def test_emit_refuses_without_a_source_model(tmp_path, model):
+    """The jobs and the data model are not derivable from the artifact list. Writing a
+    skeleton anyway would hand over an extension with a data model and no behaviour,
+    which reads as a finished migration of a codebase that had no logic."""
     from src.adapters.adobe_source import NotImplementedYet
     from src.adapters.hybris_target import ADAPTER
 
     with pytest.raises(NotImplementedYet) as e:
         ADAPTER.emit(str(tmp_path), [], model.data_model, {})
-    assert "services, DAOs" in str(e.value)
+    assert "source_model" in str(e.value)
