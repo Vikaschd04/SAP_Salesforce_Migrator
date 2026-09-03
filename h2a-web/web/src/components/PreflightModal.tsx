@@ -8,7 +8,9 @@ import Preflight, { type PreflightReport } from './Preflight';
  * a refusal is a blocking answer to "why did nothing happen", and someone who has just
  * pressed Start is looking at the button, not at the bottom of the page. It interrupts
  * instead — and says what to do next, since "this is not a Hybris project" is only half
- * an answer.
+ * an answer, and became a wrong one when a second source platform arrived: a Magento
+ * codebase is not an unidentified codebase, and telling someone it is sends them looking
+ * for a problem that is not there.
  */
 export default function PreflightModal({ report, onClose }: {
   report: PreflightReport | null;

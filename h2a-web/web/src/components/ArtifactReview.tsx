@@ -9,8 +9,9 @@ type Pane = 'generated' | 'compare' | 'findings' | 'details';
  * original SAP source, every Critic finding with its suggested fix, and what the Builder
  * mapped — plus the ability to regenerate just this file (no full re-run).
  */
-export default function ArtifactReview({ runId, art, onUpdated , blast }:
-  { runId: string; art: any; blast?: BlastData | null; onUpdated?: (a: any) => void }) {
+export default function ArtifactReview({ runId, art, onUpdated, blast, sourceLabel }:
+  { runId: string; art: any; blast?: BlastData | null; sourceLabel?: string;
+    onUpdated?: (a: any) => void }) {
   const [open, setOpen] = useState(false);
   const [pane, setPane] = useState<Pane>('generated');
   const [diff, setDiff] = useState<DiffPayload | null>(null);
@@ -95,7 +96,9 @@ export default function ArtifactReview({ runId, art, onUpdated , blast }:
                 : (
                   <div className="cmp">
                     <div>
-                      <div className="cmp-h">◄ Original {diff.is_lwc ? 'Angular / Spartacus' : 'SAP Hybris (Java)'}</div>
+                      {/* The source platform comes from the run rather than being assumed: this pane read
+    "SAP Hybris (Java)" over PHP once a second pipeline existed. */}
+                      <div className="cmp-h">◄ Original {diff.is_lwc ? 'Angular / Spartacus' : (sourceLabel || 'source')}</div>
                       <pre className="code-view sm">{diff.source || '(no source captured)'}</pre>
                     </div>
                     <div>

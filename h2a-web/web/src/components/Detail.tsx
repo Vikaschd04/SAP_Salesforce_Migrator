@@ -29,6 +29,7 @@ interface Props {
   triage: any | null;
   alignment: any | null;
   provenance: any | null;
+  sourceLabel?: string;
   blast: any | null;
   replay: any | null;
   discovery: any | null;
@@ -162,7 +163,7 @@ export default function Detail(p: Props) {
             ? <p className="empty">Generated Apex + LWC appear here. Open any file to see the code, compare it with the SAP source, read the Critic findings — and regenerate it if it looks wrong.</p>
             : p.artifacts.map((a) => (
               <ArtifactReview key={a.target_name} runId={p.runId!} art={a}
-                blast={(p.blast || {})[a.target_name]} />
+                blast={(p.blast || {})[a.target_name]} sourceLabel={p.sourceLabel} />
             ))}
         </div>
       )}

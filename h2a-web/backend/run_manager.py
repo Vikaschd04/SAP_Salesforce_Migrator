@@ -249,7 +249,8 @@ def cancel_active_runs() -> int:
 def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
               engine: str = "agentic", verify: bool = False, supervised: bool = False,
               state_dir: str | None = None, owner: str | None = None,
-              api_key: str | None = None, cost_cap: float | None = None) -> Run:
+              api_key: str | None = None, cost_cap: float | None = None,
+              pipeline: str = "") -> Run:
     """Start a migration. Runs are independent — starting one no longer cancels another."""
     run_id = uuid.uuid4().hex[:12]
     run = Run(run_id, input_dir, output_dir, provider, engine, verify, owner=owner)
@@ -273,7 +274,10 @@ def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
         from src.runctx import set_overrides
         # The cap rides the same per-run channel as the credential, and for the same
         # reason: two tenants running at once must not share one budget.
-        set_overrides(provider=provider, api_key=api_key, cost_cap=cost_cap)
+        # The pipeline is pinned for the whole run and everything it spawns, the same
+        # way the provider is — every stage has to agree about which migration this is.
+        set_overrides(provider=provider, api_key=api_key, cost_cap=cost_cap,
+                      pipeline_id=pipeline or None)
         try:
             if engine == "linear":
                 from src.pipeline_driver import run_repo_migration

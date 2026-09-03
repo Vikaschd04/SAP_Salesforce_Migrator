@@ -182,6 +182,9 @@ async def create_run(
     supervised: bool = Form(False),
     cost_cap: float | None = Form(None),
     input_path: str = Form(""),
+    # Empty means "use what detection found", which is right for almost every
+    # codebase. Sent only when the cockpit had more than one valid answer.
+    pipeline: str = Form(""),
     upload: UploadFile | None = File(None),
 ):
     """Start a migration from either a server-side path or an uploaded .zip."""
@@ -202,7 +205,22 @@ async def create_run(
 
     ident = _pipeline.identify(input_dir)
     report = ident["report"]
-    if ident["status"] in ("unrecognised", "recognised"):
+    # An explicit choice from the cockpit wins over detection, exactly as `--pipeline`
+    # does on the command line: the operator may know something the detector does not.
+    chosen = (pipeline or "").strip()
+    if chosen:
+        # Asked for by name: honour it, and refuse only if that pipeline cannot run —
+        # which is a different refusal from "we could not identify your codebase".
+        try:
+            wanted = _pipeline.get(chosen)
+        except KeyError:
+            raise HTTPException(422, {"message": f"No such migration: {chosen}",
+                                      "preflight": report, "identification": ident})
+        if not wanted.implemented:
+            raise HTTPException(422, {
+                "message": f"`{chosen}` is registered and cannot run a migration yet.",
+                "preflight": report, "identification": ident})
+    elif ident["status"] in ("unrecognised", "recognised"):
         # "Identified and not yet migratable" is a different answer from "unidentified",
         # and the payload carries which so the cockpit can say so.
         raise HTTPException(422, {"message": ident["summary"], "preflight": report,
@@ -218,7 +236,8 @@ async def create_run(
                     api_key=keyvault.get_key(uid, provider),
                     # None leaves the configured default in force; an explicit 0 means
                     # the operator asked for no ceiling and gets one.
-                    cost_cap=cost_cap)
+                    cost_cap=cost_cap,
+                    pipeline=chosen)
     return {"run_id": run.id, "status": run.status, "preflight": report}
 
 

@@ -6,6 +6,48 @@ export class PreflightError extends Error {
   constructor(message: string, report: any) { super(message); this.report = report; }
 }
 
+/** Platform names as a person says them, keyed by the engine's own identifiers. */
+export const PLATFORM_LABEL: Record<string, string> = {
+  hybris: 'SAP Hybris (Java)',
+  salesforce: 'Salesforce (Apex)',
+  'adobe-commerce': 'Adobe Commerce (PHP)',
+};
+
+/** What a codebase is, and which migrations can run on it. */
+export interface PipelineOption {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  implemented: boolean;
+  shipped: boolean;
+  has_oracle: boolean;
+}
+
+export interface Identification {
+  status: 'runnable' | 'recognised' | 'unrecognised';
+  platform: string;
+  summary: string;
+  pipelines: PipelineOption[];
+  report: any;
+}
+
+/**
+ * Ask the engine what a path holds before committing to a migration.
+ *
+ * The three statuses are genuinely different answers rather than degrees of one, and the
+ * middle one is why this exists: "we know exactly what this is and cannot migrate it yet"
+ * is worth showing, and used to surface as "not a Hybris project".
+ */
+export async function identify(inputPath: string): Promise<Identification> {
+  const res = await fetch('/api/preflight', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input_path: inputPath }),
+  });
+  if (!res.ok) throw new Error('Could not inspect that path.');
+  return await res.json();
+}
+
 export async function startRun(form: FormData): Promise<string> {
   const res = await fetch('/api/runs', { method: 'POST', body: form });
   if (!res.ok) {

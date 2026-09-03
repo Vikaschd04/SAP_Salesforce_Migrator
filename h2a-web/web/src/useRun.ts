@@ -36,6 +36,8 @@ export interface RunState {
   radar: any | null;
   triage: any | null;
   provenance: any | null;
+  /** Which migration this run is. Named by the engine, not assumed here. */
+  pipeline: { id: string; source: string; target: string } | null;
   alignment: any | null;
   forecast: any | null;
   orgfit: any | null;
@@ -92,7 +94,7 @@ function upgradeKeys(node: any): any {
 
 const initial = (): RunState => ({
   runId: null, status: 'idle', elapsed: '', stages: {}, feed: [], plan: [],
-  comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, ruleLedger: null, signoff: null, characterization: null, radar: null, triage: null, provenance: null,
+  comprehensions: [], artifacts: [], decisions: [], ledger: [], ledgerSummary: {}, ruleLedger: null, signoff: null, characterization: null, radar: null, triage: null, provenance: null, pipeline: null,
   alignment: null, forecast: null, orgfit: null, blast: null, replay: null, gate: null,
   discovery: null, errorMsg: '', cost: null, tokens: null,
 });
@@ -183,6 +185,7 @@ export function useRun() {
             signoff: ev.signoff || null,
             characterization: ev.characterization || null,
             radar: ev.radar || s.radar, triage: ev.triage || null,
+            pipeline: ev.pipeline || s.pipeline,
             provenance: upgradeKeys(ev.provenance) || null,
             alignment: upgradeKeys(ev.alignment) || null,
             forecast: ev.forecast || s.forecast, orgfit: ev.orgfit || s.orgfit,

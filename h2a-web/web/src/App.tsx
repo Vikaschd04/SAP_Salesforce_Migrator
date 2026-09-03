@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { PLATFORM_LABEL } from './api';
 import { useRun, STAGES } from './useRun';
 import { health, startRun, cancelRun, getConfig, me as fetchMe, logout, PreflightError } from './api';
 import type { Me } from './api';
@@ -89,8 +90,14 @@ export default function App() {
         <div className="brand">
           <Logo size={36} />
           <div className="brand-txt">
-            <h1><span className="wm grad-text">H2A</span> <span className="tag">AI</span></h1>
-            <div className="sub">Migration Cockpit · Hybris → Salesforce</div>
+            <h1><span className="wm grad-text">Portage</span> <span className="tag">AI</span></h1>
+            {/* The subtitle used to name one migration as though it were the only one.
+                It now follows the run: before a run starts there is nothing to name. */}
+            <div className="sub">
+              {state.pipeline
+                ? `Migration Cockpit · ${state.pipeline.source} → ${state.pipeline.target}`
+                : 'Commerce platform migration cockpit'}
+            </div>
           </div>
         </div>
         <div className="topbar-right">
@@ -160,6 +167,7 @@ export default function App() {
               ledger={state.ledger} ledgerSummary={state.ledgerSummary} discovery={state.discovery}
               ruleLedger={state.ruleLedger} signoff={state.signoff} characterization={state.characterization}
               triage={state.triage} alignment={state.alignment} provenance={state.provenance}
+              sourceLabel={state.pipeline ? PLATFORM_LABEL[state.pipeline.source] : ''}
               blast={state.blast} replay={state.replay}
               cost={state.cost} tokens={state.tokens} />
           </main>
@@ -169,7 +177,8 @@ export default function App() {
       <PreflightModal report={rejected} onClose={() => setRejected(null)} />
       <Keys open={keysOpen} onClose={() => setKeysOpen(false)} />
       <History open={histOpen} onClose={() => setHistOpen(false)} onOpen={begin} />
-      {state.gate && state.runId && <Gate runId={state.runId} gate={state.gate} onClosed={closeGate} onStop={stopFromGate} />}
+      {state.gate && state.runId && <Gate runId={state.runId} gate={state.gate} onClosed={closeGate}
+        onStop={stopFromGate} sourceLabel={state.pipeline ? PLATFORM_LABEL[state.pipeline.source] : ''} />}
       <Copilot runId={state.runId} open={cpOpen} onClose={() => setCpOpen(false)} onEvents={injectEvents} />
     </div>
   );

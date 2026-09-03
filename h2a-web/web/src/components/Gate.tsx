@@ -9,8 +9,9 @@ export function cxBadge(cx?: string) {
   return <span className={`badge cx-${cx.toLowerCase()}`}>{cx} complexity</span>;
 }
 
-export default function Gate({ runId, gate, onClosed, onStop }: {
+export default function Gate({ runId, gate, onClosed, onStop, sourceLabel }: {
   runId: string; gate: GateState; onClosed: () => void; onStop?: (gate: string) => void;
+  sourceLabel?: string;
 }) {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -97,7 +98,7 @@ export default function Gate({ runId, gate, onClosed, onStop }: {
 
               {arts.map((a) => (
                 <ArtifactReview key={a.target_name} runId={runId} art={a} onUpdated={onUpdated}
-                  blast={(gate.blast || {})[a.target_name]} />
+                  blast={(gate.blast || {})[a.target_name]} sourceLabel={sourceLabel} />
               ))}
             </>
           )}
