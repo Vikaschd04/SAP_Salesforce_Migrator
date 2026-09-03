@@ -155,7 +155,7 @@ before it is ever paired with a target we cannot verify as strongly.
 | ~~2.6~~ | ✅ **`crontab.xml` reader** → `ir.ScheduledJob` | Group retained, because a Magento job runs once per cluster and a Hybris cronjob needs explicit node affinity. |
 | ~~2.7~~ | ✅ **`db_schema.xml` reader** → `ir.DataType` | Column types, nullability and unique constraints. Every table carries `undeclared_note`: these are the *declared* columns only, and presenting them as the whole entity is the lie EAV makes easy. |
 | 2.8 | EAV attribute reader | What is declarable is read; **the residue is reported, not omitted** |
-| 2.9 | PHPUnit miner | `RecordedBehaviour` entries for characterization |
+| ~~2.9~~ | ✅ **PHPUnit miner** — `adapters/php_phpunit_mining.py` | All 7 recorded behaviours from the fixture, including the `expectException` rejection and its negative float. Output shape asserted **identical to the Java miner's**, since the neutral layer above both must not care which platform recorded the behaviour — that is what the 1.13 split bought. |
 | ~~2.10~~ | ✅ **11 Magento hazard rules** — `adapters/magento_radar.py` | 13 findings on the fixture, every planted construct caught and located. Framed against Hybris: Salesforce fails at *limits*, Hybris fails at *expressiveness*, so every hazard names what Hybris would do instead. |
 | 2.11 | PHP symbol patterns for provenance | Methods located in PHP as reliably as in Java |
 | 2.12 | Conservative type inference + triage routing | Every unresolved type lands in must-review, never guessed |

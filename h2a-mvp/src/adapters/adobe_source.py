@@ -181,6 +181,12 @@ class AdobeCommerceSource:
         raise NotImplementedYet("Reading an Adobe Commerce codebase", "2.3–2.9")
 
     def mine_behaviours(self, test_classes: list) -> list:
-        raise NotImplementedYet("Mining recorded behaviour from PHPUnit", "2.6")
+        """Recorded input→output facts from the customer's PHPUnit suite. [2.9]
+
+        Same contract and same output shape as the Hybris side: the neutral
+        characterization layer must not care which platform recorded the behaviour.
+        """
+        from src.adapters import php_phpunit_mining as pm
+        return pm.mine(test_classes)
 
 ADAPTER = AdobeCommerceSource()
