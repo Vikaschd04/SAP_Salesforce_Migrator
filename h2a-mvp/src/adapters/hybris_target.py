@@ -56,11 +56,38 @@ class HybrisTarget:
             "3.4); services, DAOs, ImpEx and cron are not", "3.2–3.7")
 
     def validate(self, code: str, filename: str, schema: dict, config: dict) -> list:
-        raise NotImplementedYet("Validating generated Java", "3.10")
+        """Parse, and resolve every named type. [3.10]
+
+        The strongest check available without a licensed platform, and it says so: a type
+        mismatch or a missing override needs real type checking, which is rung 3.11.
+        """
+        from src.adapters.java_static_check import check
+        return check(code, filename,
+                     emitted=(config or {}).get("emitted_types"),
+                     items_xml=(config or {}).get("items_xml", ""))
 
     def verify(self, request, config: dict, log=print) -> dict:
         """No oracle yet. Reports that plainly rather than claiming a clean verification."""
         from src import assurance
+
+        # With an output directory to read, the static rung is a real result rather
+        # than an absence — it parsed and resolved, or it did not. [3.10]
+        out_dir = getattr(request, "output_dir", "") if request is not None else ""
+        if out_dir:
+            from src.adapters.java_static_check import check_tree
+            got = check_tree(out_dir)
+            if got["files"]:
+                ok = not got["issues"]
+                return {
+                    "ran": True, "success": ok, "rung": got["rung"],
+                    "issues": got["issues"],
+                    "message": (f"{got['files']} generated Java file(s) parse and every "
+                                "type resolves. No compiler ran — a licensed SAP "
+                                "Commerce platform is item 3.11."
+                                if ok else
+                                f"{len(got['issues'])} static problem(s) in "
+                                f"{got['files']} generated Java file(s)."),
+                }
 
         return {
             "ran": False,

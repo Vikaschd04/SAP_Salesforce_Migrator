@@ -82,7 +82,6 @@ def test_hybris_verify_reports_the_absence_rather_than_a_clean_pass():
 # adapter wrongly in the direction that flatters the roadmap.
 @pytest.mark.parametrize("call", [
     lambda a: a.emit("/tmp/x", [], None, {}),
-    lambda a: a.validate("code", "F.java", {}, {}),
 ])
 def test_hybris_target_methods_raise_with_their_delivery_item(call):
     from src.adapters.hybris_target import ADAPTER
@@ -207,6 +206,16 @@ def test_an_eav_entity_still_says_its_attribute_set_is_open():
                          / "acme-commerce-magento"))
     customer = next(t for t in m.data_model.types if t.code == "customer")
     assert "admin UI" in customer.undeclared_note
+
+
+def test_hybris_validate_checks_rather_than_raising():
+    """3.10 built it: generated Java is parsed and its types resolved. `emit()` is the
+    one method still scaffolded, and the guard's list has to say only that."""
+    from src.adapters.hybris_target import ADAPTER
+
+    assert ADAPTER.validate("package p; public class Ok { }", "Ok.java", {}, {}) == []
+    bad = ADAPTER.validate("package p; class B { void f( { } }", "B.java", {}, {})
+    assert bad and bad[0]["rule"] == "java_syntax"
 
 
 def test_hybris_plan_no_longer_raises_but_the_pipeline_still_cannot_run():

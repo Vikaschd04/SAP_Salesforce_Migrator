@@ -203,6 +203,29 @@ def build_spring_beans(units: list, package: str, extension: str) -> str:
 
 # ── 3.3 · DAO with FlexibleSearch ─────────────────────────────────────────────
 
+def build_dao_interface(data_type, package: str) -> str:
+    """The DAO's contract. [3.3]
+
+    The implementation declared `implements <Item>Dao` from the start and this did not
+    exist, so every generated DAO named an interface nothing emitted — a Hybris build
+    fails on that. Found by the static check in 3.10, which is the first thing that ever
+    read the generated Java rather than the code that wrote it.
+    """
+    item = pascal(getattr(data_type, "code", ""))
+    attrs = list(getattr(data_type, "attributes", None) or [])
+    unique = [a.get("name", "") for a in attrs if a.get("unique")]
+    finders = unique or [a.get("name", "") for a in attrs[:1]]
+
+    out = [f"package {package}.daos;", "", "/**",
+           f" * Queries for {item}, migrated from the Adobe Commerce table"
+           f" `{getattr(data_type, 'code', '')}`.", " */",
+           f"public interface {item}Dao", "{"]
+    for q in finders:
+        out += ["", f"    {item}Model findBy{pascal(q)}(final String {_camel(q)});"]
+    out += ["}", ""]
+    return "\n".join(out)
+
+
 def build_dao(data_type, package: str) -> str:
     """A DAO shaped the way a Hybris developer writes one. [3.3]
 
@@ -218,6 +241,7 @@ def build_dao(data_type, package: str) -> str:
               if a.get("unique")]
 
     out = [f"package {package}.daos.impl;", "",
+           f"import {package}.daos.{item}Dao;",
            "import java.util.List;",
            "import de.hybris.platform.servicelayer.search.FlexibleSearchQuery;",
            "import de.hybris.platform.servicelayer.search.FlexibleSearchService;", "",
