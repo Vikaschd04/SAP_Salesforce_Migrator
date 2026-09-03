@@ -14,7 +14,7 @@ business class in a Magento estate a glance to review.
 import pytest
 
 from src import runctx
-from src.forecast import PROFILES, forecast, profile_for
+from src.forecast import DEFAULT_PROFILE, forecast, profile_for
 
 
 @pytest.fixture
@@ -45,21 +45,30 @@ CONFIG = {"model": "claude-opus-4-8"}
 
 # ── the profiles ──────────────────────────────────────────────────────────────
 
-def test_every_registered_pipeline_has_a_profile():
+def test_every_registered_pipeline_resolves_to_a_profile():
+    """A pair with no profile of its own gets the neutral default rather than nothing."""
     from src import pipeline
 
     pipeline.ensure_registered()
     for p in pipeline.available():
-        assert p.id in PROFILES, p.id
+        assert profile_for(p.id) is not None, p.id
+
+
+def test_the_profiles_live_with_their_pipelines_not_in_the_assurance_layer():
+    """Per-pair measurements are knowledge *about a pair*. A table of them inside
+    `forecast.py` is platform knowledge by another name, and the purity ratchet said so."""
+    src = (__import__("pathlib").Path(__file__).resolve().parents[1]
+           / "src" / "forecast.py").read_text()
+    assert "adobe" not in src.lower() and "magento" not in src.lower()
 
 
 def test_the_shipped_pair_is_measured_and_the_new_one_is_not():
-    assert PROFILES["hybris->salesforce"].measured is True
-    assert PROFILES["adobe->hybris"].measured is False
+    assert profile_for("hybris->salesforce").measured is True
+    assert profile_for("adobe->hybris").measured is False
 
 
-def test_an_unknown_pipeline_falls_back_to_the_shipped_profile():
-    assert profile_for("no-such-pipeline") is PROFILES["hybris->salesforce"]
+def test_an_unknown_pipeline_falls_back_to_the_default_profile():
+    assert profile_for("no-such-pipeline") is DEFAULT_PROFILE
 
 
 # ── the semantic collision ────────────────────────────────────────────────────
@@ -67,8 +76,8 @@ def test_an_unknown_pipeline_falls_back_to_the_shipped_profile():
 def test_model_means_opposite_things_on_the_two_platforms():
     """A Hybris Model is generated from items.xml; a Magento Model holds business logic.
     `hybris_plan.py` says so in as many words when it routes one to a Service."""
-    assert "Model" in PROFILES["hybris->salesforce"].mechanical_layers
-    assert "Model" not in PROFILES["adobe->hybris"].mechanical_layers
+    assert "Model" in profile_for("hybris->salesforce").mechanical_layers
+    assert "Model" not in profile_for("adobe->hybris").mechanical_layers
 
 
 def test_that_collision_would_have_understated_review_by_an_order_of_magnitude(
@@ -126,5 +135,5 @@ def test_the_report_warns_above_the_number_not_below_it(as_adobe, tmp_path):
 def test_php_is_denser_per_token_than_java():
     """Sigils, `->`, and no type declarations to pad the text. The number is itself an
     estimate; reusing Java's silently would not have been."""
-    assert (PROFILES["adobe->hybris"].chars_per_token
-            < PROFILES["hybris->salesforce"].chars_per_token)
+    assert (profile_for("adobe->hybris").chars_per_token
+            < profile_for("hybris->salesforce").chars_per_token)

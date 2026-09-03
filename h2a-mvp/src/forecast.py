@@ -52,43 +52,35 @@ class Profile:
         self.repair_low, self.repair_high = repair_low, repair_high
 
 
-PROFILES = {
-    "hybris->salesforce": Profile(
-        measured=True,
-        basis="instrumented runs over the reference corpus (17 classes, ~30 KB of Java)",
-        chars_per_token=4,          # close enough for Java/Apex; over-estimates slightly
-        # A Hybris `Model` is a class the platform *generated* from items.xml — reviewing
-        # one is a glance.
-        mechanical_layers={"Model", "DAO", "Utility"},
-    ),
-    "adobe->hybris": Profile(
-        measured=False,
-        basis="carried over from the Hybris→Salesforce pair; NOT measured on PHP→Java",
-        # PHP is denser per token than Java: sigils, `->`, and no type declarations to
-        # pad the text. 3.5 rather than 4 is itself an estimate, and an honest one is
-        # better than silently reusing a number measured on another language.
-        chars_per_token=3.5,
-        # A Magento `Model` holds business logic — the opposite of a Hybris one. Using the
-        # same set would call every business class in the estate a glance to review, and
-        # review time is what a customer plans staffing around.
-        mechanical_layers={"DAO", "Helper", "Script"},
-    ),
-}
+#: The shipped pair's numbers, and the neutral fallback. A *specific* pair's profile is
+#: registered with its pipeline (see `pipeline.py`), because per-pair measurements are
+#: platform knowledge and this module is not allowed to hold any — the purity ratchet
+#: caught exactly that when the table lived here. [4.3]
+DEFAULT_PROFILE = Profile(
+    measured=True,
+    basis="instrumented runs over the reference corpus (17 classes, ~30 KB of source)",
+    chars_per_token=4,
+    mechanical_layers={"Model", "DAO", "Utility"},
+)
 
 
 def profile_for(pipeline_id: str = "") -> Profile:
-    """The profile for the running pipeline, or the shipped one."""
+    """The running pipeline's own profile, or the default.
+
+    Asked of the pipeline rather than looked up here: which numbers apply to a pair is
+    knowledge about that pair, and an assurance module that held a table of them would be
+    holding platform knowledge by another name.
+    """
     from src import pipeline as _pl
     from src import runctx
 
-    pid = pipeline_id or runctx.pipeline_id() or ""
-    if pid in PROFILES:
-        return PROFILES[pid]
     try:
         _pl.ensure_registered()
-        return PROFILES.get(_pl.default_pipeline().id, PROFILES["hybris->salesforce"])
+        pid = pipeline_id or runctx.pipeline_id() or ""
+        p = _pl.get(pid) if pid else _pl.default_pipeline()
+        return getattr(p, "forecast_profile", None) or DEFAULT_PROFILE
     except Exception:
-        return PROFILES["hybris->salesforce"]
+        return DEFAULT_PROFILE
 
 
 # Seconds per call, wall clock, including provider latency. Frontier-tier generation is

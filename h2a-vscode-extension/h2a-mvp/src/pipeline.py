@@ -136,6 +136,10 @@ class Pipeline:
     label: str = ""
     knowledge_pack: str = ""      # directory of prompts/mappings/RAG for this pair
     shipped: bool = False         # is this the path customers already run?
+    #: Per-pair cost/effort constants for the forecast. Registered here rather than in
+    #: `forecast.py` because they are measurements *about a pair*, and the assurance layer
+    #: may not hold platform knowledge. None means the neutral default. [4.3]
+    forecast_profile: object = None
 
     @property
     def implemented(self) -> bool:
@@ -297,6 +301,7 @@ def _register_builtins() -> None:
     """Import the shipped adapters. Deferred so importing this module stays cheap."""
     if _REGISTRY:
         return
+    from src import forecast as _forecast
     from src.adapters import hybris_source, salesforce_target, adobe_source, hybris_target
     register(Pipeline(
         id="hybris->salesforce",
@@ -316,6 +321,17 @@ def _register_builtins() -> None:
         target=hybris_target.ADAPTER,
         label="Adobe Commerce → SAP Hybris",
         knowledge_pack="adobe_to_hybris",
+        # Not measured on PHP→Java. Carried over from the pair we have actually run, and
+        # the forecast says so before it says the number. Two differences that are not
+        # guesses: PHP is denser per token than Java, and a Magento `Model` holds business
+        # logic where a Hybris one is generated from items.xml — sharing that label
+        # understated review effort ninefold. [4.3]
+        forecast_profile=_forecast.Profile(
+            measured=False,
+            basis="carried over from the Hybris→Salesforce pair; NOT measured on PHP→Java",
+            chars_per_token=3.5,
+            mechanical_layers={"DAO", "Helper", "Script"},
+        ),
         shipped=False,
     ))
 
