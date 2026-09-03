@@ -194,17 +194,23 @@ sandboxes whose usernames do not say so — check the instance URL, never the us
 
 ## Phase 3 — SAP Hybris target adapter **and its oracle**
 
-Shipped together — per the roadmap, a pipeline that cannot be verified cannot make the
-claim the product is sold on.
+**Decision, 2026-09-03:** a licensed SAP Commerce platform is being procured. Build the
+architecture now and verify when it lands — the plan already separates these, so rungs
+3.10 (stub classpath, no licence) proceed and 3.11–3.12 wait.
+
+The one reordering that follows: **3.9 moves first, not last.** If emission ships before
+sign-off knows the output was never compiled, every item built in between inherits a
+claim nobody checked. Getting the rung ladder in early makes the rest honest by
+construction rather than by later correction.
 
 ### The adapter
 
 | # | Work item | Done when |
 |---|---|---|
-| 3.1 | Extension scaffolding | `extensioninfo.xml`, `build.xml`, correct directory layout |
+| ~~3.1~~ | ✅ **Extension scaffolding** — `adapters/hybris_extension.py` | `extensioninfo.xml` with core/commerceservices, `build.xml`, `*-spring.xml`, and `src`/`testsrc` package trees. An extension that is *nearly* the right shape is worse than an obviously incomplete one: the platform's build finds nothing and says little. |
 | 3.2 | Java service + interface generation | Idiomatic Spring services from IR units |
 | 3.3 | DAO generation with FlexibleSearch | Queries shaped as a Hybris developer would write them |
-| 3.4 | `*-items.xml` emission | Data model from the IR, with EAV residue noted |
+| ~~3.4~~ | ✅ **`*-items.xml` emission** | Declared tables become generated item types with their own deployment table and a typecode above 10000; a Magento EAV entity becomes `autocreate="false" generate="false"` on the type SAP already owns. Emitting the second as the first produces a parallel `Customer` holding half a customer — it deploys perfectly and splits the entity. The "attribute set is open" note reaches the emitted XML. |
 | 3.5 | ImpEx emission | Seed data, idempotent |
 | 3.6 | Spring cron trigger + `AbstractJobPerformable` emission | Same timing as the source |
 | 3.7 | Business-process XML emission | The inverse of the Flow generator already built |

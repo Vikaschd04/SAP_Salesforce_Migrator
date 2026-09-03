@@ -36,7 +36,18 @@ class HybrisTarget:
         raise NotImplementedYet("Planning Hybris targets", "3.2")
 
     def emit(self, output_dir: str, artifacts: list, data_model, config: dict) -> list:
-        raise NotImplementedYet("Emitting a Hybris extension", "3.1–3.7")
+        """Still raises, and the scaffolding underneath it is real. [3.1, 3.4 done]
+
+        `hybris_extension.build_extension` emits the extension skeleton and the whole
+        data model today. This does not call it, because emit() is the *whole* job: a run
+        that wrote items.xml and no services would finish, report files created, and hand
+        over an extension with a data model and no behaviour. That reads as success.
+
+        It becomes the assembly point once services and DAOs exist (3.2, 3.3).
+        """
+        raise NotImplementedYet(
+            "Emitting a Hybris extension — the skeleton and items.xml are built (3.1, "
+            "3.4); services, DAOs, ImpEx and cron are not", "3.2–3.7")
 
     def validate(self, code: str, filename: str, schema: dict, config: dict) -> list:
         raise NotImplementedYet("Validating generated Java", "3.10")
