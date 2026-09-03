@@ -14,6 +14,7 @@ from src import ir
 class HybrisSource:
     platform = "hybris"
     label = "SAP Hybris (Java / Spring)"
+    code_language = "Java"      # what the source is written in, in reports
 
     def detect(self, root: str) -> dict:
         from src.preflight import inspect

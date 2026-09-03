@@ -122,9 +122,29 @@ def build_signoff(bb, *, accounting: dict | None = None, cost: dict | None = Non
     return contract
 
 
+def _languages() -> tuple:
+    """`(source_language, target_language)` for the running pipeline. [4.4]
+
+    Report prose named Salesforce's languages unconditionally, so a Hybris run would have
+    told the reader about "Apex methods with no Java origin" while emitting Java from PHP.
+    A report that names the wrong platform is not a cosmetic problem: it is the clearest
+    signal a reader has that the tool knows what it just did.
+    """
+    from src import pipeline, runctx
+    try:
+        pipeline.ensure_registered()
+        pid = runctx.pipeline_id()
+        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        return (getattr(p.source, "code_language", "source"),
+                getattr(p.target, "code_language", "target"))
+    except Exception:
+        return "source", "target"
+
+
 def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim) -> list[str]:
     """Everything this document does not certify. Assembled from the same data as the
     claims, so it cannot drift out of step with them."""
+    src, tgt = _languages()
     out = []
     if not any(a.get("supervised") for a in approvals):
         out.append("**No human reviewed any stage of this run.** Every gate was approved "
@@ -165,13 +185,13 @@ def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim) -> l
     total_beh = chars.get("total") or 0
     if total_beh and replayed < total_beh:
         out.append(f"{total_beh - replayed} of {total_beh} recorded behaviour(s) could "
-                   "not be replayed against the generated Apex.")
+                   f"not be replayed against the generated {tgt}.")
     if not total_beh:
         out.append("No recorded behaviours were available, so nothing here is backed by "
                    "golden-master parity against the original implementation.")
 
     if prov.get("source_without_target"):
-        out.append(f"{prov['source_without_target']} Java method(s) have no traceable Apex "
+        out.append(f"{prov['source_without_target']} {src} method(s) have no traceable {tgt} "
                    "counterpart. Some are inlined helpers; some may be lost logic.")
     if prov.get("target_without_origin"):
         out.append(f"{prov['target_without_origin']} generated method(s) trace to no Java "
@@ -200,6 +220,7 @@ def headline(c: dict) -> str:
 
 
 def write_signoff_md(output_dir: str, c: dict) -> str:
+    src, tgt = _languages()
     out = ["# Migration Sign-Off Contract", "",
            f"**{headline(c)}**", "",
            f"<sub>Contract `{c['contract_id']}` · generated {_fmt_when(c['generated_at'])} · "
@@ -259,7 +280,7 @@ def write_signoff_md(output_dir: str, c: dict) -> str:
                    "generated test source referencing the rule's terms |")
     if ch.get("total"):
         out.append(f"| Recorded behaviours replayed | {ch.get('replayed', 0)}/{ch['total']} | "
-                   "mined from the original JUnit suite and replayed against the Apex |")
+                   f"mined from the original test suite and replayed against the {tgt} |")
     if pr.get("methods"):
         # Spelled out rather than "the rest by normalised name", which reads as a
         # reassurance when the linked count is zero.

@@ -52,6 +52,25 @@ def _best_method(rule: str, methods: list[dict]) -> tuple[dict | None, float]:
     return (best, score) if score >= _MATCH_FLOOR else (None, score)
 
 
+def _languages() -> tuple:
+    """`(source_language, target_language)` for the running pipeline. [4.4]
+
+    Report prose named Salesforce's languages unconditionally, so a Hybris run would have
+    told the reader about "Apex methods with no Java origin" while emitting Java from PHP.
+    A report that names the wrong platform is not a cosmetic problem: it is the clearest
+    signal a reader has that the tool knows what it just did.
+    """
+    from src import pipeline, runctx
+    try:
+        pipeline.ensure_registered()
+        pid = runctx.pipeline_id()
+        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        return (getattr(p.source, "code_language", "source"),
+                getattr(p.target, "code_language", "target"))
+    except Exception:
+        return "source", "target"
+
+
 def _methods_of(source: str) -> list[dict]:
     """Java methods with their bodies, so a rule can be matched against what code does."""
     from src.provenance import _source_symbols
@@ -167,6 +186,7 @@ def headline(s: dict) -> str:
 
 
 def write_alignment_md(output_dir: str, al: dict) -> str:
+    src, tgt = _languages()
     s = al.get("summary") or {}
     out = ["# Semantic Alignment — intent · implementation · proof", "",
            "Not a text diff. A diff across two languages compares punctuation; this "
@@ -201,7 +221,8 @@ def write_alignment_md(output_dir: str, al: dict) -> str:
         out.append(f"| {intent.replace('|', chr(92) + '|')} | {impl} | {proof} |")
 
     out += ["", "---", "",
-            "> **On the chain.** Rule → source class is recorded fact. Apex method → Java "
+            f"> **On the chain.** Rule → source class is recorded fact. {tgt} method → "
+            f"{src} "
             "method is provenance, graded exact or normalised. Rule → *method* is keyword "
             "overlap, because the Comprehender extracts a rule from a class rather than "
             "from a line — that link is the weakest and is labelled wherever it appears. "

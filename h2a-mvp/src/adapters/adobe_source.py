@@ -87,6 +87,7 @@ MAGENTO_MARKERS = (
 class AdobeCommerceSource:
     platform = "adobe-commerce"
     label = "Adobe Commerce (Magento 2 · PHP)"
+    code_language = "PHP"      # what the source is written in, in reports
     #: The source half is built (items 2.1–2.12): detection, PHP, the XML wiring, EAV,
     #: recorded behaviour, symbols and type resolution. `adobe->hybris` still cannot run,
     #: because Pipeline.implemented needs *both* halves and the Hybris target is Phase 3.

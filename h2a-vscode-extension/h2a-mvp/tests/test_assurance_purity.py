@@ -41,20 +41,10 @@ _PLATFORM_WORD = re.compile(
 #: Known platform vocabulary, and the delivery-plan item that removes it. Shrink only.
 #: A module absent from this map must have none at all.
 KNOWN_DEBT = {
-    # characterize is CLEAR as of 1.13: mining moved to adapters/java_junit_mining.py,
-    # emission to adapters/apex_characterization.py, and the report asks the target what
-    # its generated code is called instead of assuming "Apex".
-    # 1.14 renamed the *keys* (apex_lines → target_lines, java_without_apex →
-    # source_without_target). What remains is user-facing prose in the generated reports —
-    # "Apex methods with no Java origin". That is deliberately still platform-named: a
-    # Salesforce migration should say Apex. Making the wording follow the pipeline is
-    # item 4.4, which is where this debt actually belongs.
-    "provenance":   ({"apex"},               "4.4 — pipeline-aware report wording"),
-    "alignment":    ({"apex"},               "4.4 — pipeline-aware report wording"),
-    # 3.9 paid off half of this: the verification claim now comes from the running
-    # target's own label and language, so signoff no longer names Salesforce. What is
-    # left is `apex` in prose elsewhere in the document.
-    "signoff":      ({"apex"},               "4.4 — pipeline-aware report wording"),
+    # Empty, and that is the point of a ratchet: 1.13 cleared `characterize`, 3.9 took
+    # `salesforce` out of `signoff`, and 4.4 took the last of the report prose. A module
+    # absent from this map must carry no platform vocabulary at all, so adding one back
+    # now fails CI rather than passing quietly.
 }
 
 

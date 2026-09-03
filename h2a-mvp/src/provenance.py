@@ -31,6 +31,25 @@ _GENERIC = {"get", "set", "run", "execute", "perform", "handle", "process", "toS
             "equals", "hashCode", "init", "main"}
 
 
+def _languages() -> tuple:
+    """`(source_language, target_language)` for the running pipeline. [4.4]
+
+    Report prose named Salesforce's languages unconditionally, so a Hybris run would have
+    reported "Java method(s) with no Apex counterpart" while emitting Java from PHP. A
+    report that names the wrong platform is not cosmetic: it is the clearest signal a
+    reader has about whether the tool knows what it just did.
+    """
+    from src import pipeline, runctx
+    try:
+        pipeline.ensure_registered()
+        pid = runctx.pipeline_id()
+        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        return (getattr(p.source, "code_language", "source"),
+                getattr(p.target, "code_language", "target"))
+    except Exception:
+        return "source", "target"
+
+
 def _source_symbols(text: str) -> list[dict]:
     """Methods in the *source*, located by the source platform's own reader. [2.11]
 
@@ -80,11 +99,11 @@ def _class_name(text: str) -> str:
 
 def map_artifact(artifact) -> dict:
     """Trace each generated method back to the Java that produced it."""
-    apex_src = getattr(artifact, "main_class", "") or ""
+    target_src = getattr(artifact, "main_class", "") or ""
     # A constructor has no Java origin by definition and listing it as unexplained
     # would be noise in exactly the column that is supposed to mean something.
-    ctor = _class_name(apex_src)
-    apex = [s for s in _target_symbols(apex_src) if s["name"] != ctor]
+    ctor = _class_name(target_src)
+    generated = [s for s in _target_symbols(target_src) if s["name"] != ctor]
     java_syms: list[dict] = []
     for c in getattr(artifact, "source_classes", []) or []:
         for s in _source_symbols(c.get("source", "") or ""):
@@ -99,7 +118,7 @@ def map_artifact(artifact) -> dict:
 
     links, orphans = [], []
     used = set()
-    for a in apex:
+    for a in generated:
         hit, basis = None, ""
         cands = by_exact.get(a["name"])
         if cands:
@@ -133,7 +152,7 @@ def map_artifact(artifact) -> dict:
         "links": links,
         "target_without_origin": orphans,
         "source_without_target": unmapped_java,
-        "coverage": round(100 * len(links) / len(apex)) if apex else None,
+        "coverage": round(100 * len(links) / len(generated)) if generated else None,
     }
 
 
@@ -157,6 +176,7 @@ def build_provenance(bb) -> dict:
 
 
 def headline(s: dict) -> str:
+    src, tgt = _languages()
     t = s.get("methods") or 0
     if not t:
         return "No generated methods to trace."
@@ -165,11 +185,12 @@ def headline(s: dict) -> str:
     if s.get("target_without_origin"):
         tail.append(f"{s['target_without_origin']} with no origin")
     if s.get("source_without_target"):
-        tail.append(f"{s['source_without_target']} Java method(s) with no Apex counterpart")
+        tail.append(f"{s['source_without_target']} {src} method(s) with no {tgt} counterpart")
     return line + (" · " + ", ".join(tail) if tail else "")
 
 
 def write_provenance_md(output_dir: str, prov: dict) -> str:
+    src, tgt = _languages()
     s = prov.get("summary") or {}
     out = ["# Provenance — where each generated method came from", "",
            "Answers the first question any reviewer asks. Built by locating methods in both "
@@ -177,7 +198,8 @@ def write_provenance_md(output_dir: str, prov: dict) -> str:
            f"**{headline(s)}**", ""]
 
     if s.get("source_without_target"):
-        out += [f"> ⚠️ **{s['source_without_target']} Java method(s) have no Apex counterpart.** "
+        out += [f"> ⚠️ **{s['source_without_target']} {src} method(s) have no {tgt} "
+                f"counterpart.** "
                 "Some will be private helpers that were inlined, and some will be logic that "
                 "did not make it. This is the list to check first.", ""]
 
@@ -197,7 +219,8 @@ def write_provenance_md(output_dir: str, prov: dict) -> str:
                     for o in m["target_without_origin"]]
             out.append("")
         if m["source_without_target"]:
-            out += ["**Java with no Apex counterpart** — check these were meant to disappear:", ""]
+            out += [f"**{src} with no {tgt} counterpart** — check these were meant to "
+                "disappear:", ""]
             out += [f"- `{u['source_class']}.{u['source']}` (lines {u['source_lines'][0]}–{u['source_lines'][1]})"
                     for u in m["source_without_target"]]
             out.append("")
