@@ -1,6 +1,7 @@
 {
   "corpus": "acme-commerce-hybris",
   "files": {
+    ".forceignore": "4e2402944ba1ffda",
     "ANTI_PATTERNS.md": "a0dd3e3d85c61166",
     "BUSINESS_PROCESSES.md": "212be37d482961f8",
     "BUSINESS_RULES.md": "d78cf7815fbbe8b9",
@@ -44,6 +45,8 @@
     "force-app/main/default/classes/CheckoutContext.cls-meta.xml": "4d7519808de211ef",
     "force-app/main/default/classes/CheckoutContextTest.cls": "4ecb8b0feabec484",
     "force-app/main/default/classes/CheckoutContextTest.cls-meta.xml": "4d7519808de211ef",
+    "force-app/main/default/classes/H2A_UnmigratedStep.cls": "076f44026b62f89d",
+    "force-app/main/default/classes/H2A_UnmigratedStep.cls-meta.xml": "7872855b1294bf47",
     "force-app/main/default/classes/OrderFulfilmentService.cls": "eb9093c87c8dcf8e",
     "force-app/main/default/classes/OrderFulfilmentService.cls-meta.xml": "4d7519808de211ef",
     "force-app/main/default/classes/OrderFulfilmentServiceTest.cls": "ceffc19922180d2f",
@@ -84,7 +87,7 @@
     "force-app/main/default/classes/StaleCartCleanupScheduler.cls-meta.xml": "4d7519808de211ef",
     "force-app/main/default/classes/StaleCartCleanupSchedulerTest.cls": "845afd3057f24dff",
     "force-app/main/default/classes/StaleCartCleanupSchedulerTest.cls-meta.xml": "4d7519808de211ef",
-    "force-app/main/default/flows/order_fulfilment_process.flow-meta.xml": "7d35fc4fe04bda01",
+    "force-app/main/default/flows/order_fulfilment_process.flow-meta.xml": "410e6fe595937688",
     "force-app/main/default/lwc/fulfilmentTracker/__tests__/fulfilmentTracker.test.js": "832aaffa08162095",
     "force-app/main/default/lwc/fulfilmentTracker/fulfilmentTracker.css": "897382c66980fa3c",
     "force-app/main/default/lwc/fulfilmentTracker/fulfilmentTracker.html": "be61f85ab39f194b",

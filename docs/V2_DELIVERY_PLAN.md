@@ -159,10 +159,26 @@ before it is ever paired with a target we cannot verify as strongly.
 | ~~2.10~~ | ✅ **11 Magento hazard rules** — `adapters/magento_radar.py` | 13 findings on the fixture, every planted construct caught and located. Framed against Hybris: Salesforce fails at *limits*, Hybris fails at *expressiveness*, so every hazard names what Hybris would do instead. |
 | ~~2.11~~ | ✅ **Symbol lookup moved behind the seam** — `source.symbols()` / `target.symbols()` | `provenance` and `alignment` shared one Java-shaped regex for source *and* generated code. On PHP it found 1 method in 6 — no error, just under-reporting, in the two modules whose whole output is how much of the source is accounted for. PHP now finds all 6 from the AST; Java/Apex unchanged, golden green with no re-baseline. |
 | 2.12 | Conservative type inference + triage routing | Every unresolved type lands in must-review, never guessed |
-| 2.13 | Adobe→Salesforce fixture in the test suite | Deploys clean against a real org |
+| 2.13 | Adobe→Salesforce fixture in the test suite | Blocked on `AdobeCommerceSource.read()`. **But the Hybris output was deploy-verified against a real sandbox** and it found four defects no local check could see — see below. |
 
 **Exit:** 100% of the reference Magento project accounted for in the ledger; the fixture
 deploy-verifies.
+
+### What a real org found that 600 tests could not
+
+A dry-run deploy of the *Hybris* reference output against a sandbox: **105 of 106
+components validated**, and four genuine defects surfaced, none of them visible locally
+because every file was well-formed and individually valid.
+
+| Defect | Why nothing local caught it |
+|---|---|
+| Jest specs deployed as LWC metadata (`LWC1702`) | Valid JS, valid bundle layout. There was no `.forceignore` at all, so **every** migration this tool has produced would have failed both LWC bundles. |
+| `actionCalls` interleaved with `decisions` | Well-formed XML, every element individually valid. The Flow type is an `xsd:sequence`: each kind must be consecutive. |
+| Flow pointed at `__NOT_MIGRATED__` | A placeholder that read well and named nothing. A Flow whose action Salesforce cannot find is rejected **in full** — the dangling placeholder cost the whole flow, topology and wired steps included. |
+| `recordIds` input vs `recordId` variable, and `.outcome` without `storeOutputAutomatically` | Both spelled correctly; it is the *combination* the platform refuses. |
+
+The one remaining failure is `Order__c` colliding with pre-existing `Test_ApexSharing`
+components in that particular org — not our output.
 **Efficiency gate:** PHP slimming ≥30%; comprehension on the cheap tier.
 **Estimate:** 8–10 weeks.
 

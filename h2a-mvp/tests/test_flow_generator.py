@@ -113,7 +113,11 @@ def test_steps_with_no_converted_apex_are_present_but_inert(flow):
     """The shape of the process must survive even where the code did not."""
     hf = next(e for e in _root(flow).findall("f:actionCalls", NS)
               if e.find("f:name", NS).text == "handleFailure")
-    assert hf.find("f:actionName", NS).text == "__NOT_MIGRATED__"
+    # The placeholder names a class that is actually shipped. It used to be a literal
+    # `__NOT_MIGRATED__`, which read well and did not exist — and a Flow referencing an
+    # action Salesforce cannot find is rejected in full, so a dangling placeholder cost
+    # the customer the whole flow rather than just the unfinished step. [2.13]
+    assert hf.find("f:actionName", NS).text == "H2A_UnmigratedStep"
     assert "wire an @InvocableMethod" in hf.find("f:description", NS).text
     assert any("handleFailure" in n and "no converted Apex" in n
                for n in flow["review_notes"])
@@ -184,3 +188,58 @@ def test_an_empty_process_does_not_explode(tmp_path):
     out = build_flow(parse_process(str(f), set()), set())
     ET.fromstring(out["xml"])
     assert out["coverage"]["actions"] == 0
+
+
+def test_the_placeholder_action_is_a_class_that_actually_exists():
+    """A Flow whose action Salesforce cannot find does not deploy at all.
+
+    Found by a real dry-run deploy against an org: the flow failed in full, taking the
+    topology and every wired step with it, because the placeholder named nothing.
+    """
+    from src.flow_generator import UNMIGRATED_ACTION, build_unmigrated_invocable
+
+    apex = build_unmigrated_invocable()
+    assert f"class {UNMIGRATED_ACTION}" in apex
+    assert "@InvocableMethod" in apex
+    assert "throw new" in apex, "a step that silently did nothing would be worse"
+    # Same shape as a wired step's invocable, or the Flow's input parameter and its
+    # `.outcome` decision reference do not resolve against it.
+    assert "public Id recordId;" in apex
+    assert "public String outcome;" in apex
+
+
+def test_an_action_stores_its_output_so_decisions_can_branch_on_it(flow):
+    """`{!action.outcome}` is rejected unless the action stores output automatically.
+
+    Nothing local can see this: the XML is valid and the reference is spelled correctly.
+    It is the combination Salesforce refuses, and only a real deploy said so.
+    """
+    assert "<storeOutputAutomatically>true</storeOutputAutomatically>" in flow["xml"]
+
+
+def test_the_input_parameter_matches_the_invocable_variable(flow):
+    """It was `recordIds`; the Request class declares `recordId`, so it matched nothing."""
+    assert "<name>recordId</name>" in flow["xml"]
+    assert "<name>recordIds</name>" not in flow["xml"]
+    assert "public Id recordId;" in build_invocable("CheckOrderAction")
+
+
+def test_flow_elements_are_grouped_in_schema_order(flow):
+    """The Flow type is an xsd:sequence: each kind must be consecutive, and in order.
+
+    The generator builds elements in topological order, which interleaves actionCalls and
+    decisions — "Element actionCalls is duplicated at this location", from a real deploy.
+    """
+    import re
+
+    from src.flow_generator import _FLOW_ELEMENT_ORDER
+
+    kinds = re.findall(r"^  <(\w+)>", flow["xml"], re.M)
+    assert kinds.count("actionCalls") >= 2
+    first = kinds.index("actionCalls")
+    last = len(kinds) - 1 - kinds[::-1].index("actionCalls")
+    assert all(k == "actionCalls" for k in kinds[first:last + 1]), \
+        "every actionCalls must be consecutive"
+
+    ranked = [_FLOW_ELEMENT_ORDER.index(k) for k in kinds if k in _FLOW_ELEMENT_ORDER]
+    assert ranked == sorted(ranked), "kinds must appear in the schema's order"

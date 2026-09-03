@@ -630,6 +630,26 @@ def write_outputs(output_dir: str, generated: list[dict], item_types: list[dict]
     p.write_text(json.dumps(sfdx_project, indent=2), encoding="utf-8")
     created.append(str(p))
 
+    # Without this every LWC bundle fails to deploy. A Jest spec imports `createElement`
+    # from 'lwc', which is valid in the test runner and is not a deployable LWC module —
+    # Salesforce rejects the whole bundle with LWC1702. The generated tests are worth
+    # keeping (they are how a developer checks the component), they simply are not
+    # metadata. Found by a real dry-run deploy: the files are well-formed and every local
+    # check passes, because the problem only exists in the platform's own compiler. [2.13]
+    p = out / ".forceignore"
+    p.write_text(
+        "# Jest specs are development-only. They are not deployable metadata, and\n"
+        "# deploying one fails its entire LWC bundle with LWC1702.\n"
+        "**/__tests__/**\n"
+        "**/jest.config.js\n"
+        "**/jsconfig.json\n"
+        "\n# Reports and run state belong to the migration, not to the org.\n"
+        "*.md\n"
+        ".call_graph.json\n"
+        "checkpoints/\n",
+        encoding="utf-8")
+    created.append(str(p))
+
     scratch_def = {
         "orgName": "H2A Migration Scratch Org",
         "edition": "Developer",

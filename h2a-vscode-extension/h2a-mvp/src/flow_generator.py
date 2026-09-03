@@ -180,6 +180,8 @@ def build_flow(process: dict, converted: set[str] | None = None) -> dict:
         "name": process.get("name") or api,
         "api_name": api,
         "xml": body,
+        # A flow with an unwired step must carry the placeholder class, or the flow
+        # itself will not deploy.
         "invocables": invocables,
         "review_notes": review,
         "coverage": {"actions": len(actions), "wired": resolved,
@@ -195,6 +197,58 @@ def _conn(target_ref: str, tag: str = "connector") -> str:
     return f"    <{tag}><targetReference>{target_ref}</targetReference></{tag}>\n"
 
 
+#: The invocable an unwired step points at. It has to be a class that actually exists:
+#: a Flow referencing an action Salesforce cannot find does not deploy at all, so a
+#: dangling placeholder cost the customer the *whole* flow — topology, wired steps and
+#: all — rather than just the unfinished step. Found by a real dry-run deploy. [2.13]
+UNMIGRATED_ACTION = "H2A_UnmigratedStep"
+
+
+def build_unmigrated_invocable() -> str:
+    """Apex for the placeholder action: deploys, and refuses to run.
+
+    Deliberately throws rather than returning quietly. A step that silently did nothing
+    would leave a Flow that appears to work and skips part of someone's order pipeline —
+    the worst available outcome, and the one this whole scaffold exists to avoid.
+    """
+    return f"""/**
+ * Placeholder for a business-process step with no converted Apex behind it yet.
+ *
+ * It exists so the generated Flow can deploy: a Flow that references an action
+ * Salesforce cannot find is rejected in full, which would hide the topology and the
+ * steps that *were* migrated along with the ones that were not.
+ *
+ * It throws on purpose. Returning quietly would produce a Flow that looks like it works
+ * and silently skips part of the process.
+ */
+public with sharing class {UNMIGRATED_ACTION} {{
+
+    public class UnmigratedStepException extends Exception {{}}
+
+    // Same Request/Result shape as a wired step's invocable, so the Flow's input
+    // parameter and its `.outcome` decision reference resolve against this too.
+    public class Request {{
+        @InvocableVariable(required=true label='Record Id')
+        public Id recordId;
+    }}
+
+    public class Result {{
+        @InvocableVariable(label='Outcome')
+        public String outcome;
+    }}
+
+    @InvocableMethod(
+        label='Unmigrated step'
+        description='A Hybris process step that has not been migrated yet. Throws.')
+    public static List<Result> run(List<Request> requests) {{
+        throw new UnmigratedStepException(
+            'This business-process step was scaffolded by the migration and has no Apex '
+            + 'behind it yet. See BUSINESS_PROCESSES.md for what it did in Hybris.');
+    }}
+}}
+"""
+
+
 def _action_call(name, label, x, y, action_name, next_ref, wired) -> str:
     out = [f"  <actionCalls>\n    <name>{name}</name>\n"
            f"    <label>{escape(label)}</label>\n"
@@ -202,19 +256,31 @@ def _action_call(name, label, x, y, action_name, next_ref, wired) -> str:
     if wired:
         out.append(f"    <actionName>{action_name}</actionName>\n"
                    "    <actionType>apex</actionType>\n")
+        # The parameter name is the @InvocableVariable on the Request class, which is
+        # `recordId`. It was `recordIds` here, matching nothing.
         out.append("    <inputParameters>\n"
-                   "      <name>recordIds</name>\n"
+                   "      <name>recordId</name>\n"
                    "      <value><elementReference>recordId</elementReference></value>\n"
                    "    </inputParameters>\n")
     else:
         # A placeholder keeps the topology visible on the canvas. It is deliberately
         # inert: a step that silently did nothing would be worse than one that is
         # obviously unfinished.
-        out.append("    <actionName>__NOT_MIGRATED__</actionName>\n"
+        out.append(f"    <actionName>{UNMIGRATED_ACTION}</actionName>\n"
                    "    <actionType>apex</actionType>\n"
                    "    <description>No converted Apex for this step — wire an "
-                   "@InvocableMethod here.</description>\n")
+                   "@InvocableMethod here. The placeholder throws if it ever runs."
+                   "</description>\n"
+                   "    <inputParameters>\n"
+                   "      <name>recordId</name>\n"
+                   "      <value><elementReference>recordId</elementReference></value>\n"
+                   "    </inputParameters>\n")
     out.append(_conn(next_ref))
+    # Decisions branch on `{!<action>.outcome}`, and Salesforce rejects that reference
+    # unless the action stores its output automatically. Nothing local can see this: the
+    # XML is valid and the reference is spelled correctly — it is the *combination* that
+    # is refused, and only the platform knows. [2.13]
+    out.append("    <storeOutputAutomatically>true</storeOutputAutomatically>\n")
     out.append("  </actionCalls>\n")
     return "".join(out)
 
@@ -280,6 +346,43 @@ def _end_assignment(name, label, x, y, state) -> str:
             "    </assignmentItems>\n  </assignments>\n")
 
 
+#: The Flow metadata type is an xsd:sequence, so every element of one kind must appear
+#: consecutively *and* the kinds must appear in this order. The generator builds elements
+#: in topological order — the order the process actually flows — which interleaves
+#: actionCalls and decisions and produces "Element actionCalls is duplicated at this
+#: location". Found by a real deploy; no local check can see it, because the file is
+#: well-formed XML and every element is individually valid. [2.13]
+_FLOW_ELEMENT_ORDER = (
+    "actionCalls", "apexPluginCalls", "assignments", "choices", "collectionProcessors",
+    "constants", "decisions", "dynamicChoiceSets", "formulas", "loops",
+    "orchestratedStages", "processMetadataValues", "recordCreates", "recordDeletes",
+    "recordLookups", "recordRollbacks", "recordUpdates", "screens", "sourceTemplate",
+    "stages", "start", "steps", "subflows", "textTemplates", "transforms",
+    "triggerOrder", "variables", "waits",
+)
+
+
+def _in_schema_order(elements: list) -> str:
+    """Group Flow elements by kind, in the order the schema demands.
+
+    Order *within* a kind is preserved, so the flow still reads in process order wherever
+    the schema allows it to.
+    """
+    import re as _re
+
+    buckets: dict = {}
+    for el in elements:
+        m = _re.match(r"\s*<(\w+)>", el)
+        buckets.setdefault(m.group(1) if m else "", []).append(el)
+
+    out = []
+    for kind in _FLOW_ELEMENT_ORDER:
+        out += buckets.pop(kind, [])
+    for leftover in buckets.values():          # anything unknown keeps its place at the end
+        out += leftover
+    return "".join(out)
+
+
 def _flow_document(api, process, start_ref, elements, review) -> str:
     src = Path(process.get("file", "")).name
     desc = (f"Generated from the Hybris business process `{process.get('name', '')}` "
@@ -298,16 +401,16 @@ def _flow_document(api, process, start_ref, elements, review) -> str:
         # Draft on purpose: an unreviewed translation of someone's order pipeline must not
         # be activatable by an accidental deploy.
         "  <status>Draft</status>\n"
-        + "".join(elements) +
-        "  <start>\n    <locationX>50</locationX>\n    <locationY>0</locationY>\n"
-        + _conn(start_ref) +
-        "  </start>\n"
-        "  <variables>\n    <name>recordId</name>\n    <dataType>String</dataType>\n"
-        "    <isCollection>false</isCollection>\n    <isInput>true</isInput>\n"
-        "    <isOutput>false</isOutput>\n  </variables>\n"
-        "  <variables>\n    <name>processResult</name>\n    <dataType>String</dataType>\n"
-        "    <isCollection>false</isCollection>\n    <isInput>false</isInput>\n"
-        "    <isOutput>true</isOutput>\n  </variables>\n"
+        + _in_schema_order(list(elements) + [
+            "  <start>\n    <locationX>50</locationX>\n    <locationY>0</locationY>\n"
+            + _conn(start_ref) + "  </start>\n",
+            "  <variables>\n    <name>recordId</name>\n    <dataType>String</dataType>\n"
+            "    <isCollection>false</isCollection>\n    <isInput>true</isInput>\n"
+            "    <isOutput>false</isOutput>\n  </variables>\n",
+            "  <variables>\n    <name>processResult</name>\n    <dataType>String</dataType>\n"
+            "    <isCollection>false</isCollection>\n    <isInput>false</isInput>\n"
+            "    <isOutput>true</isOutput>\n  </variables>\n",
+        ]) +
         "</Flow>\n")
 
 

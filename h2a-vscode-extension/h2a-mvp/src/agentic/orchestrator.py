@@ -368,6 +368,15 @@ def _write_flow_outputs(output_dir: str, flows: list, invocables: dict) -> None:
         (cdir / f"{wrapper}.cls").write_text(build_invocable(cls), encoding="utf-8")
         (cdir / f"{wrapper}.cls-meta.xml").write_text(meta, encoding="utf-8")
 
+    # Any flow with an unwired step points at the placeholder action, and a Flow whose
+    # action Salesforce cannot find is rejected in full — topology, wired steps and all.
+    # So the placeholder ships whenever one is referenced. [2.13]
+    from src.flow_generator import UNMIGRATED_ACTION, build_unmigrated_invocable
+    if any(UNMIGRATED_ACTION in f["xml"] for f in flows):
+        (cdir / f"{UNMIGRATED_ACTION}.cls").write_text(build_unmigrated_invocable(),
+                                                       encoding="utf-8")
+        (cdir / f"{UNMIGRATED_ACTION}.cls-meta.xml").write_text(meta, encoding="utf-8")
+
 
 def _snapshot(bb, name: str, *, phase: str = "", note: str = ""):
     """Snapshot the run so a reviewer can come back to this exact moment.
