@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceBlock name="checkout.cart.totals">
+            <block class="Acme\Loyalty\Block\PointsSummary"
+                   name="acme.loyalty.points" template="Acme_Loyalty::points.phtml"/>
+        </referenceBlock>
+        <!-- Moves a block declared by another module, at runtime, by reference. -->
+        <move element="checkout.cart.coupon" destination="checkout.cart.totals" after="-"/>
+        <referenceBlock name="checkout.cart.shipping" remove="true"/>
+    </body>
+</page>

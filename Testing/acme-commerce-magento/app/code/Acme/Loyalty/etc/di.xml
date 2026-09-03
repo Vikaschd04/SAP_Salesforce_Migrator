@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+
+    <!-- Global type substitution: every injection of the interface gets our class. -->
+    <preference for="Acme\Loyalty\Api\PricingServiceInterface"
+                type="Acme\Loyalty\Model\PricingService"/>
+
+    <type name="Magento\Quote\Model\Quote\Address\Total\Subtotal">
+        <plugin name="acme_loyalty_subtotal" sortOrder="10"
+                type="Acme\Loyalty\Plugin\SubtotalPlugin"/>
+    </type>
+
+    <type name="Magento\Sales\Model\Order">
+        <!-- `around`: this one can decline to call the original. -->
+        <plugin name="acme_loyalty_order_total" sortOrder="20"
+                type="Acme\Loyalty\Plugin\OrderTotalPlugin"/>
+    </type>
+
+    <type name="Acme\Loyalty\Model\PricingService">
+        <arguments>
+            <argument name="discountThreshold" xsi:type="number">200</argument>
+            <argument name="spendDiscountRate" xsi:type="number">0.10</argument>
+        </arguments>
+    </type>
+</config>

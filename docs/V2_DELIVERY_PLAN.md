@@ -147,9 +147,9 @@ before it is ever paired with a target we cannot verify as strongly.
 
 | # | Work item | Done when |
 |---|---|---|
-| 2.1 | Reference Magento project in `Testing/` | Realistic module: DI, observers, plugins, crontab, EAV, PHPUnit |
-| 2.2 | `detect()` — `composer.json` type, `registration.php`, `etc/module.xml` | Preflight refuses a non-Magento upload; reports `env.php` credentials |
-| 2.3 | PHP parser integration (`tree-sitter-php` or equivalent) | Classes, methods, params, type hints → IR units |
+| ~~2.1~~ | ✅ **Reference Magento project** — `Testing/acme-commerce-magento`, module `Acme_Loyalty` | 19 files. Same loyalty/pricing domain as the Hybris corpus, so the two pipelines are comparable end to end. Carries G1 (EAV data patch), G2 (an `around` plugin that really does skip `$proceed`), G3 (observer mutating the payload), G5 (di.xml preference), G6 (layout XML `move`/`remove`), G7 (store-view config), G9 (cron), plus db_schema and PHPUnit. |
+| ~~2.2~~ | ✅ **`detect()`** — signal-scored, vendor/ excluded, `env.php` credentials reported | 100% on the fixture, 0% on the Hybris corpus. Verdict is `not_yet_supported`, not `reject`: recognising a project and being able to migrate it are different statements, and answering "unidentified" to a Magento repo was the wrong one. `require_runnable()` still refuses the run. |
+| 2.3 | PHP parser integration | **Blocked on environment, not design.** `pip install tree-sitter tree-sitter-php` produced no output in ~20 minutes — no reachable index from this machine. Options: install the wheels where there is network, vendor them into the repo, or write a scoped PHP reader (Magento code is a narrow, regular subset — namespaced classes, typed constructors, methods). Needs a decision. |
 | 2.4 | `di.xml` reader — preferences, types, plugins | Wiring in the IR; **`around` plugins flagged, never faked** |
 | 2.5 | `events.xml` observer reader | Observers as IR units with their event |
 | 2.6 | `crontab.xml` reader | `ScheduledJob` entries |

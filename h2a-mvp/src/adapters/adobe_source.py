@@ -19,7 +19,41 @@ Implementation is Phase 2 — see docs/V2_DELIVERY_PLAN.md items 2.1–2.13.
 
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _find(base: Path, pattern: str, *, limit: int) -> list:
+    """Matching files, excluding vendor/ and generated/ — neither is customer code.
+
+    Capped because a real Magento project has tens of thousands of PHP files under
+    vendor/, and detection must stay fast enough to run on every registered adapter.
+    """
+    out = []
+    for p in base.rglob(pattern):
+        parts = set(p.parts)
+        if parts & {"vendor", "generated", "node_modules", "var", "pub"}:
+            continue
+        out.append(p)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _module_name(module_xml: Path) -> str:
+    try:
+        m = re.search(r'<module\s+name="([^"]+)"', module_xml.read_text(encoding="utf-8"))
+        return m.group(1) if m else ""
+    except Exception:
+        return ""
 
 
 class NotImplementedYet(NotImplementedError):
@@ -54,19 +88,92 @@ class AdobeCommerceSource:
     implemented = False
 
     def detect(self, root: str) -> dict:
-        """Recognise a Magento codebase — no model calls.
+        """Recognise a Magento 2 codebase — no model calls. [2.2]
 
-        Returns a reject verdict rather than raising, because detection runs across every
-        registered source adapter to decide what a codebase *is*. One unimplemented
-        platform must not break identification of the others.
+        Returns a verdict rather than raising, because detection runs across every
+        registered source adapter to decide what a codebase *is*. One adapter that cannot
+        yet migrate must not break identification of the others — and must not refuse to
+        identify what it is looking at, either. Recognising a Magento project and saying
+        the migration is not built yet is a useful answer; "unrecognised" is not.
+
+        Scoring is by *signal*, not by file count, so a small module and a full project
+        both identify. Each signal is something only a Magento codebase has.
         """
+        base = Path(root)
+        signals: list[str] = []
+        project: dict = {"modules": [], "php_files": 0}
+
+        composer = _read_json(base / "composer.json")
+        ctype = str(composer.get("type", ""))
+        if ctype.startswith("magento2-"):
+            signals.append(f"composer.json declares type `{ctype}`")
+            project["package"] = composer.get("name", "")
+        if any(k.startswith("magento/") for k in (composer.get("require") or {})):
+            signals.append("composer.json requires a magento/* package")
+
+        registrations = _find(base, "registration.php", limit=200)
+        if registrations:
+            signals.append(f"{len(registrations)} registration.php")
+
+        modules = [m for m in _find(base, "module.xml", limit=200) if m.parent.name == "etc"]
+        for m in modules:
+            name = _module_name(m)
+            if name:
+                project["modules"].append(name)
+        if modules:
+            signals.append(f"{len(modules)} etc/module.xml declaring "
+                           f"{len(project['modules'])} module(s)")
+
+        for marker, why in ((base / "app" / "etc" / "di.xml", "app/etc/di.xml"),
+                            (base / "app" / "etc" / "env.php", "app/etc/env.php")):
+            if marker.exists():
+                signals.append(f"{why} present")
+
+        php = _find(base, "*.php", limit=5000)
+        project["php_files"] = len(php)
+
+        # Credentials live in app/etc/env.php in every Magento install, so this is not a
+        # hypothetical: it is reported before anything is uploaded anywhere, which is the
+        # only moment reporting it is any use.
+        secrets = []
+        env = base / "app" / "etc" / "env.php"
+        if env.exists():
+            secrets.append({
+                "file": "app/etc/env.php",
+                "detail": "Magento keeps database credentials, the crypt key and cache "
+                          "backend passwords here. Exclude it, or rotate afterwards.",
+            })
+
+        confidence = min(100, 25 * len(signals))
+        recognised = confidence >= 50
+        if not recognised:
+            return {
+                "verdict": "reject", "confidence": confidence, "platform": self.platform,
+                "implemented": False, "signals": signals, "project": project,
+                "blockers": [], "warnings": [], "secrets": secrets,
+                "summary": "Not identified as an Adobe Commerce (Magento 2) codebase.",
+            }
+
+        mods = ", ".join(project["modules"][:4]) or "no named modules"
         return {
-            "verdict": "reject",
-            "confidence": 0,
-            "summary": ("Adobe Commerce detection is not implemented yet (item 2.2). "
-                        "This codebase was not identified as any supported source."),
+            "verdict": "not_yet_supported",
+            "confidence": confidence,
             "platform": self.platform,
             "implemented": False,
+            "is_magento": True,
+            "signals": signals,
+            "project": project,
+            "blockers": [
+                "Reading an Adobe Commerce codebase is not implemented yet (items 2.3–2.9). "
+                "This is a recognised Magento project, and the migration cannot run against "
+                "it — those are two different statements and the second one is not a "
+                "detection failure."
+            ],
+            "warnings": [],
+            "secrets": secrets,
+            "summary": (f"Adobe Commerce (Magento 2) project detected ({confidence}% "
+                        f"confidence) — {len(project['modules'])} module(s) [{mods}], "
+                        f"{project['php_files']} PHP file(s). Migration not implemented yet."),
         }
 
     def read(self, root: str):

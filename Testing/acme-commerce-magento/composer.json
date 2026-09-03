@@ -1,0 +1,17 @@
+{
+    "name": "acme/module-loyalty",
+    "description": "Acme loyalty pricing and points, for Adobe Commerce 2.4",
+    "type": "magento2-module",
+    "require": {
+        "php": "~8.1.0",
+        "magento/framework": "103.0.*"
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "Acme\\Loyalty\\": ""
+        }
+    }
+}

@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+    <table name="acme_loyalty_account" resource="default" engine="innodb"
+           comment="Loyalty account per customer">
+        <column xsi:type="int" name="entity_id" unsigned="true" nullable="false"
+                identity="true" comment="Entity ID"/>
+        <column xsi:type="int" name="customer_id" unsigned="true" nullable="false"
+                comment="Customer ID"/>
+        <column xsi:type="varchar" name="code" nullable="false" length="64"
+                comment="Account code"/>
+        <column xsi:type="varchar" name="tier" nullable="false" length="32"
+                default="NONE" comment="Loyalty tier"/>
+        <column xsi:type="int" name="points_balance" unsigned="true" nullable="false"
+                default="0" comment="Points balance"/>
+        <column xsi:type="decimal" name="lifetime_spend" scale="4" precision="12"
+                nullable="false" default="0" comment="Lifetime spend"/>
+        <column xsi:type="timestamp" name="enrolled_at" nullable="false"
+                default="CURRENT_TIMESTAMP" comment="Enrolled at"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="entity_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="ACME_LOYALTY_ACCOUNT_CODE">
+            <column name="code"/>
+        </constraint>
+    </table>
+
+    <table name="acme_loyalty_points_ledger" resource="default" engine="innodb"
+           comment="Points movements">
+        <column xsi:type="int" name="entity_id" unsigned="true" nullable="false"
+                identity="true"/>
+        <column xsi:type="int" name="account_id" unsigned="true" nullable="false"/>
+        <column xsi:type="int" name="points" nullable="false"/>
+        <column xsi:type="varchar" name="reason" nullable="true" length="255"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="entity_id"/>
+        </constraint>
+    </table>
+</schema>

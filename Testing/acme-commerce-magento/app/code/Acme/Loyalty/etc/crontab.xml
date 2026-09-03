@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Cron/etc/crontab.xsd">
+    <group id="default">
+        <job name="acme_loyalty_expire_points"
+             instance="Acme\Loyalty\Cron\ExpirePoints" method="execute">
+            <schedule>0 2 * * *</schedule>
+        </job>
+        <job name="acme_loyalty_recalculate_tiers"
+             instance="Acme\Loyalty\Cron\RecalculateTiers" method="execute">
+            <schedule>30 3 * * 0</schedule>
+        </job>
+    </group>
+</config>
