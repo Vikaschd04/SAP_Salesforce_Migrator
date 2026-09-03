@@ -139,11 +139,13 @@ in production. Each new detector ships with a `Testing/` fixture that actually t
 **Exit:** every row in the register is `covered` or `partial`; no row is an undocumented
 gap; the run tells the customer which of these applied to *their* estate.
 
-## Phase 2 — Adobe Commerce source adapter
+## Phase 2 — Adobe Commerce source adapter · **source half complete**
 
-Delivers the source half. Validated against the **Salesforce** target as a test fixture —
-never shipped as a product, but it means the new adapter is proven against a real compiler
-before it is ever paired with a target we cannot verify as strongly.
+Delivers the source half of **Adobe Commerce → SAP Hybris**. To be unambiguous, because
+item 2.13 has caused this question once already: there is no `adobe->salesforce` pipeline
+and there is not going to be one. The registry holds exactly two entries —
+`adobe->hybris` (in build) and `hybris->salesforce` (shipped) — and every hazard, note and
+fix Phase 2 produces is framed against Hybris.
 
 | # | Work item | Done when |
 |---|---|---|
@@ -159,7 +161,8 @@ before it is ever paired with a target we cannot verify as strongly.
 | ~~2.10~~ | ✅ **11 Magento hazard rules** — `adapters/magento_radar.py` | 13 findings on the fixture, every planted construct caught and located. Framed against Hybris: Salesforce fails at *limits*, Hybris fails at *expressiveness*, so every hazard names what Hybris would do instead. |
 | ~~2.11~~ | ✅ **Symbol lookup moved behind the seam** — `source.symbols()` / `target.symbols()` | `provenance` and `alignment` shared one Java-shaped regex for source *and* generated code. On PHP it found 1 method in 6 — no error, just under-reporting, in the two modules whose whole output is how much of the source is accounted for. PHP now finds all 6 from the AST; Java/Apex unchanged, golden green with no re-baseline. |
 | ~~2.12~~ | ✅ **Type resolution from declarations only** — `adapters/php_types.py` | Four authorities in descending order (declared → docblock → schema → nothing), each resolution recording which answered. Usage is deliberately *not* a source. 51 resolved / 14 unresolved on the fixture, and an unresolved type is a **forced** must-review, not a weight that happens to clear a threshold. |
-| 2.13 | Adobe→Salesforce fixture in the test suite | Blocked on `AdobeCommerceSource.read()`. **But the Hybris output was deploy-verified against a real sandbox** and it found four defects no local check could see — see below. |
+| ~~2.13~~ | ⊘ **Dropped, deliberately** — was "pair the Adobe source with the Salesforce target as a test fixture" | It would mean building a throwaway `adobe->salesforce` pipeline that will never ship, to test a source adapter already covered by 100+ tests against a real fixture — and it verifies nothing about the Hybris target, which is where the actual risk is (`has_oracle = False`). Replaced by an accounting test: every file `read()` sees lands in `units`, `tests`, `skipped` or `unreadable`, and a file in no bucket is a file lost. |
+| ~~2.14~~ | ✅ **`read()` assembles the SourceModel** | 9 units, 1 test suite, 1 script, 0 unreadable; 3 data types (2 declared tables + the `customer` EAV extension); 2 jobs; 7 recorded behaviours; 13 hazards; di.xml and observers carried in `extra`; 5 units with types no declaration resolves. Refuses to run at all without tree-sitter rather than returning what the XML alone yields. |
 
 **Exit:** 100% of the reference Magento project accounted for in the ledger; the fixture
 deploy-verifies.

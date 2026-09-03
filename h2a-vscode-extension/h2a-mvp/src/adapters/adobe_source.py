@@ -1,20 +1,21 @@
 """
 adobe_source.py — Adobe Commerce (Magento 2) as a *source*.
 
-**Scaffold. Not implemented.** Every method raises `NotImplementedError` with the delivery
-item that will fill it in.
+**The source half is built** (items 2.1–2.12). `read()` assembles a full `ir.SourceModel`
+from the modules that own each skill: PHP via tree-sitter, the di/events/crontab/db_schema
+readers, EAV attributes, recorded behaviour from PHPUnit, hazards, and type resolution.
 
-That is a deliberate choice, not a placeholder left lying around. The alternative — methods
-that return empty lists — would let an Adobe→Hybris run complete, report "0 classes, 0
-business rules, nothing unaccounted for", and look exactly like a clean migration of an
-empty codebase. Everything this product exists to prevent, produced by its own scaffolding.
+The `adobe->hybris` pipeline still cannot run, because a pipeline needs both halves and the
+SAP Hybris *target* is Phase 3. That is why the class reports `implemented = True` while
+`Pipeline.implemented` stays false — the distinction is deliberate: "this source is
+readable" and "this migration can run" are different claims.
 
-Registering it now, unimplemented, is what proves the architecture accepts a second
-pipeline: detection, resolution, pack loading and the purity rule are all exercised
-against two entries rather than one. A design that holds two only in principle is not
-proven to hold two.
-
-Implementation is Phase 2 — see docs/V2_DELIVERY_PLAN.md items 2.1–2.13.
+What this module still refuses to do is fill gaps. Files it cannot parse stay in the model
+with `unreadable` set; types no declaration resolves are recorded rather than inferred; EAV
+entities say the attribute set is open. A source model that looks complete because the
+parts it could not read were dropped is the failure the whole layer exists to prevent —
+"0 classes, nothing unaccounted for" reads exactly like a clean migration of an empty
+codebase.
 """
 
 from __future__ import annotations
@@ -86,7 +87,10 @@ MAGENTO_MARKERS = (
 class AdobeCommerceSource:
     platform = "adobe-commerce"
     label = "Adobe Commerce (Magento 2 · PHP)"
-    implemented = False
+    #: The source half is built (items 2.1–2.12): detection, PHP, the XML wiring, EAV,
+    #: recorded behaviour, symbols and type resolution. `adobe->hybris` still cannot run,
+    #: because Pipeline.implemented needs *both* halves and the Hybris target is Phase 3.
+    implemented = True
 
     def detect(self, root: str) -> dict:
         """Recognise a Magento 2 codebase — no model calls. [2.2]
@@ -178,7 +182,80 @@ class AdobeCommerceSource:
         }
 
     def read(self, root: str):
-        raise NotImplementedYet("Reading an Adobe Commerce codebase", "2.3–2.9")
+        """The whole Magento codebase as an `ir.SourceModel`. [2.3–2.12]
+
+        Assembly only: every part is read by the module that owns that skill, and this
+        puts them behind one contract. The alternative — a second set of readers here —
+        is two things to keep correct that would quietly disagree.
+
+        What it deliberately does *not* do is fill gaps. Units the PHP reader could not
+        parse arrive with `unreadable` set and stay in the model; types no declaration
+        resolves are recorded as such rather than inferred; EAV entities carry a note
+        saying the set is open. A source model that looks complete because the parts it
+        could not read were dropped is the failure this whole layer exists to prevent.
+        """
+        from src import ir
+        from src.adapters import (magento_config, magento_eav, magento_radar,
+                                  php_phpunit_mining, php_reader, php_types)
+
+        if not php_reader.available():
+            raise NotImplementedYet(
+                "Reading PHP requires tree-sitter (pip install tree-sitter "
+                "tree-sitter-php); it is an optional dependency", "2.3")
+
+        all_units = php_reader.read_tree(root)
+        units = [u for u in all_units if not u.is_test and not u.unreadable
+                 and u.layer != "Script"]
+        tests = [u for u in all_units if u.is_test]
+        unreadable = [u for u in all_units if u.unreadable]
+        # A PHP file with no class — registration.php, a config array. Not migratable and
+        # not lost: it gets a row saying which it is.
+        skipped = [u for u in all_units if u.layer == "Script" and not u.unreadable]
+
+        di = magento_config.read_di(root)
+        magento_config.classify_plugins(root, di["plugins"])
+
+        tables = magento_config.read_db_schema(root)
+        eav = magento_eav.as_data_types(magento_eav.read_attributes(root))
+        data_model = ir.DataModel(types=tables + eav, relations=[], enums=[])
+
+        behaviours = [
+            ir.RecordedBehaviour(
+                id=b["id"], label=b["label"], target_unit=b["source_class"],
+                target_method=b["target_method"],
+                expected={"args": b["args"], "expected": b["expected"],
+                          "expects_exception": b["expects_exception"]},
+                source_file=b["test_class"])
+            for b in php_phpunit_mining.mine(
+                [{"class_name": u.name, "source": u.source} for u in tests])
+        ]
+
+        hazards = [
+            ir.Hazard(id=f"H-{i + 1:03d}", rule=f["rule"], severity=f["severity"],
+                      file=f["file"], line=f["line"], source_unit=f["source_class"],
+                      detail=f["hazard"], fix=f["fix"])
+            for i, f in enumerate(magento_radar.scan(root)["findings"])
+        ]
+
+        types = php_types.resolve(units, data_model.types)
+
+        return ir.SourceModel(
+            platform=self.platform, root=root, units=units, tests=tests,
+            unreadable=unreadable, skipped=skipped, data_model=data_model,
+            jobs=magento_config.read_crontab(root),
+            processes=[],            # Magento has no process-definition equivalent
+            behaviours=behaviours, hazards=hazards,
+            dependency_order=[u.name for u in units],
+            extra={
+                # Wiring the IR does not model yet. Carried verbatim rather than dropped,
+                # because it is how the PHP is *reached* — and that is the first thing a
+                # migration loses.
+                "di": di,
+                "observers": magento_config.read_events(root),
+                "unresolved_types": php_types.unresolved_by_unit(types),
+                "type_resolutions": types["resolutions"],
+            },
+        )
 
     def symbols(self, text: str) -> list:
         """PHP method declarations, from the AST. [2.11]"""
