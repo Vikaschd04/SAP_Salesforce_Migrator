@@ -37,10 +37,11 @@ def _find(base: Path, pattern: str, *, limit: int) -> list:
     Capped because a real Magento project has tens of thousands of PHP files under
     vendor/, and detection must stay fast enough to run on every registered adapter.
     """
+    from src.adapters.magento_config import _excluded
+
     out = []
     for p in base.rglob(pattern):
-        parts = set(p.parts)
-        if parts & {"vendor", "generated", "node_modules", "var", "pub"}:
+        if _excluded(p, base):
             continue
         out.append(p)
         if len(out) >= limit:

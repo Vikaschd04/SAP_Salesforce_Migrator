@@ -144,3 +144,30 @@ def test_a_recognised_but_unimplemented_pipeline_still_refuses_to_run():
     assert not p.implemented
     with pytest.raises(Exception):
         pipeline.require_runnable(p)
+
+
+def test_a_project_under_var_www_is_still_found(tmp_path):
+    """`/var/www/magento` is where most Magento installs actually live.
+
+    The exclusion list contains `var` and `pub`, and it used to be matched against the
+    absolute path — so a project in its most common location was invisible to the tool
+    entirely, while the fixture in this repo detected fine.
+    """
+    root = tmp_path / "var" / "www" / "magento"
+    root.mkdir(parents=True)
+    (root / "composer.json").write_text('{"type": "magento2-project"}', encoding="utf-8")
+    (root / "registration.php").write_text("<?php", encoding="utf-8")
+    (root / "etc").mkdir()
+    (root / "etc" / "module.xml").write_text('<config><module name="A_B"/></config>',
+                                             encoding="utf-8")
+    r = ADAPTER.detect(str(root))
+    assert r["verdict"] == "not_yet_supported"
+    assert r["project"]["modules"] == ["A_B"]
+
+
+def test_vendor_inside_the_project_is_still_excluded(tmp_path):
+    """The fix must not turn the exclusion off — only anchor it to the root."""
+    (tmp_path / "vendor" / "magento" / "m").mkdir(parents=True)
+    (tmp_path / "vendor" / "magento" / "m" / "registration.php").write_text("<?php",
+                                                                           encoding="utf-8")
+    assert ADAPTER.detect(str(tmp_path))["verdict"] == "reject"

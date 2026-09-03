@@ -150,10 +150,10 @@ before it is ever paired with a target we cannot verify as strongly.
 | ~~2.1~~ | ✅ **Reference Magento project** — `Testing/acme-commerce-magento`, module `Acme_Loyalty` | 19 files. Same loyalty/pricing domain as the Hybris corpus, so the two pipelines are comparable end to end. Carries G1 (EAV data patch), G2 (an `around` plugin that really does skip `$proceed`), G3 (observer mutating the payload), G5 (di.xml preference), G6 (layout XML `move`/`remove`), G7 (store-view config), G9 (cron), plus db_schema and PHPUnit. |
 | ~~2.2~~ | ✅ **`detect()`** — signal-scored, vendor/ excluded, `env.php` credentials reported | 100% on the fixture, 0% on the Hybris corpus. Verdict is `not_yet_supported`, not `reject`: recognising a project and being able to migrate it are different statements, and answering "unidentified" to a Magento repo was the wrong one. `require_runnable()` still refuses the run. |
 | 2.3 | PHP parser integration | **Blocked on environment, not design.** `pip install tree-sitter tree-sitter-php` produced no output in ~20 minutes — no reachable index from this machine. Options: install the wheels where there is network, vendor them into the repo, or write a scoped PHP reader (Magento code is a narrow, regular subset — namespaced classes, typed constructors, methods). Needs a decision. |
-| 2.4 | `di.xml` reader — preferences, types, plugins | Wiring in the IR; **`around` plugins flagged, never faked** |
-| 2.5 | `events.xml` observer reader | Observers as IR units with their event |
-| 2.6 | `crontab.xml` reader | `ScheduledJob` entries |
-| 2.7 | `db_schema.xml` reader | Declared tables/columns → `DataModel` |
+| ~~2.4~~ | ✅ **`di.xml` reader** — preferences, plugins, constructor arguments | `around` plugins are classified: the fixture's `aroundGetGrandTotal` is flagged `can_skip_original=True`, a passthrough `around` is `False`, and a plugin whose class is missing is `None` — absent evidence is not evidence of absence. |
+| ~~2.5~~ | ✅ **`events.xml` reader** | Observers with their event, area and the fact that Magento dispatches them synchronously — Hybris `EventService` is async by default, so the difference travels with the observer. |
+| ~~2.6~~ | ✅ **`crontab.xml` reader** → `ir.ScheduledJob` | Group retained, because a Magento job runs once per cluster and a Hybris cronjob needs explicit node affinity. |
+| ~~2.7~~ | ✅ **`db_schema.xml` reader** → `ir.DataType` | Column types, nullability and unique constraints. Every table carries `undeclared_note`: these are the *declared* columns only, and presenting them as the whole entity is the lie EAV makes easy. |
 | 2.8 | EAV attribute reader | What is declarable is read; **the residue is reported, not omitted** |
 | 2.9 | PHPUnit miner | `RecordedBehaviour` entries for characterization |
 | 2.10 | ~10 Magento hazard rules | N+1 collection loads, `ObjectManager` use, `around` plugins, raw SQL |
