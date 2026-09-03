@@ -241,7 +241,7 @@ accounted for, and the sign-off distinguishes *statically checked* from *compile
 | # | Work item | Done when |
 |---|---|---|
 | 4.1 | Auto-detect source, offer valid target | Cockpit says "This is Adobe Commerce 2.4.6 — migrate to SAP Hybris?" |
-| 4.2 | Pipeline recorded in sign-off and checkpoints | An audit says which migration it was |
+| ~~4.2~~ | ✅ **The audit says which migration it was** | Recorded in the contract *and folded into the contract id*, because which pipeline ran is a certified fact rather than metadata. Checkpoints carry it too, and resuming across pipelines warns loudly — the state loads, which is the danger: comprehensions of PHP would be reused as though they described Java. The **engine version is deliberately absent**: v1 and v2 are asserted byte-identical, so recording which ran would state a difference that does not exist — and it broke that test until removed. |
 | 4.3 | Per-pipeline forecast constants | PHP→Java measured, not extrapolated from Java→Apex |
 | ~~4.4~~ | ✅ **Reports name the pipeline that ran** | Source adapters gained `code_language` to match the targets', and `provenance`, `alignment` and `signoff` derive both. On the shipped pipeline the text renders *identically* — the only golden change was "the original JUnit suite" → "test suite", since PHPUnit is the Adobe equivalent. **The purity ratchet is now empty**: every assurance module is platform-neutral, and adding vocabulary back fails CI. |
 | 4.5 | Extension + CLI expose the pipeline choice | Same choice on all three surfaces |

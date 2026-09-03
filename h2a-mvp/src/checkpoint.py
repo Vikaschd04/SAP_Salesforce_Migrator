@@ -85,6 +85,27 @@ def source_fingerprint(bb) -> str:
     return h.hexdigest()[:16]
 
 
+def _pipeline_record() -> dict:
+    """Which migration this was: `{id, source, target, engine}`. [4.2]
+
+    A contract that certifies facts about a migration and does not say *which* migration
+    is a contract about nothing in particular. It mattered less with one pipeline, because
+    there was only one answer — which is exactly why it was never recorded.
+
+    The *engine version* is deliberately not here. v1 and v2 are asserted byte-identical
+    on every commit, so recording which one ran would state a difference that does not
+    exist — and it broke that very test, since the two runs then differed by this field.
+    """
+    from src import pipeline, runctx
+    try:
+        pipeline.ensure_registered()
+        pid = runctx.pipeline_id()
+        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        return {"id": p.id, "source": p.source_platform, "target": p.target_platform}
+    except Exception:
+        return {"id": "", "source": "", "target": ""}
+
+
 def save(bb, name: str, *, phase: str = "", root: str | None = None,
          note: str = "") -> dict:
     """Snapshot the Blackboard. Returns the checkpoint's metadata."""
@@ -110,6 +131,10 @@ def save(bb, name: str, *, phase: str = "", root: str | None = None,
         "note": note,
         "at": time.time(),
         "source_fingerprint": source_fingerprint(bb),
+        # A checkpoint is resumed into a live run. Resuming an Adobe→Hybris checkpoint
+        # into a Hybris→Salesforce run would reuse comprehensions of PHP as though they
+        # described Java, and nothing would say so. [4.2]
+        "pipeline": _pipeline_record(),
         "state": {f: getattr(bb, f, None) for f in _FIELDS},
         "plan": [dataclasses.asdict(p) for p in (bb.plan or [])],
         "artifacts": [dataclasses.asdict(a) for a in (bb.artifacts or [])],
@@ -135,6 +160,7 @@ def summarise(payload: dict) -> dict:
         "note": payload.get("note", ""),
         "at": payload.get("at", 0),
         "source_fingerprint": payload.get("source_fingerprint", ""),
+        "pipeline": payload.get("pipeline") or {},
         "classes": len(state.get("all_classes") or []),
         "plan_items": len(plan),
         "convert": sum(1 for p in plan if p.get("target_kind") != "Skip"),
@@ -199,6 +225,18 @@ def load(root: str, cid: str, *, on_decision=None) -> tuple:
         # cheap and the failure it catches is silent.
         warnings.append("The snapshot's source no longer hashes to what was recorded — "
                         "this checkpoint may have been modified.")
+
+    # Resuming across pipelines would reuse comprehensions of PHP as though they
+    # described Java. The state would load, the run would continue, and every artifact
+    # after it would be built on an understanding of a different language. [4.2]
+    was = payload.get("pipeline") or {}
+    now_pipe = _pipeline_record()
+    if was.get("id") and now_pipe.get("id") and was["id"] != now_pipe["id"]:
+        warnings.append(
+            f"This checkpoint was written by the `{was['id']}` pipeline and is being "
+            f"resumed into `{now_pipe['id']}`. The comprehensions and plan it carries "
+            "describe a different pair of platforms; nothing below this point is "
+            "trustworthy.")
 
     src = Path(bb.input_dir)
     if bb.input_dir and not src.exists():

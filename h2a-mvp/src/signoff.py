@@ -93,6 +93,7 @@ def build_signoff(bb, *, accounting: dict | None = None, cost: dict | None = Non
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "input_dir": bb.input_dir,
         "output_dir": bb.output_dir,
+        "pipeline": _pipeline_record(),
         "recipe": recipe,
         "supervised": bool(reviewed),
         "gates_reviewed_by_a_human": human_gates,
@@ -115,11 +116,40 @@ def build_signoff(bb, *, accounting: dict | None = None, cost: dict | None = Non
     # Over the substance, not the prose: two runs that certify the same facts produce the
     # same id, and a changed fact changes it. Cheap to check, hard to edit around.
     contract["contract_id"] = hashlib.sha256(
-        repr([contract[k] for k in ("input_dir", "recipe", "approvals", "completeness",
-                                    "rules", "characterization", "provenance",
-                                    "org_verified")]).encode("utf-8")
+        repr([contract[k] for k in ("input_dir", "pipeline", "recipe", "approvals",
+                                    "completeness", "rules", "characterization",
+                                    "provenance", "org_verified")]).encode("utf-8")
     ).hexdigest()[:16]
     return contract
+
+
+def _pipeline_line(c: dict) -> str:
+    """`hybris` → `salesforce`, for the contract's own table."""
+    p = c.get("pipeline") or {}
+    if not p.get("id"):
+        return "—"
+    return f"`{p['source']}` → `{p['target']}`"
+
+
+def _pipeline_record() -> dict:
+    """Which migration this was: `{id, source, target, engine}`. [4.2]
+
+    A contract that certifies facts about a migration and does not say *which* migration
+    is a contract about nothing in particular. It mattered less with one pipeline, because
+    there was only one answer — which is exactly why it was never recorded.
+
+    The *engine version* is deliberately not here. v1 and v2 are asserted byte-identical
+    on every commit, so recording which one ran would state a difference that does not
+    exist — and it broke that very test, since the two runs then differed by this field.
+    """
+    from src import pipeline, runctx
+    try:
+        pipeline.ensure_registered()
+        pid = runctx.pipeline_id()
+        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        return {"id": p.id, "source": p.source_platform, "target": p.target_platform}
+    except Exception:
+        return {"id": "", "source": "", "target": ""}
 
 
 def _languages() -> tuple:
@@ -318,6 +348,7 @@ def write_signoff_md(output_dir: str, c: dict) -> str:
             "| | |", "|---|---|",
             "| **Contract** | `" + c["contract_id"] + "` |",
             f"| **Reviewer(s)** | {', '.join(c['reviewers']) or '_none — unattended run_'} |",
+            f"| **Migration** | {_pipeline_line(c)} |",
             f"| **Source** | `{c['input_dir']}` |",
             f"| **Output** | `{c['output_dir']}` |",
             "| **Signed** | ______________________  Date: ____________ |", "",
