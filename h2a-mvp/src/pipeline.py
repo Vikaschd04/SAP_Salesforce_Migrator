@@ -219,6 +219,71 @@ def detect(root: str) -> tuple[str, dict]:
                                   "summary": "no registered source adapter recognised this codebase"})
 
 
+def identify(root: str) -> dict:
+    """What this codebase is, and which migrations are available for it. [4.1]
+
+    The single question a surface needs to ask before offering anything. Until now every
+    surface asked `preflight.inspect`, which answers *"is this Hybris?"* — so a Magento
+    project was rejected as "not a Hybris project" by a tool that had an adapter capable
+    of recognising it precisely.
+
+    Three outcomes, and they are genuinely different answers rather than degrees of one:
+
+        unrecognised   no adapter claims it. A refusal, not a default — guessing a
+                       platform starts a migration that was never going to work.
+        recognised     an adapter identifies it and no pipeline from it can run yet.
+                       "We know exactly what this is and cannot migrate it" is a useful
+                       thing to be told; "unidentified" is not.
+        runnable       identified, with at least one target that can actually run.
+    """
+    # A surface calls this before anything else in the process has touched the registry.
+    ensure_registered()
+    platform, report = detect(root)
+    if not platform:
+        # Nothing claimed it. Report the most *specific* refusal rather than the generic
+        # one: "nothing to migrate — no Java sources and no items.xml" tells someone who
+        # uploaded the wrong folder what to do, and "no registered source adapter
+        # recognised this codebase" tells them about our architecture.
+        best = report
+        for p in available():
+            try:
+                r = p.source.detect(root)
+            except Exception:
+                continue
+            if float(r.get("confidence") or 0) > float(best.get("confidence") or 0) or (
+                    not best.get("summary") and r.get("summary")):
+                best = r
+            elif r.get("blockers") and not best.get("blockers"):
+                best = r
+        return {"status": "unrecognised", "platform": "", "report": best,
+                "pipelines": [],
+                "summary": best.get("summary")
+                or "No registered source adapter recognised this codebase."}
+
+    options = []
+    for p in for_source(platform):
+        options.append({
+            "id": p.id,
+            "source": p.source_platform,
+            "target": p.target_platform,
+            "label": p.label or f"{p.source_platform} → {p.target_platform}",
+            "implemented": p.implemented,
+            "shipped": p.shipped,
+            # What a run would be able to claim about its output, which belongs next to
+            # the choice rather than in the report afterwards.
+            "has_oracle": bool(getattr(p.target, "has_oracle", False)),
+        })
+    runnable = [o for o in options if o["implemented"]]
+
+    return {
+        "status": "runnable" if runnable else "recognised",
+        "platform": platform,
+        "report": report,
+        "pipelines": options,
+        "summary": report.get("summary", ""),
+    }
+
+
 def default_pipeline() -> Pipeline:
     """The shipped path. What an unqualified run means."""
     for p in available():

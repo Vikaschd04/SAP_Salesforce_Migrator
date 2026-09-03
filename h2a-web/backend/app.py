@@ -194,10 +194,19 @@ async def create_run(
 
     # Refuse before creating a run at all, so a wrong upload is an error message rather
     # than a migration that walks you through three gates to say it found nothing.
-    from src.preflight import inspect as preflight_inspect
-    report = preflight_inspect(input_dir)
-    if report["verdict"] == "reject":
-        raise HTTPException(422, {"message": report["summary"], "preflight": report})
+    #
+    # Asked of every registered source rather than of Hybris alone: this used to reject a
+    # Magento project as "not a Hybris project", which is both wrong and unhelpful — the
+    # tool had an adapter that recognised it precisely. [4.1]
+    from src import pipeline as _pipeline
+
+    ident = _pipeline.identify(input_dir)
+    report = ident["report"]
+    if ident["status"] in ("unrecognised", "recognised"):
+        # "Identified and not yet migratable" is a different answer from "unidentified",
+        # and the payload carries which so the cockpit can say so.
+        raise HTTPException(422, {"message": ident["summary"], "preflight": report,
+                                  "identification": ident})
 
     user = getattr(request.state, "user", None)
     uid = (user or {}).get("id")
@@ -225,9 +234,17 @@ def _state_dir_for(input_dir: str) -> str:
 
 @app.post("/api/preflight")
 async def api_preflight(body: dict):
-    """Inspect a codebase without starting a migration."""
-    from src.preflight import inspect as preflight_inspect
-    return preflight_inspect(_resolve_input_path((body.get("input_path") or "").strip()))
+    """Identify a codebase without starting a migration.
+
+    Returns what it is *and* which migrations are available for it, so the cockpit can
+    offer a valid target rather than a dropdown whose combinations are mostly invalid.
+    The `preflight` key keeps the old shape for callers that only wanted the report. [4.1]
+    """
+    from src import pipeline as _pipeline
+
+    root = _resolve_input_path((body.get("input_path") or "").strip())
+    ident = _pipeline.identify(root)
+    return {**ident, "preflight": ident["report"]}
 
 
 @app.post("/api/runs/{run_id}/gate")
