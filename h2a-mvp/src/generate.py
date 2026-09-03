@@ -70,6 +70,15 @@ def lwc_name(class_name: str) -> str:
     return (base[0].lower() + base[1:]) if base else base
 
 
+class OversizedSourceError(Exception):
+    """The prompt cannot fit the model's context, so no number of retries will help.
+
+    A distinct type because the resilience layer's job is to retry the transient, and a
+    request that is too large is not transient — retrying it four times is four rejections
+    and a wrong reason on the artifact. [1.28]
+    """
+
+
 def plan_targets(classes: list[dict]) -> list[dict]:
     """Plan which target Apex artifacts to generate from ingested classes."""
     targets = []
@@ -420,6 +429,23 @@ def generate_apex(
     )
     if grounding:
         user_prompt += "\n\n" + grounding
+
+    # Generation has no equivalent of comprehension's chunking, and should not pretend to.
+    # There is no union of two half-migrations: stitching independently generated halves
+    # produces a file whose two ends were written by callers that could not see each
+    # other. So this refuses with the real reason, and the unit goes to manual migration
+    # where a person can split it deliberately — rather than spending four retries on a
+    # request that cannot succeed and reporting "conversion failed". [1.28]
+    from src import oversized
+    gen_model = oversized.model_for_stage("generate")
+    if not oversized.fits(user_prompt, gen_model, max_tokens):
+        raise OversizedSourceError(
+            f"`{target_name}` is too large to generate in one call: "
+            + oversized.too_large_reason(user_prompt, gen_model, max_tokens)
+            + " Comprehension read it in parts, which merges; generation cannot, because "
+              "there is no union of two half-migrations. Split the class in the source, "
+              "or migrate it by hand."
+        )
 
     result = call_llm(
         stage=f"generate_{target_name}",

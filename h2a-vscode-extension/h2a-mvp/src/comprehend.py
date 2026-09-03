@@ -68,18 +68,39 @@ def comprehend_class(class_info: dict, *, offline: bool = False,
         from src.slim import slim_java, enabled as _slim_on
         raw = class_info.get("source", "")
         source_code = slim_java(raw)[0] if _slim_on(config) else raw
-        prompt = _load_prompt_template().format(
-            source_code=source_code,
-            class_name=name,
-            layer=layer,
-            methods=_format_methods(class_info.get("methods", [])),
-            referenced_types=", ".join(class_info.get("referenced_types", []) or []) or "(none)",
-        )
-        result = call_structured(
-            f"comprehend_{name}", prompt, COMPREHENSION_SCHEMA, max_tokens,
-            offline=offline, effort=effort, model=model,
-        )
-        understanding = result.get("parsed") or _fallback_understanding(class_info)
+        template = _load_prompt_template()
+        common = {
+            "class_name": name,
+            "layer": layer,
+            "methods": _format_methods(class_info.get("methods", [])),
+            "referenced_types": ", ".join(class_info.get("referenced_types", []) or [])
+                                or "(none)",
+        }
+
+        # A class larger than the model can read used to be sent whole: the provider
+        # rejected it, the resilience layer retried four times, and the unit landed as
+        # "conversion failed" — four requests spent on something that could not succeed,
+        # and the wrong reason reported. Comprehension chunks instead, because an
+        # understanding merges: a rule found in either half is a rule the class holds. [1.28]
+        from src import oversized
+        chunks = ([source_code] if oversized.fits(source_code, model or "", max_tokens)
+                  else oversized.split_source(source_code, model or "", max_tokens))
+
+        parts = []
+        for i, chunk in enumerate(chunks):
+            result = call_structured(
+                f"comprehend_{name}" + (f"_part{i + 1}" if len(chunks) > 1 else ""),
+                template.format(source_code=chunk, **common),
+                COMPREHENSION_SCHEMA, max_tokens,
+                offline=offline, effort=effort, model=model,
+            )
+            if result.get("parsed"):
+                parts.append(result["parsed"])
+
+        understanding = (oversized.merge_understandings(parts) if parts
+                         else _fallback_understanding(class_info))
+        if len(chunks) > 1:
+            print(f"    · {name} read in {len(chunks)} parts — too large for one call")
     except ProviderAuthError:
         # Containment is right for a class we cannot parse and wrong for credentials that
         # do not work: falling back here would report "no business rules" for every class
