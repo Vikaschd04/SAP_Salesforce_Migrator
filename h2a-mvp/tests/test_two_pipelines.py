@@ -77,8 +77,10 @@ def test_hybris_verify_reports_the_absence_rather_than_a_clean_pass():
 
 # ── scaffolds fail loudly ────────────────────────────────────────────────────
 
+# plan() is built [3.2b], so it is no longer in this list — the list is what is *still*
+# a scaffold, and leaving a working method in it would make the guard describe the
+# adapter wrongly in the direction that flatters the roadmap.
 @pytest.mark.parametrize("call", [
-    lambda a: a.plan([], {}),
     lambda a: a.emit("/tmp/x", [], None, {}),
     lambda a: a.validate("code", "F.java", {}, {}),
 ])
@@ -205,3 +207,13 @@ def test_an_eav_entity_still_says_its_attribute_set_is_open():
                          / "acme-commerce-magento"))
     customer = next(t for t in m.data_model.types if t.code == "customer")
     assert "admin UI" in customer.undeclared_note
+
+
+def test_hybris_plan_no_longer_raises_but_the_pipeline_still_cannot_run():
+    """3.2b built plan(). The pipeline is still blocked, and for a different reason —
+    emit() and validate() are Phase 3's remaining half. Those are different claims and
+    the guard has to keep them apart."""
+    from src.adapters.hybris_target import ADAPTER
+
+    assert ADAPTER.plan([], {}) == []
+    assert not pipeline.get("adobe->hybris").implemented

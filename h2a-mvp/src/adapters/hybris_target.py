@@ -33,7 +33,13 @@ class HybrisTarget:
     code_language = "Java"
 
     def plan(self, units: list, config: dict) -> list:
-        raise NotImplementedYet("Planning Hybris targets", "3.2")
+        """What Hybris builds from these units, with the reason for each choice. [3.2b]
+
+        `config["wiring"]` carries the di.xml reading when there is one; without it a
+        plugin cannot be classified and routes to the safe superset. See hybris_plan.
+        """
+        from src.adapters.hybris_plan import plan_targets
+        return plan_targets(units or [], (config or {}).get("wiring"))
 
     def emit(self, output_dir: str, artifacts: list, data_model, config: dict) -> list:
         """Still raises, and the scaffolding underneath it is real. [3.1, 3.4 done]
