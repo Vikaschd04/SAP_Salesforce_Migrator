@@ -106,7 +106,7 @@ def test_every_flagged_item_explains_itself():
     """A bare score is not actionable and not trustworthy — the reasons are the product."""
     t = build_triage(bb_with(
         [art("A", status="error"), art("B", layer="DAO")],
-        [{"severity": "high", "rule": "TRANSACTIONAL", "file": "DefaultA.java",
+        [{"severity": "high", "rule": "TRANSACTION_SHAPE", "file": "DefaultA.java",
           "source_class": "DefaultA"}]))
     for item in t["items"]:
         assert item["reasons"], f"{item['target']} was ranked with no explanation"

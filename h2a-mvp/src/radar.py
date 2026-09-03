@@ -145,11 +145,12 @@ _LINE_RULES = [
      "Move the lookup out of the loop, or pass the collection down and let the selector "
      "query once."),
 
-    ("TRANSACTIONAL", "high", re.compile(r"@Transactional\b"), False,
-     "Apex has no @Transactional. A method that relied on a Spring rollback will commit "
-     "its earlier DML and then throw, leaving records half-written with nothing to undo it.",
-     "Wrap the unit of work in a Database.Savepoint and roll back explicitly, or restructure "
-     "so the whole change is a single DML call."),
+    # TRANSACTIONAL was here and has been removed rather than narrowed. It claimed a
+    # @Transactional method "will commit its earlier DML and then throw, leaving records
+    # half-written" — which is true only when a caller catches the exception. Apex rolls
+    # back the entire request on an *uncaught* one, so the claim was wrong for the common
+    # shape and its advice (always use a savepoint) was wrong with it. TRANSACTION_SHAPE
+    # decides which of the two shapes a method is and says the right thing for each. [1.21c]
     ("THREADING", "high", re.compile(r"\b(new\s+Thread\b|ExecutorService|CompletableFuture|@Async)\b"), False,
      "Apex has no threads. Nothing here has an equivalent, and the closest constructs "
      "(Queueable, Batch) are asynchronous with their own limits and no shared memory.",
@@ -204,6 +205,11 @@ def _java_findings(path: Path, rel: str) -> list[dict]:
     # method around it, and every regex answer to that is wrong in one direction. [1.30]
     from src.adapters.java_nullability import findings as _null_findings
     out.extend(_null_findings(raw, rel, cls, lines))
+
+    # Which of the two transaction shapes this is — the generic TRANSACTIONAL rule says
+    # "use a savepoint", which is right for one of them and wasteful for the other. [1.21c]
+    from src.adapters.java_transactions import findings as _tx_findings
+    out.extend(_tx_findings(raw, rel, cls, lines))
 
     for rule, sev, pat, needs_loop, hazard, fix in _LINE_RULES:
         for m in pat.finditer(text):
@@ -558,7 +564,7 @@ _RULE_TITLES = {
     "FS_JOIN": "Query joins types",
     "FS_SUBQUERY": "Query has a subquery",
     "FS_LEADING_WILDCARD": "Leading-wildcard match",
-    "TRANSACTIONAL": "@Transactional boundary",
+    "TRANSACTION_SHAPE": "Transaction rollback shape",
     "THREADING": "Threads or async execution",
     "STATIC_MUTABLE_STATE": "Mutable static state",
     "INTERCEPTOR": "Interceptor chain",

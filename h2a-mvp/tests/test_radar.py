@@ -192,14 +192,18 @@ def test_a_cronjob_is_flagged_for_concurrency():
         "public class J extends AbstractJobPerformable<CronJobModel> { }"}))
 
 
-def test_transactional_and_threading_are_found():
+def test_the_transaction_shape_and_threading_are_found():
+    """`TRANSACTIONAL` was replaced by `TRANSACTION_SHAPE` in 1.21c. The old rule said a
+    @Transactional method "will commit its earlier DML and then throw, leaving records
+    half-written", which is true only when a caller catches — Apex rolls back the whole
+    request on an uncaught exception — so it was wrong for the common shape."""
     found = rules(build({"src/A.java": """
         public class A {
           @Transactional
           void go() { ExecutorService pool = null; }
         }
     """}))
-    assert {"TRANSACTIONAL", "THREADING"} <= found
+    assert {"TRANSACTION_SHAPE", "THREADING"} <= found
 
 
 # ── output shape ──────────────────────────────────────────────────────────────
@@ -215,7 +219,7 @@ def test_findings_are_sorted_worst_first_and_numbered():
 def test_the_realistic_corpus_trips_the_planted_hazards():
     """The corpus was seeded with these on purpose — if the radar cannot find them there
     it will not find them anywhere."""
-    assert {"DML_IN_LOOP", "DAO_CALL_IN_LOOP", "TRANSACTIONAL",
+    assert {"DML_IN_LOOP", "DAO_CALL_IN_LOOP", "TRANSACTION_SHAPE",
             "SESSION_SCOPED_BEAN", "INTERCEPTOR", "CRONJOB_CONCURRENCY"} <= rules(
                 "../Testing/acme-commerce-hybris")
 

@@ -37,6 +37,27 @@ def _derived_queries(source_classes: list) -> str:
         return ""
 
 
+def _transaction_shapes(source_classes: list) -> str:
+    """What each `@Transactional` method becomes, decided rather than generated. [1.21c]
+
+    Left to the model, "translate @Transactional" reliably produces a savepoint. That is
+    right for a method that catches and continues, and wasteful for one that only throws —
+    and the second is the common shape.
+    """
+    try:
+        from src import pipeline, runctx
+        from src.adapters.java_transactions import grounding_for
+
+        pipeline.ensure_registered()
+        pid = runctx.pipeline_id()
+        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        if p.source_platform != "hybris":
+            return ""
+        return grounding_for([c.get("source", "") for c in (source_classes or [])])
+    except Exception:
+        return ""
+
+
 class BuilderAgent:
     """Generates one target's Apex, then repairs objective (governor/schema) issues."""
     name = "Builder"
@@ -58,9 +79,10 @@ class BuilderAgent:
 
         # Queries this target's own source contains, already translated. Derived, not
         # generated — and a query that can be derived should never be generated. [1.23b]
-        queries = _derived_queries(plan_item.source_classes)
-        if queries:
-            grounding = (grounding + "\n\n" + queries) if grounding else queries
+        for block in (_derived_queries(plan_item.source_classes),
+                      _transaction_shapes(plan_item.source_classes)):
+            if block:
+                grounding = (grounding + "\n\n" + block) if grounding else block
         gen = generate_apex(target, bb.comprehensions, scoped_sigs,
                             offline=bb.offline, schema=bb.schema, mappings=mappings,
                             grounding=grounding)
