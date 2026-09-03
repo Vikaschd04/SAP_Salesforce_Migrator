@@ -1,0 +1,30 @@
+Migrate the following Adobe Commerce (Magento 2) PHP to a SAP Hybris artifact.
+
+== Target ==
+Class: {target_class_name}
+Kind: {target_kind}
+
+== Layer Rules ==
+{layer_rules}
+
+== Understanding (from the comprehension stage) ==
+{comprehension_json}
+
+== PHP Source ==
+{source_code}
+
+== Available Dependencies ==
+{dependency_signatures}
+
+== Instructions ==
+Produce the Java for this artifact.
+
+- Implement every public method the source exposed. A method you cannot migrate throws
+  `UnsupportedOperationException` with the reason — never returns null or a default.
+- Keep the javadoc: the PHP docblock is already in Java's comment syntax and is often the
+  only statement of what the method is for. Carry it across rather than rewriting it.
+- Use the types given in the signatures. Where a type is marked TYPE-UNRESOLVED, no
+  declaration in the source resolved it — keep the marker, do not invent a type.
+- Reference only item types declared in the extension's items.xml.
+
+Return ONLY the Java source. No markdown fences, no commentary.

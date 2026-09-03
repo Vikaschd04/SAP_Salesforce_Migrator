@@ -175,7 +175,7 @@ def repair(apex_code: str, issues: list, *, attempt: int = 1, offline: bool = Fa
                 extra += f"- {name}__c: {', '.join(f'{f}__c' for f in fields)}\n"
 
     prompt = _load_repair_template().format(
-        apex_code=apex_code, issues=issues_str, constraints=constraints_str)
+        target_code=apex_code, issues=issues_str, constraints=constraints_str)
     if extra:
         prompt = prompt.replace("== Instructions ==", extra + "\n== Instructions ==")
 

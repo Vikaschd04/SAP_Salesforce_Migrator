@@ -1,0 +1,73 @@
+# Adobe Commerce → SAP Hybris mapping rules
+# ─────────────────────────────────────────
+# Deterministic rules the generate stage applies per Magento layer. The *routing*
+# decision — which kind of Hybris artifact a unit becomes — is made in
+# `adapters/hybris_plan.py` and recorded with its reason; this file holds what the
+# generator should then do with it.
+
+layers:
+  Model:
+    target_kind: "Service"
+    rules:
+      - "Interface plus a Default<Name> implementation. The interface is the contract."
+      - "Setter injection for every dependency, wired in *-spring.xml. No annotations."
+      - "No database access here — delegate to a DAO."
+      - "Configuration the PHP received through di.xml stays configurable: a setter, not an inlined number."
+  Api:
+    target_kind: "ServiceInterface"
+    rules:
+      - "Magento's Api/ interface is the published contract; it becomes the Hybris service interface."
+      - "Merge with its implementation when di.xml declares a preference binding the two."
+  DAO:
+    target_kind: "Dao"
+    rules:
+      - "FlexibleSearch in a private static final String constant."
+      - "Every parameter bound with addQueryParameter — never string concatenation."
+      - "Bound the result: setCount for a find-one, an explicit limit otherwise."
+      - "Return the model type generated from items.xml; never define it."
+  Plugin:
+    target_kind: "Interceptor or Decorator"
+    rules:
+      - "before/after that always proceeds → an interceptor (Prepare, Validate)."
+      - "around that can return without calling $proceed → a DECORATOR BEAN. A Hybris interceptor runs alongside an operation and cannot replace one, so an interceptor here always calls through and silently loses the short-circuit."
+      - "When it cannot be determined, choose the decorator: it expresses everything an interceptor can, and skipping as well."
+  Observer:
+    target_kind: "EventListener"
+    rules:
+      - "Extends AbstractEventListener<T> and registered as a bean."
+      - "Magento dispatches observers synchronously, in order, and lets them mutate the event payload. Hybris EventService does none of those by default."
+      - "If the source mutated the payload, either move the mutation to the code raising the event or make the listener synchronous explicitly — and say which was chosen."
+  Cron:
+    target_kind: "JobPerformable"
+    rules:
+      - "Extends AbstractJobPerformable<CronJobModel>, returns a PerformResult."
+      - "The schedule lives in ImpEx as a Trigger, never in the class."
+      - "A Magento job runs once per cluster; a Hybris job runs on every node unless a trigger sets node affinity."
+  Setup:
+    target_kind: "Data"
+    rules:
+      - "A data patch is data, not code: EAV attributes become items.xml declarations."
+      - "Attribute *values* are not in the codebase and must be exported from the live system."
+  Helper:
+    target_kind: "Service"
+    rules:
+      - "Same shape as a Model service. A helper is logic without a home; give it one."
+
+types:
+  # PHP declared type → Java. Only what a declaration supports; `mixed` resolves to
+  # nothing on purpose (see adapters/php_types.py).
+  string: "String"
+  int: "Integer"
+  float: "Double"
+  bool: "Boolean"
+  array: "java.util.List<?>"
+  "?string": "String"
+  "?int": "Integer"
+  "?float": "Double"
+
+constraints:
+  - "Pure Java. No PHP, and no Salesforce Apex — this pair has nothing to do with SOQL or governor limits."
+  - "Money is BigDecimal. Every divide names a scale and a RoundingMode."
+  - "No FlexibleSearch or model save inside a loop."
+  - "Every referenced type is emitted here, provided by the platform, or generated from items.xml."
+  - "A method that cannot be migrated throws UnsupportedOperationException with the reason."

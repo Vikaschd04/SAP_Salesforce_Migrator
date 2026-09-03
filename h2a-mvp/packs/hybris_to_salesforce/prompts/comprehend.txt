@@ -3,7 +3,7 @@ You are an expert SAP Hybris and Salesforce Apex architect.
 Analyze the following Java class and produce a structured understanding of it.
 
 == Java Source ==
-{java_source}
+{source_code}
 
 == Class Metadata ==
 Class: {class_name}

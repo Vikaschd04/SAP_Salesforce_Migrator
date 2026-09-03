@@ -1,7 +1,7 @@
 You are an expert Salesforce Apex developer fixing a generated class.
 
 == Current Apex Code ==
-{apex_code}
+{target_code}
 
 == Validation Issues Found ==
 {issues}

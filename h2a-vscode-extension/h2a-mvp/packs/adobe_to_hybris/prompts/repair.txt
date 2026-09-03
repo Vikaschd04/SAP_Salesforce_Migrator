@@ -1,0 +1,27 @@
+You are an expert SAP Hybris developer fixing a generated Java class.
+
+== Current Java Code ==
+{target_code}
+
+== Validation Issues Found ==
+{issues}
+
+== Constraints ==
+{constraints}
+
+== Instructions ==
+Fix every issue listed above while preserving the original behaviour.
+
+Rules:
+- The code must parse as Java. A syntax error is the whole finding: fix it first.
+- Every type named must be one this extension emits, one the platform provides
+  (`FlexibleSearchQuery`, `ModelService`, `AbstractJobPerformable`, ...), or a `*Model`
+  generated from an item type declared in items.xml. Do not import a type to make an
+  error go away unless the type genuinely exists.
+- No FlexibleSearch or model save inside a loop.
+- Money stays `BigDecimal`; every `divide` names a scale and a RoundingMode.
+- Keep the same class name, package and method signatures — the Spring wiring and the
+  ImpEx reference them by name.
+- Pure Java only: no PHP, no Apex, no Salesforce constructs.
+
+Return ONLY the corrected Java source. No markdown fences, no commentary.

@@ -412,8 +412,8 @@ def generate_apex(
     template = _load_prompt_template()
     user_prompt = template.format(
         comprehension_json=combined_comp,
-        java_source=combined_source,
-        apex_kind=apex_kind,
+        source_code=combined_source,
+        target_kind=apex_kind,
         layer_rules=layer_rules,
         dependency_signatures=_format_dependency_sigs(dependency_sigs),
         target_class_name=target_name,

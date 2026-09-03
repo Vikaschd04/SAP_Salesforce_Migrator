@@ -1,6 +1,6 @@
 # Adobe Commerce → SAP Hybris — knowledge pack
 
-**Scaffold.** The directory exists so the pack machinery is exercised against two
+**Filled in — item 3.8.** Prompts, mappings and the knowledge corpus for this pair.
 pipelines; the contents are Phase 3 work.
 
 A pack is the platform-pair knowledge a migration runs on, and it is data rather than

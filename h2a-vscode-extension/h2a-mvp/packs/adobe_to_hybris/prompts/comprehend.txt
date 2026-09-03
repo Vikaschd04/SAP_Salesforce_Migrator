@@ -1,0 +1,48 @@
+You are an expert Adobe Commerce (Magento 2) and SAP Hybris architect.
+
+Analyze the following PHP class and produce a structured understanding of it.
+
+== PHP Source ==
+{source_code}
+
+== Class Metadata ==
+Class: {class_name}
+Layer: {layer}
+Public Methods: {methods}
+Referenced Types: {referenced_types}
+
+Capture:
+- purpose: the class purpose in one sentence.
+- inputs / outputs: what it consumes and produces.
+- side_effects: mutations, database writes, external/service calls, event dispatches.
+- queries: database access as short strings — raw SQL, collection loads, repository calls.
+- business_rules: encoded rules (discounts, validations, status transitions) — one per rule.
+- dependencies: other classes/services this class relies on, by name.
+- migration_risks: concrete things that could break or need care when porting to Hybris.
+
+Read PHP the way PHP has to be read:
+
+- The docblock is frequently the only statement of intent AND the only statement of type.
+  `@param float $subtotal` is a declaration. Treat it as one.
+- `$x->getData('price')` returns mixed. The type is in db_schema.xml or the EAV
+  declaration, never at the call site. If you cannot see the type, say so in
+  migration_risks rather than assuming one — a guessed type produces a Java field that
+  compiles and holds the wrong thing.
+- A class's *purpose* often lives in di.xml or events.xml rather than in the class. A
+  plugin is named for what it wraps; an observer is named for what it listens to.
+
+For migration_risks, prefer the specific over the general. These are the ones that matter
+on this platform pair:
+
+- an `around` method that can return without calling $proceed — Hybris interceptors
+  cannot decline to call through, so this needs a decorator bean
+- an observer that mutates the object carried by the event — Magento dispatches
+  synchronously and in order, Hybris EventService does neither by default
+- money held in a PHP float — Hybris uses BigDecimal, so the migrated arithmetic will not
+  match the recorded values exactly
+- a query inside a foreach — Magento absorbs it on a small page, a Hybris JVM serving the
+  whole catalogue does not
+- direct ObjectManager use — the dependency is invisible to the constructor graph
+- raw SQL against Magento tables — those tables do not exist after migration
+
+Return ONLY valid JSON matching the provided schema. No prose outside the JSON.

@@ -2,7 +2,7 @@ Translate the following SAP Hybris class into Salesforce Apex.
 
 == Target ==
 Class name: {target_class_name}
-Apex kind: {apex_kind}
+Apex kind: {target_kind}
 Layer-specific rules:
 {layer_rules}
 
@@ -10,7 +10,7 @@ Layer-specific rules:
 {comprehension_json}
 
 == Original Java source ==
-{java_source}
+{source_code}
 
 == Upstream dependency signatures (already-generated Apex you may call) ==
 {dependency_signatures}

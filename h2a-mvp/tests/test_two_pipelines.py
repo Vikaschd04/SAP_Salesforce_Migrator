@@ -157,11 +157,28 @@ def test_each_pipeline_resolves_to_its_own_pack():
     assert packs.pack_dir("adobe->hybris").name == "adobe_to_hybris"
 
 
-def test_a_missing_adobe_prompt_does_not_fall_back_to_the_apex_one():
-    """The worst available failure: generating Apex for a Hybris target because the
-    prompt was missing and the shipped pack answered instead."""
+def test_a_missing_prompt_does_not_fall_back_to_the_other_pack():
+    """The worst available failure: generating Apex for a Hybris target because a prompt
+    was missing and the shipped pack answered instead.
+
+    The Adobe pack's four prompts exist now [3.8], so this asks for one that does not —
+    the rule under test is the absence of a fallback, not the absence of the pack.
+    """
     with pytest.raises(FileNotFoundError, match="adobe_to_hybris"):
-        packs.prompt("generate", "adobe->hybris")
+        packs.prompt("no_such_prompt", "adobe->hybris")
+
+
+def test_the_adobe_pack_answers_for_itself():
+    """It used to raise for every prompt. Now it answers, and with its own content.
+
+    Apex may appear — but only where the prompt is forbidding it, which matters in a repo
+    that also contains Salesforce work and could drift.
+    """
+    text = packs.prompt("generate_system", "adobe->hybris")
+    assert "SAP Hybris" in text
+    for line in text.splitlines():
+        if "Apex" in line:
+            assert "never emit" in line, line
 
 
 def test_the_source_model_carries_everything_phase_3_will_need():
