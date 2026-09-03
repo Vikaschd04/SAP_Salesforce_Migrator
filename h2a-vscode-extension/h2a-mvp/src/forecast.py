@@ -21,35 +21,85 @@ from __future__ import annotations
 
 from src import pricing
 
-# ── measured on the reference corpus ──────────────────────────────────────────
-# Prompt overhead per call beyond the source itself: template, schema grounding, the
-# retrieved RAG chunks, and the JSON schema directive.
-_COMPREHEND_OVERHEAD = 1400          # chars
-_GENERATE_OVERHEAD = 3200
-_CRITIC_OVERHEAD = 2600
-_PLAN_OVERHEAD = 900
+# ── per-pipeline profiles ─────────────────────────────────────────────────────
+#
+# Every number below was measured on **one** platform pair, and a forecast is only worth
+# reading if it says which. Quoting a PHP→Java migration from Java→Apex measurements is a
+# figure carrying a confidence nothing supports — and the forecast is what a cost cap gets
+# set against, so an over-confident one is not a presentation problem.
+#
+# `measured` is the load-bearing field. A profile that is False is a *starting point*
+# carried over from the pair we have run, and the forecast says so in its own assumptions
+# rather than letting the range speak for itself. [4.3]
 
-_CHARS_PER_TOKEN = 4                 # close enough for Java/Apex; over-estimates slightly
 
-# Output is bounded by config max_tokens but rarely reaches it. Measured completions sit
-# well under budget, so a flat fraction of the cap is a better estimate than the cap.
-_OUT_FRACTION_LOW = 0.30
-_OUT_FRACTION_HIGH = 0.65
+class Profile:
+    """Constants for one platform pair."""
 
-# Not every target needs repairing, and the rate depends on the model. This is the band
-# seen across runs rather than a prediction for any particular one.
-_REPAIR_RATE_LOW = 0.10
-_REPAIR_RATE_HIGH = 0.35
+    def __init__(self, *, measured, basis, chars_per_token, mechanical_layers,
+                 comprehend_overhead=1400, generate_overhead=3200, critic_overhead=2600,
+                 plan_overhead=900, out_low=0.30, out_high=0.65,
+                 repair_low=0.10, repair_high=0.35):
+        self.measured = measured
+        self.basis = basis
+        self.chars_per_token = chars_per_token
+        self.mechanical_layers = set(mechanical_layers)
+        self.comprehend_overhead = comprehend_overhead
+        self.generate_overhead = generate_overhead
+        self.critic_overhead = critic_overhead
+        self.plan_overhead = plan_overhead
+        self.out_low, self.out_high = out_low, out_high
+        self.repair_low, self.repair_high = repair_low, repair_high
+
+
+PROFILES = {
+    "hybris->salesforce": Profile(
+        measured=True,
+        basis="instrumented runs over the reference corpus (17 classes, ~30 KB of Java)",
+        chars_per_token=4,          # close enough for Java/Apex; over-estimates slightly
+        # A Hybris `Model` is a class the platform *generated* from items.xml — reviewing
+        # one is a glance.
+        mechanical_layers={"Model", "DAO", "Utility"},
+    ),
+    "adobe->hybris": Profile(
+        measured=False,
+        basis="carried over from the Hybris→Salesforce pair; NOT measured on PHP→Java",
+        # PHP is denser per token than Java: sigils, `->`, and no type declarations to
+        # pad the text. 3.5 rather than 4 is itself an estimate, and an honest one is
+        # better than silently reusing a number measured on another language.
+        chars_per_token=3.5,
+        # A Magento `Model` holds business logic — the opposite of a Hybris one. Using the
+        # same set would call every business class in the estate a glance to review, and
+        # review time is what a customer plans staffing around.
+        mechanical_layers={"DAO", "Helper", "Script"},
+    ),
+}
+
+
+def profile_for(pipeline_id: str = "") -> Profile:
+    """The profile for the running pipeline, or the shipped one."""
+    from src import pipeline as _pl
+    from src import runctx
+
+    pid = pipeline_id or runctx.pipeline_id() or ""
+    if pid in PROFILES:
+        return PROFILES[pid]
+    try:
+        _pl.ensure_registered()
+        return PROFILES.get(_pl.default_pipeline().id, PROFILES["hybris->salesforce"])
+    except Exception:
+        return PROFILES["hybris->salesforce"]
+
 
 # Seconds per call, wall clock, including provider latency. Frontier-tier generation is
-# markedly slower than cheap-tier classification.
+# markedly slower than cheap-tier classification. Latency is the provider's, not the
+# platform pair's, so this is not per-profile.
 _SECS_CHEAP = (2.0, 6.0)
 _SECS_FRONTIER = (8.0, 25.0)
 
 # Review effort. A mechanical artifact is a glance; one carrying business rules is not.
 _REVIEW_MINS_ROUTINE = (1.0, 3.0)
 _REVIEW_MINS_INVOLVED = (8.0, 20.0)
-_MECHANICAL_LAYERS = {"Model", "DAO", "Utility"}
 
 
 def _tier_models(config: dict) -> tuple[str, str]:
@@ -70,6 +120,7 @@ def _cost(model: str, tin: int, tout: int, config: dict | None = None) -> float 
 def forecast(classes: list[dict], targets: int, config: dict,
              *, already_done: int = 0, provider: str = "") -> dict:
     """Estimate spend, wall-clock and review effort from the scan alone."""
+    prof = profile_for()
     config = config or {}
     n_classes = max(0, len(classes) - already_done)
     n_targets = max(0, targets - already_done)
@@ -91,21 +142,21 @@ def forecast(classes: list[dict], targets: int, config: dict,
     calls = []
     if n_classes:
         calls.append(("comprehend", cheap, n_classes,
-                      (avg_class + _COMPREHEND_OVERHEAD), out_comprehend, _SECS_CHEAP))
+                      (avg_class + prof.comprehend_overhead), out_comprehend, _SECS_CHEAP))
     if domains:
-        calls.append(("plan", cheap, domains, _PLAN_OVERHEAD + avg_class, 1200, _SECS_CHEAP))
+        calls.append(("plan", cheap, domains, prof.plan_overhead + avg_class, 1200, _SECS_CHEAP))
     if n_targets:
         calls.append(("generate", frontier, n_targets,
-                      avg_target_src + _GENERATE_OVERHEAD, out_generate, _SECS_FRONTIER))
+                      avg_target_src + prof.generate_overhead, out_generate, _SECS_FRONTIER))
         if critic_on:
             calls.append(("critic", frontier, n_targets,
-                          avg_target_src + _CRITIC_OVERHEAD, 1500, _SECS_FRONTIER))
+                          avg_target_src + prof.critic_overhead, 1500, _SECS_FRONTIER))
 
     stages, lo_usd, hi_usd, lo_s, hi_s, tin_tot, unpriced = [], 0.0, 0.0, 0.0, 0.0, 0, set()
     for name, model, n, chars_in, cap_out, (slo, shi) in calls:
-        tin = int(n * chars_in / _CHARS_PER_TOKEN)
-        out_lo = int(n * cap_out * _OUT_FRACTION_LOW)
-        out_hi = int(n * cap_out * _OUT_FRACTION_HIGH)
+        tin = int(n * chars_in / prof.chars_per_token)
+        out_lo = int(n * cap_out * prof.out_low)
+        out_hi = int(n * cap_out * prof.out_high)
         c_lo, c_hi = _cost(model, tin, out_lo, config), _cost(model, tin, out_hi, config)
         if c_lo is None:
             unpriced.add(model)
@@ -120,12 +171,12 @@ def forecast(classes: list[dict], targets: int, config: dict,
 
     # Repairs are extra generate-shaped calls on some fraction of targets.
     if n_targets:
-        rep_lo, rep_hi = int(n_targets * _REPAIR_RATE_LOW), int(n_targets * _REPAIR_RATE_HIGH)
-        tin_rep = int(rep_hi * (avg_target_src + _GENERATE_OVERHEAD) / _CHARS_PER_TOKEN)
+        rep_lo, rep_hi = int(n_targets * prof.repair_low), int(n_targets * prof.repair_high)
+        tin_rep = int(rep_hi * (avg_target_src + prof.generate_overhead) / prof.chars_per_token)
         lo_usd += _cost(frontier, int(tin_rep * rep_lo / max(1, rep_hi)),
-                        int(rep_lo * out_generate * _OUT_FRACTION_LOW), config) or 0.0
+                        int(rep_lo * out_generate * prof.out_low), config) or 0.0
         hi_usd += _cost(frontier, tin_rep,
-                        int(rep_hi * out_generate * _OUT_FRACTION_HIGH), config) or 0.0
+                        int(rep_hi * out_generate * prof.out_high), config) or 0.0
         hi_s += rep_hi * _SECS_FRONTIER[1]
 
     # Concurrency compresses wall clock but not spend.
@@ -136,7 +187,7 @@ def forecast(classes: list[dict], targets: int, config: dict,
     # estate does not need the whole estate reviewed again, and reporting otherwise would
     # hide the single biggest reason to re-run at all.
     share = (n_classes / len(classes)) if classes else 0
-    involved = round(sum(1 for c in classes if c.get("layer") not in _MECHANICAL_LAYERS) * share)
+    involved = round(sum(1 for c in classes if c.get("layer") not in prof.mechanical_layers) * share)
     routine = max(0, round(len(classes) * share) - involved)
     rev_lo = (routine * _REVIEW_MINS_ROUTINE[0] + involved * _REVIEW_MINS_INVOLVED[0]) / 60
     rev_hi = (routine * _REVIEW_MINS_ROUTINE[1] + involved * _REVIEW_MINS_INVOLVED[1]) / 60
@@ -171,12 +222,21 @@ def forecast(classes: list[dict], targets: int, config: dict,
                  "unpriced": sorted(unpriced)},
         "minutes": {"low": round(lo_s / 60, 1), "high": round(hi_s / 60, 1)},
         "review_hours": {"low": round(rev_lo, 1), "high": round(rev_hi, 1)},
-        "assumptions": _assumptions(config, conc, critic_on, already_done, free),
+        "assumptions": _assumptions(config, conc, critic_on, already_done, free, prof),
+        "basis": {"measured": prof.measured, "detail": prof.basis},
     }
 
 
-def _assumptions(config, conc, critic_on, reused, free) -> list[str]:
+def _assumptions(config, conc, critic_on, reused, free, prof=None) -> list[str]:
     a = []
+    prof = prof or profile_for()
+    if not prof.measured:
+        # First in the list on purpose. Everything after it is conditioned on this, and a
+        # caveat that arrives after the number has been read is a caveat nobody read.
+        a.append("**These per-call sizes have not been measured for this platform pair.** "
+                 f"They are {prof.basis}. Treat the range as an order of magnitude rather "
+                 "than a quote, and re-measure after the first real run — the cost cap is "
+                 "set against this number.")
     if free:
         a.append("Provider is `mock` — no model calls are made and nothing is charged.")
     routing = ((config.get("agentic") or {}).get("routing") or {})
@@ -245,6 +305,11 @@ def write_forecast_md(output_dir: str, f: dict) -> str:
     if f["cost"].get("unpriced"):
         out += [f"> No published rate for {', '.join(f['cost']['unpriced'])} — those stages are "
                 "excluded from the total, so treat it as a floor.", ""]
+
+    if not (f.get("basis") or {}).get("measured", True):
+        out += ["", "> ⚠️ **Not measured for this platform pair.** "
+                + (f.get("basis") or {}).get("detail", "")
+                + ". The range below is an order of magnitude, not a quote.", ""]
 
     out += ["## Assumptions", ""] + [f"- {a}" for a in f["assumptions"]] + [""]
     out += ["---", "",
