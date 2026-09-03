@@ -87,8 +87,10 @@ def build_signoff(bb, *, accounting: dict | None = None, cost: dict | None = Non
         _platform, _language = "the target platform", "code"
     assurance_claim = assurance.describe(v, platform=_platform, language=_language)
 
+    shape_notes = [n for meta in (getattr(bb, "schema", None) or {}).values()
+                   for n in (meta.get("shape_notes") or [])]
     caveats = _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
-                       getattr(bb, "cycle_cuts", None) or [])
+                       getattr(bb, "cycle_cuts", None) or [], shape_notes)
 
     contract = {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
@@ -173,7 +175,7 @@ def _languages() -> tuple:
 
 
 def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
-             cycle_cuts=()) -> list[str]:
+             cycle_cuts=(), shape_notes=()) -> list[str]:
     """Everything this document does not certify. Assembled from the same data as the
     claims, so it cannot drift out of step with them."""
     src, tgt = _languages()
@@ -233,6 +235,12 @@ def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
     if crit:
         out.append(f"{crit} critical/high migration hazard(s) were found in the source. "
                    "Conversion does not resolve them.")
+
+    for note in shape_notes or ():
+        # A deploy that cannot land is not a caveat about quality, it is a blocker — and
+        # it belongs at the top of the document rather than in a field-mapping table
+        # nobody reads before scheduling the cutover. [1.20b]
+        out.append(f"**{note['detail']}**")
 
     for cut in cycle_cuts or ():
         # A cycle had to be cut somewhere or nothing could be scheduled. Which side was

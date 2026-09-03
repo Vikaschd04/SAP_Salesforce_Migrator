@@ -45,6 +45,9 @@ _STANDARD_FIELDS = {
 # suffix counts. Names are also unique per object, and the platform will not tell you
 # which of two colliding attributes it kept.
 _MAX_API = 40
+
+#: Custom fields per object. Salesforce's own limit; exceeding it fails the deploy.
+FIELD_CEILING = 500
 _SUFFIX = "__c"
 
 
@@ -223,14 +226,60 @@ def build_schema(item_types: list[dict], relations: list[dict] | None = None,
                        "required": required, "unique": unique, "defaults": defaults}
 
     # Relations: one->many creates a Lookup on the child pointing to the parent.
+    #
+    # Every relation field is a *field*, so it competes for a name with the attributes
+    # already on that object — and this path used to write straight into `fields`, which
+    # meant a relation from `Order` onto a type that already had an `order` attribute
+    # replaced it. Two source facts, one field, and the survivor typed Lookup instead of
+    # Text: the same silent loss 1.20a fixed one path over. [1.20b]
     for rel in relations or []:
-        if rel.get("source_card") == "one" and rel.get("target_card") == "many":
-            child = _obj_api_name(rel["target_type"])
-            parent = _obj_api_name(rel["source_type"])
-            schema.setdefault(child, {"code": rel["target_type"], "fields": {}})
-            schema[child]["fields"][parent] = "Lookup"
+        if rel.get("source_card") != "one" or rel.get("target_card") != "many":
+            continue
+        child = _obj_api_name(rel["target_type"])
+        parent_field = _field_api_name(rel["source_type"])
+        meta = schema.setdefault(child, _empty_object(rel["target_type"]))
+
+        if parent_field in meta["fields"]:
+            taken = parent_field
+            parent_field = _fit(_stem(rel["source_type"] + "Ref"),
+                                f"rel:{rel['source_type']}", tagged=True)
+            meta["name_notes"].append({
+                "qualifier": rel["source_type"], "api": parent_field, "reason": "collision",
+                "detail": f"the relation from `{rel['source_type']}` wants `{taken}`, and an "
+                          "attribute of the same name is already there. Both are kept; the "
+                          "relation field is the renamed one, because the attribute was "
+                          "declared on this type and the relation was declared elsewhere.",
+            })
+        meta["fields"][parent_field] = "Lookup"
+
+    # Salesforce caps custom fields per object. Reported rather than trimmed: which
+    # attributes to drop, merge or move to a child object is a modelling decision, and an
+    # automatic answer would silently discard whichever ones sorted last. [1.20b, A7]
+    for obj, meta in schema.items():
+        n = len(meta.get("fields") or {})
+        if n > FIELD_CEILING:
+            meta.setdefault("shape_notes", []).append({
+                "kind": "field_ceiling", "count": n, "limit": FIELD_CEILING,
+                "detail": f"`{obj}` needs {n} custom fields and Salesforce allows "
+                          f"{FIELD_CEILING} per object. The deploy fails outright, so this "
+                          "has to be resolved before the migration can land: split the "
+                          "type, move the rarely-read attributes to a child object, or "
+                          "drop what the business no longer uses.",
+            })
 
     return schema
+
+
+def _empty_object(code: str) -> dict:
+    """A schema entry with every key its readers expect.
+
+    The relation path used to create `{"code", "fields"}` only, so an object that existed
+    *solely* because something pointed at it was missing `picklists`, `name_notes` and the
+    rest — every reader had to guess whether a key would be there.
+    """
+    return {"code": code, "fields": {}, "picklists": {}, "open_picklists": set(),
+            "name_notes": [], "localized": set(), "field_api": {}, "required": set(),
+            "unique": set(), "defaults": {}}
 
 
 def schema_prompt_block(schema: dict) -> str:
