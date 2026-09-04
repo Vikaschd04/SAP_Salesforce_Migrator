@@ -58,6 +58,10 @@ public class FlexibleSearchQuery
     public void setCount(final int count) { }
     public void setNeedTotal(final boolean needTotal) { }
     public void setStart(final int start) { }
+    // A count or projection query returns something other than a model, and this is how
+    // FlexibleSearch is told so. Missing from the surface until a hand-written DAO used
+    // it — the kind of gap the `typechecked` rung's caveat is about. [1.42]
+    public void setResultClassList(final java.util.List<Class> classes) { }
 }""",
     "de.hybris.platform.servicelayer.search.FlexibleSearchService": """
 public interface FlexibleSearchService
@@ -218,6 +222,18 @@ _ANNOTATIONS = {
 
 _ITEMTYPE = re.compile(r'<itemtype\s+code="(\w+)"')
 _GENERATE_FALSE = re.compile(r'generate="false"')
+_ENUMTYPE = re.compile(r'<enumtype\s+code="(\w+)"')
+_ENUM_VALUE = re.compile(r'<value\s+code="(\w+)"')
+_ATTRIBUTE = re.compile(r'<attribute\s+qualifier="(\w+)"\s+type="([\w.]+)"')
+
+#: items.xml type → the Java a generated model exposes it as. Anything unrecognised is a
+#: platform or generated type and is referred to by its own name.
+_ATTR_JAVA = {
+    "java.lang.String": "String", "java.lang.Integer": "Integer",
+    "java.lang.Long": "Long", "java.lang.Double": "Double",
+    "java.lang.Boolean": "Boolean", "java.math.BigDecimal": "java.math.BigDecimal",
+    "java.util.Date": "java.util.Date",
+}
 
 
 def model_names(items_xml: str) -> list[str]:
@@ -239,6 +255,68 @@ def model_names(items_xml: str) -> list[str]:
     return sorted(set(out))
 
 
+def enum_names(items_xml: str) -> dict:
+    """`<enumtype>` declarations, which the platform generates as Java enums. [1.42]
+
+    Missed entirely before: a migration that declares an enum emits Java referring to
+    `de.hybris.platform.core.enums.<Name>`, and the stand-in had no such package — so the
+    file did not compile and the failure was in the stand-in, not the output.
+    """
+    out: dict = {}
+    for block in re.split(r"(?=<enumtype\s)", items_xml or ""):
+        m = _ENUMTYPE.search(block)
+        if not m:
+            continue
+        out[m.group(1)] = _ENUM_VALUE.findall(block) or ["UNKNOWN"]
+    return out
+
+
+def referenced_types(items_xml: str) -> set:
+    """Types an attribute names that this migration does not itself declare. [1.42]
+
+    An `Appointment` with a `Customer` attribute produces a model whose getter returns
+    `CustomerModel` — a platform type. Without a stub for it the *stand-in* fails to
+    compile, and every error points at a file this tool wrote rather than at the
+    migration.
+    """
+    declared = {n[:-len("Model")] for n in model_names(items_xml)}
+    enums = set(enum_names(items_xml))
+    out = set()
+    for _, raw in _ATTRIBUTE.findall(items_xml or ""):
+        if raw in _ATTR_JAVA or raw.startswith("java."):
+            continue
+        bare = raw.rsplit(".", 1)[-1]
+        if bare and bare[0].isupper() and bare not in declared and bare not in enums:
+            out.add(bare)
+    return out
+
+
+def _model_members(block: str, enums: set | None = None) -> list:
+    """Getter/setter pairs for the attributes a generated model exposes.
+
+    An empty model class is enough to compile code that only *names* the type, which is
+    all the stub-bodied output does. Real logic reads and writes attributes, and against
+    an empty class every one of those is `cannot find symbol` — a wall of errors caused
+    by the stand-in rather than by the code. Found by hand-migrating a module and
+    compiling the result. [1.42]
+    """
+    enums = enums or set()
+    out = []
+    for qualifier, raw in _ATTRIBUTE.findall(block):
+        java = _ATTR_JAVA.get(raw)
+        if java is None:
+            bare = raw.rsplit(".", 1)[-1]
+            if bare in enums:
+                # A generated enum keeps its own name, in the platform's enum package.
+                java = f"de.hybris.platform.core.enums.{bare}"
+            else:
+                java = bare if bare.endswith("Model") else f"{bare}Model"
+        cap = qualifier[:1].upper() + qualifier[1:]
+        out.append(f"    public {java} get{cap}() {{ return null; }}")
+        out.append(f"    public void set{cap}(final {java} value) {{ }}")
+    return out
+
+
 def _write(root: Path, fqn: str, body: str) -> Path:
     pkg, _, name = fqn.rpartition(".")
     d = root.joinpath(*pkg.split("."))
@@ -253,13 +331,28 @@ def write_stubs(root: Path, *, items_xml: str = "", model_package: str = "") -> 
     written = [_write(root, fqn, body) for fqn, body in _API.items()]
     written += [_write(root, fqn, body) for fqn, body in _ANNOTATIONS.items()]
 
-    for name in model_names(items_xml):
-        # A generated model carries the type's attributes as getters and setters. The
-        # bodies do not matter to a compiler; the *presence* of the class does, and it is
-        # what every DAO and service in the output refers to.
+    # Generated enums live in a fixed platform package, whatever extension declared them.
+    for enum, values in enum_names(items_xml).items():
+        written.append(_write(root, f"de.hybris.platform.core.enums.{enum}",
+                              f"public enum {enum} {{ {', '.join(values)} }}"))
+
+    # Platform types an attribute names — `Customer`, `Address`, `BaseStore`. Bare
+    # classes: the stand-in only has to let the *declaration* compile.
+    for bare in sorted(referenced_types(items_xml)):
         written.append(_write(
-            root, f"{model_package}.{name}" if model_package else name,
-            f"public class {name} extends de.hybris.platform.core.model.ItemModel {{ }}"))
+            root, f"{model_package}.{bare}Model" if model_package else f"{bare}Model",
+            f"public class {bare}Model extends de.hybris.platform.core.model.ItemModel {{ }}"))
+
+    blocks = {m.group(1): b for b in re.split(r"(?=<itemtype\s)", items_xml or "")
+              for m in [_ITEMTYPE.search(b)] if m}
+    for name in model_names(items_xml):
+        code = name[:-len("Model")]
+        members = _model_members(blocks.get(code, ""), set(enum_names(items_xml)))
+        body = "\n".join([
+            f"public class {name} extends de.hybris.platform.core.model.ItemModel",
+            "{", *members, "}"])
+        written.append(_write(
+            root, f"{model_package}.{name}" if model_package else name, body))
     return written
 
 
