@@ -52,6 +52,16 @@ layers:
     target_kind: "Service"
     rules:
       - "Same shape as a Model service. A helper is logic without a home; give it one."
+  AdminUi:
+    target_kind: "Backoffice"
+    rules:
+      - "Magento declares admin grids and forms in UI-component XML; Hybris does the same
+        job in *-backoffice-config.xml, and it is equally declarative."
+      - "The list view, editor area and advanced search for an item type are derived from
+        items.xml and generated. Nothing about them is guessed."
+      - "A custom button or column action is a widget with behaviour, not configuration.
+        What it should do on the target is a decision about the target's own UI, so it is
+        reported rather than invented."
 
 types:
   # PHP declared type → Java. Only what a declaration supports; `mixed` resolves to

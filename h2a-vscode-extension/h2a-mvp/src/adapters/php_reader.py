@@ -160,8 +160,15 @@ def _properties(cls) -> list:
 _LAYERS = (
     ("Test", "Test"), ("Api", "Api"), ("Model/ResourceModel", "DAO"), ("Model", "Model"),
     ("Plugin", "Plugin"), ("Observer", "Observer"), ("Cron", "Cron"),
+    # Admin UI before the generic ones: `Block/Adminhtml/...` and `Ui/Component/...` are
+    # the *backoffice*, whose Hybris counterpart is cockpit configuration — nothing to do
+    # with the storefront, which is where `View` sends them. Called them all "View" and
+    # the reason attached to every one said "Spartacus composes pages from CMS
+    # components", about an admin grid. [1.41]
+    ("Block/Adminhtml", "AdminUi"), ("Ui/Component", "AdminUi"),
+    ("Controller/Adminhtml", "Controller"),
     ("Controller", "Controller"), ("Block", "View"), ("ViewModel", "View"),
-    ("Helper", "Helper"), ("Setup", "Setup"), ("Ui", "View"), ("Console", "Command"),
+    ("Helper", "Helper"), ("Setup", "Setup"), ("Ui", "AdminUi"), ("Console", "Command"),
 )
 
 

@@ -21,9 +21,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.adapters import hybris_data, hybris_extension, hybris_hooks, hybris_service
-from src.adapters.hybris_plan import (DAO, DATA, DECORATOR, EVENT_LISTENER,
-                                      INTERCEPTOR, JOB, SERVICE)
+from src.adapters import (hybris_backoffice, hybris_data, hybris_extension,
+                          hybris_hooks, hybris_service)
+from src.adapters.hybris_plan import (BACKOFFICE, DAO, DATA, DECORATOR,
+                                      EVENT_LISTENER, INTERCEPTOR, JOB, SERVICE)
 
 #: Kinds assembly writes today — services and DAOs through the target loop, jobs through
 #: their own path, because a job is joined to a crontab entry the target list does not
@@ -33,7 +34,8 @@ from src.adapters.hybris_plan import (DAO, DATA, DECORATOR, EVENT_LISTENER,
 #: and `build_items_xml` already wrote its EAV attributes onto the platform type they
 #: extend. Listing it as unwritten claimed a loss that had not happened — the mirror of
 #: the failure this set exists to prevent. [1.34]
-EMITTABLE = {SERVICE, DAO, JOB, DATA, DECORATOR, INTERCEPTOR, EVENT_LISTENER}
+EMITTABLE = {SERVICE, DAO, JOB, DATA, DECORATOR, INTERCEPTOR, EVENT_LISTENER,
+             BACKOFFICE}
 
 
 def _pkg_dir(root: Path, package: str, *parts: str) -> Path:
@@ -100,9 +102,15 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                     "target": t.get("target_name", ""), "kind": kind,
                     "sources": [c.get("class_name")
                                 for c in t.get("source_classes", [])],
-                    "reason": f"no emitter for `{kind}` yet — planned and not written, "
-                              "deliberately: a target that is planned and then silently "
-                              "absent is the loss this ledger exists to prevent",
+                    # The planner already explained why this kind has no target — that
+                    # is the whole output of `_BY_LAYER`. Repeating a generic "no emitter
+                    # yet" over it reads as a gap in the tool where the real answer is
+                    # that the construct has no counterpart. [1.41]
+                    "reason": (t.get("rationale")
+                               or f"no emitter for `{kind}` yet — planned and not written, "
+                                  "deliberately: a target that is planned and then "
+                                  "silently absent is the loss this ledger exists to "
+                                  "prevent"),
                 })
             continue
 
@@ -170,6 +178,24 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                       "Magento collection or resource model with no `db_schema.xml` table "
                       "behind it has no Hybris counterpart to generate.",
         })
+
+    # Backoffice: the list, editor and search for every item type are derivable from the
+    # items.xml this migration writes. The widgets behind a custom button are not, and
+    # each is reported with that reason rather than the generic one. [1.41]
+    backoffice_types = [dt for dt in (getattr(source_model.data_model, "types", None) or [])
+                        if getattr(dt, "deployment", "") != "eav"]
+    if backoffice_types:
+        write(resources / f"{name}-backoffice-config.xml",
+              hybris_backoffice.build_config(source_model.data_model, name))
+    for t_row in targets or []:
+        if t_row.get("kind") != BACKOFFICE:
+            continue
+        for c in t_row.get("source_classes", []):
+            manual.append({
+                "target": t_row.get("target_name", ""), "kind": BACKOFFICE,
+                "sources": [c.get("class_name")],
+                "reason": hybris_backoffice.manual_reason(c.get("class_name", "")),
+            })
 
     di = (getattr(source_model, "extra", None) or {}).get("di", {})
     arguments = di.get("arguments", [])

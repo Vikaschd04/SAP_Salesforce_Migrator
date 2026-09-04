@@ -152,8 +152,13 @@ EXTENSION_INFO = """<?xml version="1.0" encoding="ISO-8859-1"?>
                name="{name}" usemaven="false">
         <requires-extension name="core"/>
         <requires-extension name="commerceservices"/>
+        <!-- The extension ships Backoffice configuration, so it depends on the
+             Backoffice extension and declares itself as a module to it. Without both,
+             the config file is written, deployed and silently never loaded. [1.41] -->
+        <requires-extension name="backoffice"/>
         <coremodule generated="true" manager="{prefix}Manager"
                     packageroot="{package}"/>
+        <meta key="backoffice-module" value="true"/>
     </extension>
 </extensioninfo>
 """

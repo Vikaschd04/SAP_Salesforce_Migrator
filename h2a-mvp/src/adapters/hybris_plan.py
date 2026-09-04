@@ -36,6 +36,7 @@ DECORATOR = "decorator"
 EVENT_LISTENER = "event-listener"
 JOB = "job"
 DATA = "data"
+BACKOFFICE = "backoffice"
 MANUAL = "manual"
 
 #: Magento layer → (kind, reason). Layers needing a *decision* are not in here; they are
@@ -63,6 +64,13 @@ _BY_LAYER = {
                       "class, and which one is a judgement"),
     "View": (MANUAL, "Magento layout and templates have no Hybris equivalent that can be "
                      "derived — Spartacus composes pages from CMS components"),
+    "AdminUi": (BACKOFFICE,
+                "Magento's admin grids and forms are declared in UI-component XML; the "
+                "Hybris counterpart is Backoffice cockpit configuration, which is also "
+                "declarative. The *list and editor for an item type* are derivable from "
+                "items.xml and are generated. A custom button or column action is not — "
+                "it is a widget with its own behaviour, and what it should do on the "
+                "target is a decision"),
     "Controller": (SERVICE, "a controller's logic moves to a service; the endpoint itself "
                             "is a separate decision about the storefront"),
 }
