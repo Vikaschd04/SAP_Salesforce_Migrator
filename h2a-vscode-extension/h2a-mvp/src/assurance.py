@@ -10,10 +10,12 @@ Salesforce run where nobody asked for verification, and a Hybris run where verif
 Four rungs. A run reports the highest one it actually reached, and the sign-off says only
 what that rung supports:
 
-    none      nothing beyond this tool's own rules looked at the output
-    static    parsed and resolved against the platform's API surface — no compiler ran
-    compiled  the target platform's own compiler accepted it
-    replayed  compiled, and the behaviours recorded from the source's tests ran against it
+    none         nothing beyond this tool's own rules looked at the output
+    static       parsed and resolved against the platform's API surface — no compiler ran
+    typechecked  a real compiler accepted it against a *modelled* API surface, not the
+                 platform's own — so the model is now the weak link, not the parser
+    compiled     the target platform's own compiler accepted it
+    replayed     compiled, and the behaviours recorded from the source's tests ran against it
 
 The ladder is ordered, and the ordering is the point: a report may never describe a run as
 having reached a rung it did not, and `at_least` is how everything downstream asks.
@@ -23,11 +25,15 @@ from __future__ import annotations
 
 NONE = "none"
 STATIC = "static"
+#: A real compiler, a stand-in API surface. Between `static` and `compiled` because it
+#: catches strictly more than parsing and strictly less than the platform's own build:
+#: everything it proves is proved *relative to the surface it was given*. [1.37]
+TYPECHECKED = "typechecked"
 COMPILED = "compiled"
 REPLAYED = "replayed"
 
 #: Ascending. Index is the rung's strength.
-ORDER = (NONE, STATIC, COMPILED, REPLAYED)
+ORDER = (NONE, STATIC, TYPECHECKED, COMPILED, REPLAYED)
 
 #: What each rung entitles a report to say, and — the more important half — what it does
 #: not. Written in the second person because a sign-off is read by someone deciding
@@ -43,6 +49,15 @@ CLAIMS = {
         "The generated {language} parses and its references resolve against the "
         "platform's API surface. No compiler ran, so anything a compiler alone would "
         "catch — type mismatches, missing overrides — is still open.",
+    ),
+    TYPECHECKED: (
+        "was type-checked against a stand-in for {platform}, not {platform} itself",
+        "A real compiler accepted the generated {language}, so signatures, overrides and "
+        "generics are consistent — everything the static rung could not reach. But it was "
+        "compiled against an API surface this tool declares, not the platform's own: "
+        "where that stand-in is wrong, the compiler accepts wrong code just as "
+        "confidently. Treat this as evidence about the output's internal consistency, "
+        "and not yet as evidence it builds.",
     ),
     COMPILED: (
         "was compiled by {platform}",

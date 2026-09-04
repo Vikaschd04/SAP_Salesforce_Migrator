@@ -43,10 +43,27 @@ def _read(root, rel):
 
 # ── the whole thing holds together ────────────────────────────────────────────
 
-def test_the_assembled_extension_reaches_the_static_rung(built):
+def test_the_assembled_extension_compiles(built):
+    """It reached `static` until 1.37 put a real compiler on the output. On a machine
+    with no `javac` the rung stays `static`, which is a fact about the machine rather
+    than the output — so both are accepted, and neither may be lower."""
     result, _ = built
     assert result["static"]["issues"] == []
-    assert result["static"]["rung"] == assurance.STATIC
+    assert result["static"]["rung"] in (assurance.STATIC, assurance.TYPECHECKED)
+    assert assurance.ORDER.index(result["static"]["rung"]) >= assurance.ORDER.index(
+        assurance.STATIC)
+
+
+def test_where_a_compiler_exists_the_extension_actually_compiles(built):
+    """The claim the `typechecked` rung rests on. Skipped rather than weakened where no
+    compiler is installed."""
+    import shutil
+
+    if not shutil.which("javac"):
+        pytest.skip("no Java compiler on this machine")
+    result, _ = built
+    assert result["static"]["rung"] == assurance.TYPECHECKED
+    assert result["static"].get("compiler") is True
 
 
 def test_it_writes_the_files_a_hybris_extension_needs(built):

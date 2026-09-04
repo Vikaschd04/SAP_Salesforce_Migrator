@@ -15,7 +15,19 @@ from src import assurance
 
 
 def test_the_ladder_is_ordered():
-    assert assurance.ORDER == ("none", "static", "compiled", "replayed")
+    assert assurance.ORDER == ("none", "static", "typechecked", "compiled", "replayed")
+
+
+def test_typechecked_sits_below_compiled_and_says_why():
+    """A real compiler against a stand-in API surface catches strictly more than parsing
+    and strictly less than the platform's own build — and where the stand-in is wrong it
+    accepts wrong code just as confidently. That caveat is the rung's whole point. [1.37]"""
+    claim, limit = assurance.CLAIMS[assurance.TYPECHECKED]
+    assert assurance.ORDER.index(assurance.TYPECHECKED) < assurance.ORDER.index(
+        assurance.COMPILED)
+    assert "not {platform} itself" in claim
+    assert "accepts wrong code" in limit
+    assert "not yet as evidence it builds" in limit
 
 
 def test_at_least_compares_by_strength():

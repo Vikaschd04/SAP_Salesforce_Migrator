@@ -214,6 +214,24 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
     static["issues"] = list(static["issues"]) + cross_reference_issues(root)
     if static["issues"]:
         static["rung"] = assurance.NONE
+    else:
+        # Parsing and resolving is the floor, not the ceiling. A real compiler against a
+        # declared stand-in for the platform catches what a parser cannot — signatures,
+        # overrides, generics, and a type used without being imported, which is how this
+        # rung found that every generated DAO named its model class and imported none of
+        # them. Skipped silently where no compiler exists: that is a fact about the
+        # machine, not about the output, and the static rung still stands. [1.37]
+        from src.adapters.hybris_stubs import MODEL_SUBPACKAGE, compile_tree
+
+        items_path = resources / f"{name}-items.xml"
+        compiled = compile_tree(
+            root,
+            items_xml=items_path.read_text(encoding="utf-8") if items_path.exists() else "",
+            model_package=f"{package}.{MODEL_SUBPACKAGE}")
+        if compiled["ran"]:
+            static = {**static, "rung": compiled["rung"],
+                      "issues": list(compiled["issues"]),
+                      "message": compiled["message"], "compiler": True}
     return {"created": sorted(set(created)), "manual": manual, "static": static,
             "emitted_as": emitted_as}
 
