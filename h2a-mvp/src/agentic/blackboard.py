@@ -98,6 +98,12 @@ class Blackboard:
     #: after it is done — so the emitter tells the ledger directly. [1.33]
     not_emitted: dict = field(default_factory=dict)
 
+    #: `source class name -> the path actually written for it`, reported by the target's
+    #: emitter. The ledger named files by convention, so a data patch whose attributes
+    #: went into items.xml was reported under an invented `.java` filename that a reader
+    #: would look for and not find. [1.35]
+    emitted_as: dict = field(default_factory=dict)
+
     # Repository analysis (filled by the orchestrator's ingest step)
     domains: dict = field(default_factory=dict)
     adjacency: dict = field(default_factory=dict)
@@ -203,6 +209,18 @@ class Blackboard:
         except Exception:
             return ".cls"
 
+    def data_model_target(self) -> str:
+        """Where this target keeps its data model, in that platform's own words. [1.35]"""
+        try:
+            from src import pipeline
+            if not self.pipeline_id:
+                return "SObject metadata"
+            pipeline.ensure_registered()
+            lang = getattr(pipeline.get(self.pipeline_id).target, "code_language", "")
+            return "items.xml" if lang == "Java" else "SObject metadata"
+        except Exception:
+            return "SObject metadata"
+
     def output_path(self, artifact) -> str:
         """Where an artifact lands on disk. The unit a collision is measured in — an
         Apex `Pricing.cls` and an LWC `lwc/Pricing` share a name but not a file."""
@@ -250,11 +268,22 @@ class Blackboard:
         for cls in self.all_classes:
             name = cls.get("class_name")
             layer = cls.get("layer", "")
-            if layer == "Model":
-                rows.append({"source": name, "layer": layer, "outcome": "converted",
-                             "target": "SObject metadata", "note": "data model → custom object"})
-                continue
             art = by_source.get(name)
+            if layer == "Model" and art is None and name not in self.emitted_as:
+                # A source type that became part of the data model rather than code.
+                #
+                # This used to run *before* the artifact lookup and short-circuit it, so
+                # a class that had been converted was reported as absorbed into the
+                # schema instead — which is only true where "Model" means a data
+                # declaration. In Magento a Model holds business logic, and
+                # `PricingService` was reported as data while its service implementation
+                # sat on disk unmentioned. Now it is the fallback for a Model nothing
+                # was built from, which is what it was always describing. [1.35]
+                rows.append({"source": name, "layer": layer, "outcome": "converted",
+                             "target": self.data_model_target(),
+                             "note": "declared in the source's data model; converted as "
+                                     "part of it rather than as code"})
+                continue
             if art is not None:
                 # A platform-invoked hook loses its *invocation*, not its logic. The Apex
                 # is written correctly and then nothing ever calls it, so the rules it
@@ -306,7 +335,10 @@ class Blackboard:
                     rows.append({"source": name, "layer": layer,
                                  "outcome": ("scaffolded" if scaffolded
                                              else "flagged" if flagged else "converted"),
-                                 "target": target,
+                                 # What was written, where the emitter said so. Falls back
+                                 # to the conventional name for targets that do not
+                                 # report one. [1.35]
+                                 "target": self.emitted_as.get(name, target),
                                  "note": "; ".join(notes) if flagged else ""})
             elif name in skipped:
                 rows.append({"source": name, "layer": layer, "outcome": "skipped",

@@ -574,9 +574,21 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # answer decides whose. Preflight used to run first and was Hybris-only, so it told
     # Magento projects full of PHP that "there is nothing to migrate". [1.33]
     _pl = None
-    from src.pipeline import v2_enabled, ensure_registered, resolve, require_runnable
-    if v2_enabled(config):
-        ensure_registered()
+    from src.pipeline import (v2_enabled, ensure_registered, resolve, require_runnable,
+                              default_pipeline)
+    ensure_registered()
+    # v1 is a *dispatch path*, not a pipeline: it calls the Hybris ingest and the
+    # Salesforce writer directly, and there is no version of it that can run any other
+    # pair. So the engine flag decides how the *shipped* migration is routed, and every
+    # other migration takes the adapter route whatever the flag says.
+    #
+    # Left to the flag alone, `agent-migrate` on a Magento project with the default
+    # config reached the Hybris preflight and refused with "No Java sources and no
+    # Angular components — there is nothing to migrate", about a codebase full of PHP.
+    # The pipeline worked; only the default routing did not, which is the kind of defect
+    # that survives a green suite and a hand-run demo. [1.35]
+    _only_v1_can_run = resolve(input_dir).id == default_pipeline().id
+    if v2_enabled(config) or not _only_v1_can_run:
         # Refuse before reading a file or spending a token. A scaffolded pipeline would
         # otherwise walk every stage, convert nothing, and report a clean ledger over an
         # empty output — success-shaped failure, which is the one outcome this product
@@ -1126,6 +1138,9 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                 "rung": _static["rung"], "errors": list(_static.get("issues") or []),
                 "message": _static.get("message", ""),
             }
+
+        bb.emitted_as.update(
+            (getattr(_target, "last_emit", None) or {}).get("emitted_as") or {})
 
         for row in ((getattr(_target, "last_emit", None) or {}).get("manual") or []):
             for src_name in (row.get("sources") or []):

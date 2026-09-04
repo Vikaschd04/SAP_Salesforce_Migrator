@@ -62,6 +62,12 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
         created.append(str(path))
 
     services, manual = [], []
+    #: source class name -> the path this migration actually wrote for it, relative to
+    #: the extension root. The ledger named files by convention (`<target>.java`) and so
+    #: reported `AddLoyaltyAttributes.java` for a data patch whose content went into
+    #: items.xml — the right outcome under an invented filename. The emitter is the only
+    #: thing that knows. [1.35]
+    emitted_as: dict = {}
 
     for t in targets or []:
         kind = t.get("kind")
@@ -72,6 +78,13 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
             # entry and to the data model respectively, neither of which the target list
             # carries. Listing them as manual would understate what the run produced,
             # which is the same kind of lie as overstating it.
+            if kind == DATA:
+                # A data patch *is* the data model; its attributes were written onto the
+                # types they extend, inside items.xml.
+                for c in t.get("source_classes", []):
+                    if c.get("class_name"):
+                        emitted_as[c["class_name"]] = f"resources/{name}-items.xml"
+                continue
             if kind not in EMITTABLE:
                 manual.append({
                     "target": t.get("target_name", ""), "kind": kind,
@@ -92,6 +105,10 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                        f"Default{t['target_name']}.java"),
               hybris_service.build_implementation(unit, package, resolutions))
         services.append(unit)
+        for c in t.get("source_classes", []):
+            if c.get("class_name"):
+                emitted_as[c["class_name"]] = (
+                    f"src/{package.replace('.', '/')}/service/{t['target_name']}.java")
 
     # DAOs come from the data model rather than from source units: a Magento
     # ResourceModel is optional, and the tables exist either way.
@@ -113,6 +130,13 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
     for performable, job in sorted(jobs.items()):
         write(_pkg_dir(src, package, "jobs", f"{performable}.java"),
               hybris_data.build_job_performable(job, package, class_name=performable))
+        for t_row in targets or []:
+            if t_row.get("target_name") != performable:
+                continue
+            for c in t_row.get("source_classes", []):
+                if c.get("class_name"):
+                    emitted_as[c["class_name"]] = (
+                        f"src/{package.replace('.', '/')}/jobs/{performable}.java")
 
     di = (getattr(source_model, "extra", None) or {}).get("di", {})
     arguments = di.get("arguments", [])
@@ -145,12 +169,16 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                       unit, package, di,
                       {hybris_service.service_name(u.name) for u in services}))
             hooks.append({"kind": kind, "name": target_name})
+            emitted_as[unit.name] = (
+                f"src/{package.replace('.', '/')}/decorators/{target_name}.java")
         elif kind == INTERCEPTOR:
             write(_pkg_dir(src, package, "interceptors", f"{target_name}.java"),
                   hybris_hooks.build_interceptor(unit, package, di))
             hooks.append({"kind": kind, "name": target_name,
                           "type_code": hybris_hooks._short(
                               hybris_hooks._target_type(unit, di))})
+            emitted_as[unit.name] = (
+                f"src/{package.replace('.', '/')}/interceptors/{target_name}.java")
         else:
             event = event_of.get(unit.name, "")
             if event and event not in seen_events:
@@ -161,6 +189,8 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
             write(_pkg_dir(src, package, "listeners", f"{target_name}.java"),
                   hybris_hooks.build_event_listener(unit, package, event))
             hooks.append({"kind": kind, "name": target_name, "event": event})
+            emitted_as[unit.name] = (
+                f"src/{package.replace('.', '/')}/listeners/{target_name}.java")
 
     write(root / "project.properties", hybris_data.build_properties(arguments, name))
     write(resources / f"{name}-seed.impex",
@@ -184,7 +214,8 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
     static["issues"] = list(static["issues"]) + cross_reference_issues(root)
     if static["issues"]:
         static["rung"] = assurance.NONE
-    return {"created": sorted(set(created)), "manual": manual, "static": static}
+    return {"created": sorted(set(created)), "manual": manual, "static": static,
+            "emitted_as": emitted_as}
 
 
 def _spring(units: list, arguments: list, package: str, extension: str,

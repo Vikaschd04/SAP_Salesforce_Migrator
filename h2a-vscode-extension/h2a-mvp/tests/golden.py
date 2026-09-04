@@ -35,8 +35,20 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CORPUS = ROOT.parent / "Testing" / "acme-commerce-hybris"
-MANIFEST = Path(__file__).resolve().parent / "golden" / "manifest.json"
+_TESTING = ROOT.parent / "Testing"
+_BASELINES = Path(__file__).resolve().parent / "golden"
+
+#: The shipped pipeline's reference migration. Kept under the original names so the
+#: existing baseline and every caller of it are untouched.
+CORPUS = _TESTING / "acme-commerce-hybris"
+MANIFEST = _BASELINES / "manifest.json"
+
+#: The second pipeline's. A net per pipeline, not one shared net: they convert different
+#: corpora into different platforms, and a single manifest could only ever cover one.
+#: Until this existed, Adobe→Hybris had no product-level regression test at all — every
+#: defect found in it during 1.33 and 1.34 was found by running it by hand. [1.35]
+ADOBE_CORPUS = _TESTING / "acme-commerce-magento"
+ADOBE_MANIFEST = _BASELINES / "manifest_adobe.json"
 
 # Regenerated per run by design — a snapshot of them would be noise, not signal.
 SKIP_DIRS = {"checkpoints", "__pycache__"}
@@ -102,8 +114,9 @@ def capture(out_dir: Path) -> dict[str, str]:
     return manifest
 
 
-def run_reference(out_dir: Path, *, engine_version: str | None = None) -> dict[str, str]:
-    """Run the reference migration and capture it. Mock provider — free and offline."""
+def run_reference(out_dir: Path, *, engine_version: str | None = None,
+                  corpus: Path | None = None) -> dict[str, str]:
+    """Run a reference migration and capture it. Mock provider — free and offline."""
     env = {**os.environ,
            "H2A_PROVIDER": "mock",
            "H2A_INCREMENTAL": "false",     # a cached run would not exercise generation
@@ -112,7 +125,7 @@ def run_reference(out_dir: Path, *, engine_version: str | None = None) -> dict[s
         env["H2A_ENGINE_VERSION"] = engine_version
     r = subprocess.run(
         [sys.executable, "-m", "src.main", "agent-migrate",
-         "--input", str(CORPUS), "--output", str(out_dir)],
+         "--input", str(corpus or CORPUS), "--output", str(out_dir)],
         cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=900)
     if r.returncode != 0:
         raise AssertionError(f"reference migration failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
@@ -132,14 +145,17 @@ def compare(expected: dict, actual: dict) -> list[str]:
     return diffs
 
 
-def load() -> dict:
-    return json.loads(MANIFEST.read_text(encoding="utf-8"))["files"] if MANIFEST.exists() else {}
+def load(path: Path | None = None) -> dict:
+    path = path or MANIFEST
+    return json.loads(path.read_text(encoding="utf-8"))["files"] if path.exists() else {}
 
 
-def save(manifest: dict, note: str = "") -> None:
-    MANIFEST.parent.mkdir(parents=True, exist_ok=True)
-    MANIFEST.write_text(json.dumps(
+def save(manifest: dict, note: str = "", path: Path | None = None,
+         corpus: Path | None = None) -> None:
+    path = path or MANIFEST
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(
         {"note": note or "Baseline of the reference migration. Regenerate deliberately: "
                          "H2A_GOLDEN_UPDATE=1 pytest tests/test_golden.py",
-         "corpus": CORPUS.name,
+         "corpus": (corpus or CORPUS).name,
          "files": manifest}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
