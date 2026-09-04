@@ -35,6 +35,20 @@ _STOP = {
 _COVERAGE_THRESHOLD = 0.4
 
 
+
+def _target_language() -> str:
+    """The language this run actually emits. Hardcoded "Apex" labelled every artifact in
+    a run that writes Java. [1.39]"""
+    try:
+        from src import pipeline, runctx
+        pipeline.ensure_registered()
+        pid = runctx.pipeline_id()
+        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        return getattr(p.target, "code_language", "Target")
+    except Exception:
+        return "Target"
+
+
 def _keywords(text: str) -> list[str]:
     return [w for w in re.findall(r"[a-zA-Z]{4,}", text.lower()) if w not in _STOP]
 
@@ -204,7 +218,7 @@ def write_parity_md(output_dir: str, parity: dict) -> str:
         lines.append(f"- **Rule parity**: {score_str}")
         lines.append("")
         if t["apex_methods"]:
-            lines.append("**Apex surface:**")
+            lines.append(f"**{_target_language()} surface:**")
             lines.append("")
             for m in t["apex_methods"]:
                 lines.append(f"- `{m}`")

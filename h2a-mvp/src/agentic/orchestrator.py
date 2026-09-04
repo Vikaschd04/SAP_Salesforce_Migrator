@@ -678,7 +678,9 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # discovering the same shape in generated Apex three stages later.
     from src.radar import scan as _radar_scan, headline as _radar_headline
     try:
-        bb.radar = _radar_scan(input_dir)
+        # The source knows what a hazard looks like in its own language. [1.39]
+        bb.radar = (_pl.source.hazards(input_dir) if _pl is not None
+                    else _radar_scan(input_dir))
         emit("radar", **bb.radar)
         if bb.radar["summary"]["total"]:
             print(f"  Hazards: {_radar_headline(bb.radar['summary'])}")
@@ -927,7 +929,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     retriever = build_retriever(config)
     if retriever is not None:
         bb.record("Retriever", "loaded",
-                  f"{retriever.n_chunks} chunks from bundled Salesforce docs (lexical RAG)")
+                  f"{retriever.n_chunks} chunks from this pipeline's knowledge pack "
+                  "(lexical RAG)")
         print(f"    · RAG grounding on ({retriever.n_chunks} doc chunks)")
 
     # Build runs as dependency *wavefronts*: domains at the same depth are mutually
@@ -1494,11 +1497,24 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
 
 
 def _write_plan_doc(bb) -> str:
+    # The target's own language and product name, not Salesforce's. This paragraph told
+    # every reader their code was being converted "to Apex" and screened against native
+    # Salesforce products, in a run emitting Java for SAP Hybris. [1.39]
+    try:
+        from src import pipeline, runctx
+        pipeline.ensure_registered()
+        _pid = runctx.pipeline_id()
+        _p = pipeline.get(_pid) if _pid else pipeline.default_pipeline()
+        _lang = getattr(_p.target, "code_language", "the target language")
+        _plat = _p.target.label.split(" (")[0]
+    except Exception:
+        _lang, _plat = "the target language", "the target platform"
+
     lines = ["# Agentic Migration Plan", "",
              "Produced by the Phase-1 agent team. The Planner converts every target's "
-             "logic to Apex — flagging any that might fit a native Salesforce product "
-             "(e.g. CPQ) for review rather than skipping it; the Critic reviews each built "
-             "artifact for behavior, security, and governor safety.", "",
+             f"logic to {_lang} — flagging any that might fit a native {_plat} product "
+             "for review rather than skipping it; the Critic reviews each built "
+             "artifact for behavior, security, and limits.", "",
              "## 1. Plan", "",
              "| Target | Pattern | Decision | Rationale |", "|---|---|---|---|"]
     for p in bb.plan:

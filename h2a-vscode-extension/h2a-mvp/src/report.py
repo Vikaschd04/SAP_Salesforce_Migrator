@@ -7,6 +7,84 @@ from pathlib import Path
 
 
 # Map layer names to Salesforce design patterns
+
+def _pipeline_words() -> dict:
+    """How this run should describe itself. [1.39]
+
+    The feasibility report opened "SAP Hybris to Salesforce Apex Migration" whichever
+    migration produced it, and listed `.java` sources beside `.cls` targets for a run that
+    reads PHP and writes Java. A report whose *title* names the wrong pipeline is not a
+    cosmetic problem: it is the first thing a stakeholder reads.
+    """
+    try:
+        from src import pipeline, runctx
+        pipeline.ensure_registered()
+        pid = runctx.pipeline_id()
+        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        src_lang = getattr(p.source, "code_language", "code")
+        tgt_lang = getattr(p.target, "code_language", "code")
+        return {
+            "source": p.source.label.split(" (")[0],
+            "target": p.target.label.split(" (")[0],
+            "source_lang": src_lang,
+            "target_lang": tgt_lang,
+            "source_ext": {"Java": ".java", "PHP": ".php"}.get(src_lang, ""),
+            "target_ext": {"Apex": ".cls", "Java": ".java"}.get(tgt_lang, ""),
+            # Each target polices a different thing, and naming the wrong one tells a
+            # reviewer to check something the platform does not have. [1.39]
+            "limits": ("governor-limit safety" if tgt_lang == "Apex"
+                       else "resolvable types and bounded queries"),
+            #: What the *source* calls its query language, so advice about translating
+            #: queries names the thing the reader will actually search for.
+            "query_language": {"hybris": "Hybris FlexibleSearch",
+                               "adobe-commerce": "Magento collections and select()"
+                               }.get(getattr(p.source, "platform", ""),
+                                     "the source's own query language"),
+            "cli": "Salesforce CLI" if tgt_lang == "Apex" else "compiler",
+        }
+    except Exception:
+        return {"source": "the source platform", "target": "the target platform",
+                "source_lang": "code", "target_lang": "code",
+                "source_ext": "", "target_ext": "",
+                "limits": "platform limits", "cli": "the platform's tooling",
+                "query_language": "the source's own query language"}
+
+
+#: The shape each source layer takes on the target, in that target's own vocabulary. One
+#: table per target: "Selector Pattern" and "Bulkified Service Class" are Salesforce
+#: answers, and labelling a generated Hybris service with them describes a migration that
+#: did not happen. [1.39]
+
+def _review_checklist(words: dict) -> list:
+    """What a reviewer should actually check, per target. [1.39]
+
+    "Verify generated Apex handles collections without hitting governor limits" is sound
+    advice about Salesforce and meaningless about a Hybris extension, which has neither
+    governor limits nor SOQL. A checklist that lists checks the platform cannot fail is
+    how a reviewer learns to skim the checklist.
+    """
+    if words.get("target_lang") == "Apex":
+        return [
+            "- [ ] **Bulk Safety**: Verify that generated Apex methods handle collections "
+            "without hitting governor limits on DML/SOQL.",
+            "- [ ] **Query Equivalency**: Manually test SOQL queries to ensure correct "
+            f"mapping of joins or conditions from {words['query_language']}.",
+        ]
+    return [
+        "- [ ] **Query bounds**: Every generated FlexibleSearch is parameterised and "
+        "bounded. Confirm the bound is the one the source intended, not just present.",
+        "- [ ] **Wiring**: Each emitted bean is declared in the extension's spring.xml and "
+        "each cronjob's ImpEx names a bean that exists — an unresolved springId imports "
+        "cleanly and fails the first time the job runs.",
+        "- [ ] **Interceptor scope**: An interceptor fires for every save of its item "
+        "type, wherever that save came from. Anything conditional in the original plugin "
+        "has to become an explicit condition.",
+        "- [ ] **Listener ordering**: Hybris publishes events asynchronously and unordered "
+        "by default. Confirm nothing downstream depended on an observer having already "
+        "run.",
+    ]
+
+
 _LAYER_PATTERNS = {
     "Model": "Custom Object (SObject)",
     "DAO": "Selector Pattern",
@@ -17,6 +95,27 @@ _LAYER_PATTERNS = {
     "Job": "Scheduled Apex (Schedulable)",
     "Component": "Lightning Web Component (LWC)",
 }
+
+_LAYER_PATTERNS_HYBRIS = {
+    "Model": "Item type (items.xml)",
+    "DAO": "DAO with FlexibleSearch",
+    "Service": "Spring service (interface + Default impl)",
+    "Facade": "Merged into the service layer",
+    "Controller": "OCC controller",
+    "Utility": "Spring bean",
+    "Job": "AbstractJobPerformable + cronjob",
+    "Api": "Spring service (interface + Default impl)",
+    "Plugin": "Decorator or interceptor",
+    "Observer": "Event listener",
+    "Cron": "AbstractJobPerformable + cronjob",
+}
+
+
+def _pattern_for(layer: str, words: dict) -> str:
+    """The design-pattern cell, in the running target's vocabulary."""
+    if words.get("target_lang") == "Java":
+        return _LAYER_PATTERNS_HYBRIS.get(layer, "Spring bean")
+    return _LAYER_PATTERNS.get(layer, "Apex Helper Class")
 
 
 def _confidence_label(score: int) -> str:
@@ -107,6 +206,7 @@ def generate_report(output_dir: str, validation_results: dict = None,
     Returns:
         Path to the generated report file.
     """
+    _w = _pipeline_words()
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     report_file = out_path / "FEASIBILITY_REPORT.md"
@@ -124,9 +224,11 @@ def generate_report(output_dir: str, validation_results: dict = None,
 
     # Build the report sections
     sections = [
-        "# Feasibility Study Report: SAP Hybris to Salesforce Apex Migration",
+        f"# Feasibility Study Report: {_w['source']} to {_w['target']} Migration",
         "",
-        "This report evaluates the feasibility of migrating Java/Spring source code from SAP Hybris into functionally equivalent Salesforce Apex code, based on deterministic and LLM-driven generation.",
+        f"This report evaluates the feasibility of migrating {_w['source_lang']} source "
+        f"code from {_w['source']} into functionally equivalent {_w['target']} "
+        f"{_w['target_lang']}, based on deterministic and LLM-driven generation.",
         "",
     ]
 
@@ -136,7 +238,8 @@ def generate_report(output_dir: str, validation_results: dict = None,
         "",
         "The following components were analyzed and processed in this iteration:",
         "",
-        "| Source Hybris Class | Inferred Layer | Target Apex Artifact | Target Design Pattern | Confidence |",
+        f"| Source {_w['source']} Class | Inferred Layer | Target {_w['target_lang']} "
+        "Artifact | Target Design Pattern | Confidence |",
         "|---|---|---|---|---|",
     ])
 
@@ -144,14 +247,18 @@ def generate_report(output_dir: str, validation_results: dict = None,
         for gen in generated_results:
             target_name = gen.get("target_name", "Unknown")
             layer = gen.get("layer", "Utility")
-            pattern = _LAYER_PATTERNS.get(layer, "Apex Helper Class")
+            pattern = _pattern_for(layer, _w)
             is_lwc = layer == "Component"
-            ext = ".ts" if is_lwc else ".java"
+            # The *source's* extension. Hardcoded `.java`, this listed a Magento module's
+            # PHP classes as `StoreConfigInterface.java` — a filename that appears nowhere
+            # in the customer's repository. [1.39]
+            ext = ".ts" if is_lwc else (_w["source_ext"] or "")
             source_classes = gen.get("source_classes", [])
             source_names = ", ".join(
                 f"`{c['class_name']}{ext}`" for c in source_classes
             ) if source_classes else f"`{target_name}{ext}`"
-            target_cell = f"`lwc/{target_name}`" if is_lwc else f"`{target_name}.cls`"
+            target_cell = (f"`lwc/{target_name}`" if is_lwc
+                           else f"`{target_name}{_w['target_ext']}`")
             conf = confidence.get(target_name, {})
             conf_cell = f"{conf.get('label', 'Medium')} ({conf.get('score', '—')})" if conf else "—"
             sections.append(
@@ -184,14 +291,26 @@ def generate_report(output_dir: str, validation_results: dict = None,
                 "> ⚠️ **Some inputs are unaccounted for — investigate before relying on this run.**",
                 "",
             ])
-        if any(r["outcome"] == "manual" for r in ledger):
-            sections.extend([
-                "> ⚠️ **`manual` means we read it and did not convert it.** Hybris business "
-                "processes are state machines; their action classes were converted to Apex, "
-                "but the orchestration that sequences them was not. See "
-                "`BUSINESS_PROCESSES.md` — you are holding the pieces without the wiring.",
-                "",
-            ])
+        manual_rows = [r for r in ledger if r["outcome"] == "manual"]
+        if manual_rows:
+            # The reason comes from the ledger, not from an assumption about what
+            # `manual` means. It used to say every one was a business process whose
+            # orchestration was not carried across, and point at `BUSINESS_PROCESSES.md`
+            # — a document an Adobe Commerce run does not produce, about a construct
+            # Magento does not have. There is more than one way to be read and not
+            # converted, and the row already records which. [1.39]
+            reasons = []
+            for r in manual_rows:
+                note = (r.get("note") or "").strip()
+                if note and note not in reasons:
+                    reasons.append(note)
+            sections.append(
+                f"> ⚠️ **`manual` means we read it and did not convert it.** "
+                f"{len(manual_rows)} item(s), for these reasons:")
+            sections.append("")
+            sections += [f"> - {r}" for r in reasons[:6]] or [
+                "> - no reason was recorded, which is itself worth investigating"]
+            sections.append("")
         if any(r["outcome"] == "overwritten" for r in ledger):
             sections.extend([
                 "> 🚨 **`overwritten` means two artifacts wrote the same file and only one "
@@ -213,7 +332,8 @@ def generate_report(output_dir: str, validation_results: dict = None,
     sections.extend([
         "## 2. Static Code Validation Results (Tier-1)",
         "",
-        "All generated Apex classes and test suites were subjected to offline checks for governor-limit safety and structural patterns.",
+        f"All generated {_w['target_lang']} classes and test suites were subjected to "
+        f"offline checks for {_w['limits']} and structural patterns.",
         "",
         "| Target Artifact Name | Validation Status | Issues Identified |",
         "|---|---|---|",
@@ -257,9 +377,10 @@ def generate_report(output_dir: str, validation_results: dict = None,
 
     # ── Section 2b: Deploy Verification ──
     if verify_result is not None:
-        sections.extend(["## 2b. Deploy Verification (Salesforce CLI)", ""])
+        sections.extend([f"## 2b. Deploy Verification ({_w['cli']})", ""])
         if not verify_result.get("available"):
-            sections.append("_Salesforce CLI (`sf`) not installed — deploy verification skipped._")
+            sections.append(f"_{_w['cli']} not available — deploy verification "
+                            "skipped._")
         elif not verify_result.get("ran"):
             sections.append(f"_Not run: {verify_result.get('message', 'no org available')}_")
         else:
@@ -310,11 +431,12 @@ def generate_report(output_dir: str, validation_results: dict = None,
             "Unverified output (no org deploy) is capped; a clean org deploy is the "
             "strongest signal.",
             "",
-            "| Target Apex Artifact | Confidence | Score | Basis |",
+            f"| Target {_w['target_lang']} Artifact | Confidence | Score | Basis |",
             "|---|---|---|---|",
         ])
         for name, c in sorted(confidence.items()):
-            sections.append(f"| `{name}.cls` | {c['label']} | {c['score']}/100 | {c['basis']} |")
+            sections.append(f"| `{name}{_w['target_ext']}` | {c['label']} | "
+                            f"{c['score']}/100 | {c['basis']} |")
         sections.append("")
 
     # ── Section 2d: Schema Reconciliation ──
@@ -435,8 +557,7 @@ def generate_report(output_dir: str, validation_results: dict = None,
         "",
         "Developers performing final human inspection should verify:",
         "",
-        "- [ ] **Bulk Safety**: Verify that generated Apex methods handle collections without hitting governor limits on DML/SOQL.",
-        "- [ ] **Query Equivalency**: Manually test SOQL queries to ensure correct mapping of joins or conditions from Hybris FlexibleSearch.",
+        *_review_checklist(_w),
         "- [ ] **Serialization**: Verify REST endpoint JSON payloads match the expected conventions of legacy consumer systems.",
         "- [ ] **Transaction Boundary**: Implement unit-of-work patterns where DML operations span multiple records.",
         "- [ ] **Test Coverage**: Run org-based code coverage reports to verify actual logic coverage.",
@@ -448,9 +569,9 @@ def generate_report(output_dir: str, validation_results: dict = None,
     verified_live = bool(verify_result and verify_result.get("ran"))
     if verified_live:
         sections.append(
-            "- **Deployment Verification**: Output was dry-run deployed to a real Salesforce "
-            "org; component failures were fed back into a self-healing repair loop until the "
-            "metadata compiled (or the repair budget was exhausted — see §2b).")
+            f"- **Deployment Verification**: Output was checked by {_w['target']}'s own "
+            "tooling; failures were fed back into a self-healing repair loop until it "
+            "passed (or the repair budget was exhausted — see §2b).")
     else:
         sections.append(
             "- **Deployment Automation**: No org deploy ran this iteration; offline static "
@@ -459,7 +580,9 @@ def generate_report(output_dir: str, validation_results: dict = None,
             "self-healing.")
     sections.extend([
         "- **Validation Scope**: Offline validation checks syntax structures but cannot confirm query performance, indexing, or field level security configuration.",
-        "- **Commerce Logic**: Complex commerce workflows (cart calculations, checkout, promotions) may map better to native Salesforce Commerce products rather than custom Apex.",
+        f"- **Commerce Logic**: Complex commerce workflows (cart calculations, checkout, "
+        f"promotions) may map better to a native {_w['target']} capability than to "
+        f"custom {_w['target_lang']}.",
         "- **Test Coverage**: While tests are generated, verify actual logic coverage via org-based code coverage reports.",
     ])
 

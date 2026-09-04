@@ -64,6 +64,17 @@ class SourceAdapter(Protocol):
     def read(self, root: str) -> object:
         """The whole source, as an `ir.SourceModel`."""
 
+    def hazards(self, root: str) -> dict:
+        """Habits in *this* source that become problems on a target. [1.39]
+
+        `{findings, summary}` — the shape `radar.write_radar_md` renders. Asked of the
+        source because a hazard is a fact about the code being read: Hybris looks for
+        FlexibleSearch in a loop, Adobe Commerce for an `around` plugin that skips
+        `$proceed`. The orchestrator called the Hybris scanner for every run, so a Magento
+        estate was scanned for Java habits, found none, and produced no hazard report at
+        all — while the Adobe reader had already found twelve and put them in the IR.
+        """
+
     def preflight(self, root: str) -> dict:
         """Should a migration start on this codebase at all? No model calls.
 

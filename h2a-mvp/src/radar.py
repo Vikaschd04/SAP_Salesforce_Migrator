@@ -624,6 +624,17 @@ _RULE_TITLES = {
     "REST_PATH_TEMPLATE": "Path template no urlMapping can express",
     "REST_GUEST_ACCESS": "Endpoint called without a session",
     "REST_PAYLOAD_CAP": "Response bounded by heap, not streamed",
+    # Adobe Commerce. Kept in one table because rule ids are unique across sources and a
+    # second lookup would be a second place for a title to go missing. [1.39]
+    "OBJECT_MANAGER": "Dependency taken from the ObjectManager",
+    "AROUND_PLUGIN": "Plugin that can skip the original",
+    "OBSERVER_MUTATES_PAYLOAD": "Observer mutates the event payload",
+    "EAV_DATA_PATCH": "Attributes declared only in the database",
+    "STORE_SCOPED_CONFIG": "Store-scoped configuration",
+    "MAGIC_DATA_ACCESS": "Untyped magic data access",
+    "CLUSTER_CRON": "Cron that assumes a single runner",
+    "N_PLUS_ONE": "Query inside a loop",
+    "COLLECTION_NO_LIMIT": "Unbounded collection load",
 }
 
 
@@ -631,18 +642,42 @@ def rule_title(rule: str) -> str:
     return _RULE_TITLES.get(rule, rule.replace("_", " ").title())
 
 
+
+def _platforms() -> tuple:
+    """`(source label, source language, target label, target language)` for this run.
+
+    Every sentence in the hazard report named SAP Commerce and Apex, whichever migration
+    produced it — so an Adobe Commerce estate was told its Magento habits were "ordinary
+    in SAP Commerce and dangerous once they are Apex", about PHP becoming Java. A report
+    that names the wrong platform is the clearest signal a reader has that the tool does
+    not know what it just did. [1.39]
+    """
+    try:
+        from src import pipeline, runctx
+        pipeline.ensure_registered()
+        pid = runctx.pipeline_id()
+        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        return (p.source.label.split(" (")[0], getattr(p.source, "code_language", "code"),
+                p.target.label.split(" (")[0], getattr(p.target, "code_language", "code"))
+    except Exception:
+        return "the source platform", "code", "the target platform", "code"
+
+
 def write_radar_md(output_dir: str, radar: dict) -> str:
     """ANTI_PATTERNS.md — what to fix, and whether to fix it before or after migrating."""
     s = radar.get("summary") or {}
+    src_label, src_lang, tgt_label, tgt_lang = _platforms()
     out = ["# Migration Hazard Report", "",
-           "Patterns that are ordinary in SAP Commerce and dangerous once they are Apex. "
-           "Found by static analysis of your source — no AI, no org, nothing sent anywhere.", "",
+           f"Patterns that are ordinary in {src_label} and dangerous once they are "
+           f"{tgt_lang}. Found by static analysis of your source — no AI, no org, nothing "
+           "sent anywhere.", "",
            f"**{headline(s)}**", ""]
 
     if s.get("critical"):
         out += [f"> ⚠️ **{s['critical']} critical finding(s).** These fail at realistic volume "
-                "rather than in a test with three records. Fix them in the Hybris source before "
-                "migrating, or accept that the generated Apex inherits the same shape.", ""]
+                f"rather than in a test with three records. Fix them in the {src_label} "
+                f"source before migrating, or accept that the generated {tgt_lang} inherits "
+                "the same shape.", ""]
 
     if s.get("by_rule"):
         out += ["| Hazard | Count |", "|---|---|"]
@@ -658,15 +693,14 @@ def write_radar_md(output_dir: str, radar: dict) -> str:
         for f in group:
             out += [f"### `{f['id']}` {rule_title(f['rule'])} — `{f['file']}`:{f['line']}", ""]
             if f.get("snippet"):
-                out += ["```java", f["snippet"], "```", ""]
-            out += [f"**On Salesforce:** {f['hazard']}", "",
+                out += [f"```{src_lang.lower()}", f["snippet"], "```", ""]
+            out += [f"**On {tgt_label}:** {f['hazard']}", "",
                     f"**Fix:** {f['fix']}", ""]
 
     out += ["---", "",
-            "> These are found in the **source**, before anything is generated. Fixing a "
-            "FlexibleSearch-in-loop in the Java is cheaper than fixing the SOQL-in-loop it "
-            "becomes, and it is the only point at which the fix is still one change rather "
-            "than two."]
+            "> These are found in the **source**, before anything is generated. Fixing one "
+            f"in the {src_lang} is cheaper than fixing what it becomes in {tgt_lang}, and "
+            "it is the only point at which the fix is still one change rather than two."]
 
     path = Path(output_dir) / "ANTI_PATTERNS.md"
     path.parent.mkdir(parents=True, exist_ok=True)

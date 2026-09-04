@@ -197,6 +197,34 @@ class AdobeCommerceSource:
                         f"{project['php_files']} PHP file(s)."),
         }
 
+    def hazards(self, root: str) -> dict:
+        """Magento habits that become problems on Hybris. [1.39]
+
+        `magento_radar` already produced these and the source model already carried them;
+        nothing rendered them, because the orchestrator asked the Hybris scanner instead.
+        The summary is widened here to the keys the report writer reads — `files_affected`
+        and `by_rule` — rather than in the scanner, so the scanner keeps its own shape and
+        its own tests.
+        """
+        from src.adapters import magento_radar
+
+        got = magento_radar.scan(root)
+        _order = {"critical": 0, "high": 1, "medium": 2, "info": 3}
+        findings = sorted(got.get("findings") or [],
+                          key=lambda f: (_order.get(f["severity"], 9), f["file"], f["line"]))
+        # Worst first, and each row addressable. The reports index hazards by `id` and
+        # the Magento scanner did not assign one, so every consumer downstream raised
+        # KeyError the moment these findings were real rather than empty. [1.39]
+        by_rule: dict = {}
+        for i, f in enumerate(findings, 1):
+            f["id"] = f"H-{i:03d}"
+            by_rule[f["rule"]] = by_rule.get(f["rule"], 0) + 1
+        summary = dict(got.get("summary") or {})
+        summary.setdefault("info", 0)
+        summary["by_rule"] = by_rule
+        summary["files_affected"] = summary.get("files", len({f["file"] for f in findings}))
+        return {"findings": findings, "summary": summary}
+
     def preflight(self, root: str) -> dict:
         """Is there an Adobe Commerce estate here worth migrating? [1.33]
 

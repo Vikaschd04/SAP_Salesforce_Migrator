@@ -20,6 +20,11 @@ class HybrisSource:
         from src.preflight import inspect
         return inspect(root)
 
+    def hazards(self, root: str) -> dict:
+        """The shipped radar, unchanged — routing it through the adapter changes nothing."""
+        from src.radar import scan
+        return scan(root)
+
     def preflight(self, root: str) -> dict:
         """Should a migration start? The shipped gate, unchanged. [1.33]
 
