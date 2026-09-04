@@ -121,6 +121,33 @@ class DataType:
     # lives partly in the database. Recorded so the gap is reportable, not invisible.
     undeclared_note: str = ""
 
+    def to_dict(self) -> dict:
+        """The wire format, under both spellings.
+
+        The two sources disagreed about this: Hybris put plain `{name, fields}` dicts in
+        `DataModel.types` while Adobe put `DataType` objects with `code` and
+        `attributes`. Everything downstream reads one or the other, so whichever source
+        ran second broke — `'DataType' object has no attribute 'get'`, from the schema
+        builder, on the first Adobe run that got that far.
+
+        Emitting both names is the same choice `SourceUnit.to_dict` already makes with
+        `class_name`: every existing consumer keeps working, and there is one canonical
+        object to read rather than two shapes to guess between. [1.33]
+        """
+        return {"code": self.code, "name": self.code,
+                "attributes": list(self.attributes), "fields": list(self.attributes),
+                "extends": self.extends, "deployment": self.deployment,
+                "undeclared_note": self.undeclared_note}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "DataType":
+        d = dict(d or {})
+        return cls(code=d.get("code") or d.get("name") or "",
+                   extends=d.get("extends", ""),
+                   attributes=list(d.get("attributes") or d.get("fields") or []),
+                   deployment=d.get("deployment", ""),
+                   undeclared_note=d.get("undeclared_note", ""))
+
 
 @dataclass
 class DataModel:
@@ -232,8 +259,16 @@ class SourceModel:
             "classes": [u.to_dict() for u in self.units],
             "test_classes": [u.to_dict() for u in self.tests],
             "unreadable": [u.to_dict() for u in self.unreadable],
-            "frontend_skipped": list(self.skipped),
-            "item_types": list(self.data_model.types),
+            # Dicts, like every other key here: this method's whole job is the wire
+            # format, and a source that put objects in `skipped` reached the completeness
+            # ledger — which is platform-neutral and reads dicts — as an AttributeError.
+            # [1.33]
+            "frontend_skipped": [s.to_dict() if hasattr(s, "to_dict") else s
+                                 for s in self.skipped],
+            # Dicts, under both spellings — see `DataType.to_dict`. Passing the objects
+            # through made every downstream reader source-dependent. [1.33]
+            "item_types": [d.to_dict() if hasattr(d, "to_dict") else d
+                           for d in self.data_model.types],
             "relations": list(self.data_model.relations),
             "enum_types": list(self.data_model.enums),
             "dependency_order": list(self.dependency_order),

@@ -38,14 +38,77 @@ class HybrisTarget:
     has_oracle = False
     code_language = "Java"
 
+    #: Nothing to query before generating — an extension is built from source. [1.33]
+    has_org = False
+
     def plan(self, units: list, config: dict) -> list:
         """What Hybris builds from these units, with the reason for each choice. [3.2b]
 
         `config["wiring"]` carries the di.xml reading when there is one; without it a
         plugin cannot be classified and routes to the safe superset. See hybris_plan.
+
+        The protocol passes units as *dicts* — the wire format the pipeline uses — while
+        `hybris_plan` reads them as objects. That mismatch made the whole pipeline
+        unrunnable at the Planner, so normalise here exactly as the Salesforce target
+        normalises in the other direction. [1.33]
         """
         from src.adapters.hybris_plan import plan_targets
-        return plan_targets(units or [], (config or {}).get("wiring"))
+        from src.ir import SourceUnit
+        units = [u if hasattr(u, "name") else SourceUnit.from_dict(u)
+                 for u in (units or [])]
+        return plan_targets(units, (config or {}).get("wiring"))
+
+    def schema(self, item_types: list, relations: list, enum_types: list) -> dict:
+        """The `items.xml` type model, in the shape everything downstream reads. [1.33]
+
+        Objects with fields — the one shape both platforms share — so the same prompt
+        grounding, the same validation and the same reports work without knowing which
+        platform produced it. The Java types here are what `items.xml` will declare, so a
+        model grounded on this schema is grounded on what is actually emitted.
+        """
+        from src.adapters.hybris_extension import java_type, pascal
+
+        out: dict = {}
+        for dt in (item_types or []):
+            d = dt.to_dict() if hasattr(dt, "to_dict") else dict(dt or {})
+            code = d.get("code") or d.get("name")
+            if not code:
+                continue
+            fields = {}
+            for a in (d.get("attributes") or d.get("fields") or []):
+                a = a if isinstance(a, dict) else {}
+                nm = a.get("name")
+                if not nm:
+                    continue
+                fields[pascal(nm)] = java_type(a.get("type") or "")
+            out[code] = {"code": code, "fields": fields, "picklists": {},
+                         "open_picklists": set(), "name_notes": [], "localized": set(),
+                         "field_api": {}, "required": set(), "unique": set(),
+                         "defaults": {}}
+        return out
+
+    def reconcile(self, schema: dict, prelim: dict, corpus: str) -> tuple:
+        """No reconciliation without a compiler. [1.33]
+
+        The Salesforce path mines *validation failures* for field references that must
+        exist, and those come from a real deploy. Static parsing cannot tell a missing
+        field from a field on a platform type this extension does not declare, so
+        inventing attributes from generated Java would add to `items.xml` on a guess.
+        Returns the schema untouched, and says that is what happened rather than
+        reporting a clean reconciliation that never ran.
+        """
+        return schema, {"added_fields": [], "added_objects": [], "ran": False,
+                        "note": ("No schema reconciliation: it needs a compiler's view of "
+                                 "which references fail, and this target has none until "
+                                 "item 3.11.")}
+
+    def emit_schema(self, output_dir: str, schema: dict) -> list:
+        """Nothing separate to write — `items.xml` is part of the extension. [1.33]
+
+        `emit` already wrote it via `hybris_extension.build_extension`. Writing it again
+        here would produce a second, competing copy of the data model.
+        """
+        return []
 
     def emit(self, output_dir: str, artifacts: list, data_model, config: dict) -> list:
         """Assemble the extension. [3.1–3.6]
@@ -65,12 +128,28 @@ class HybrisTarget:
 
         from src.adapters.hybris_emit import emit_extension
 
+        # `plan` arrives as PlanItem objects; `hybris_emit` reads the dict rows this
+        # adapter's own `plan()` produced. Same normalisation as `plan()`, in the other
+        # direction. [1.33]
+        plan_rows = []
+        for item in (cfg.get("plan") or []):
+            if isinstance(item, dict):
+                plan_rows.append(item)
+                continue
+            plan_rows.append({
+                "target_name": getattr(item, "target_name", ""),
+                "kind": getattr(item, "kind", "") or "",
+                "layer": getattr(item, "layer", ""),
+                "rationale": getattr(item, "rationale", ""),
+                "source_classes": list(getattr(item, "source_classes", []) or []),
+            })
+
         result = emit_extension(
             output_dir,
             name=cfg.get("extension_name", "migrated"),
             package=cfg.get("package", "com.migrated"),
             source_model=source_model,
-            targets=cfg.get("plan") or [],
+            targets=plan_rows,
         )
         # Kept for the caller: what was written, what was planned and deliberately not
         # written, and how strongly the result was checked.

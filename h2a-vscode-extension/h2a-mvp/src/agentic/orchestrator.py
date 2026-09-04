@@ -534,6 +534,13 @@ class RunCancelled(Exception):
     """Raised cooperatively when the caller asks to stop a run mid-flight."""
 
 
+
+class _NoTargetOrg(Exception):
+    """This target has no live environment to inspect. Not an error — a fact about the
+    platform, and the reason the org step is skipped rather than reported as failing.
+    [1.33]"""
+
+
 def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = False,
                           verify: bool | None = None, on_event=None, gate=None,
                           should_cancel=None, on_blackboard=None, state_dir=None):
@@ -562,11 +569,34 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     print("=== Agentic Migration (Phase 1) ===")
     emit("stage", name="analyze", status="start")
 
-    # Before anything else: is this even a SAP Commerce codebase? Walking three review
-    # gates to discover there was nothing to migrate is a poor use of anyone's time, and
-    # with a real provider it is a poor use of their money.
-    from src.preflight import inspect as _preflight
-    pre = _preflight(input_dir)
+    # Which migration is this? Resolved before anything platform-specific happens,
+    # because every question below is asked in *some* platform's vocabulary and the
+    # answer decides whose. Preflight used to run first and was Hybris-only, so it told
+    # Magento projects full of PHP that "there is nothing to migrate". [1.33]
+    _pl = None
+    from src.pipeline import v2_enabled, ensure_registered, resolve, require_runnable
+    if v2_enabled(config):
+        ensure_registered()
+        # Refuse before reading a file or spending a token. A scaffolded pipeline would
+        # otherwise walk every stage, convert nothing, and report a clean ledger over an
+        # empty output — success-shaped failure, which is the one outcome this product
+        # exists to prevent.
+        _pl = require_runnable(resolve(input_dir))
+        bb.pipeline_id = _pl.id
+        # Publish it to the run context so prompts, mappings and RAG resolve to this
+        # pipeline's pack in call sites too deep to be handed the id explicitly.
+        from src.runctx import set_overrides as _set_run_overrides
+        _set_run_overrides(pipeline_id=_pl.id)
+
+    # Is there anything here worth migrating? Walking three review gates to discover
+    # there was not is a poor use of anyone's time, and with a real provider it is a poor
+    # use of their money. Asked of the source adapter, so each platform answers in its
+    # own terms rather than every codebase being measured for Java.
+    if _pl is not None:
+        pre = _pl.source.preflight(input_dir)
+    else:
+        from src.preflight import inspect as _preflight
+        pre = _preflight(input_dir)
     bb.preflight = pre
     emit("preflight", **pre)
     print(f"  Preflight: {pre['summary']}")
@@ -601,20 +631,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # produce identical output, and tests/test_golden.py asserts precisely that. The
     # adapter layer is a seam, not a rewrite; the day it changes behaviour is the day it
     # has a bug.
-    from src.pipeline import v2_enabled, ensure_registered, resolve
-    if v2_enabled(config):
-        ensure_registered()
-        from src.pipeline import require_runnable
-        # Refuse before reading a file or spending a token. A scaffolded pipeline would
-        # otherwise walk every stage, convert nothing, and report a clean ledger over an
-        # empty output — success-shaped failure, which is the one outcome this product
-        # exists to prevent.
-        _pl = require_runnable(resolve(input_dir))
-        bb.pipeline_id = _pl.id
-        # Publish it to the run context so prompts, mappings and RAG resolve to this
-        # pipeline's pack in call sites too deep to be handed the id explicitly.
-        from src.runctx import set_overrides as _set_run_overrides
-        _set_run_overrides(pipeline_id=_pl.id)
+    if _pl is not None:
         _model = _pl.source.read(input_dir)
         ingest_result = _model.to_ingest()
         bb.source_model = _model
@@ -630,7 +647,12 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     bb.test_classes = ingest_result.get("test_classes", [])
     bb.unreadable = ingest_result.get("unreadable", [])
     bb.generated = ingest_result.get("generated", [])
-    bb.schema = build_schema(bb.item_types, bb.relations, bb.enum_types)
+    # The data model in the *target's* shape. Called unconditionally, `build_schema`
+    # derived Salesforce SObjects for every run — including ones emitting `items.xml`,
+    # which meant the model was grounded on objects nothing would ever write. [1.33]
+    bb.schema = (_pl.target.schema(bb.item_types, bb.relations, bb.enum_types)
+                 if _pl is not None
+                 else build_schema(bb.item_types, bb.relations, bb.enum_types))
     bb.source_corpus = "\n".join(c.get("source", "") for c in bb.all_classes)
 
     # Business processes. Read here, with the class list already in hand so each action
@@ -664,12 +686,20 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # Read the DESTINATION as well as the source. Placed here because the schema now
     # exists and nothing has been generated yet, so a name collision costs a rename
     # rather than a failed deploy.
+    #
+    # Only where there *is* a destination to read. An extension is built from source with
+    # nothing to query, and this step was running regardless of target — an Adobe→Hybris
+    # run queried a Salesforce org and reported on how well it fitted. [1.33]
     try:
+        if _pl is not None and not getattr(_pl.target, "has_org", False):
+            raise _NoTargetOrg(_pl.target.label)
         from src.orgfit import read_org, assess as _org_assess, headline as _org_headline
         cfg_org = ((config.get("verify") or {}).get("target_org") or "")
         bb.orgfit = _org_assess(bb.schema, read_org(cfg_org))
         if bb.orgfit["connected"]:
             print(f"  Target org: {_org_headline(bb.orgfit)}")
+    except _NoTargetOrg:
+        pass                                            # nothing to read; not a failure
     except Exception as e:                              # advisory, never a blocker
         print(f"  ⚠ target-org check skipped: {e}")
 
@@ -1016,8 +1046,13 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # Only Apex artifacts feed schema reconciliation (LWC has no SObject SOQL to check).
     prelim = {f"{a.target_name}.cls": validate_artifact(a.main_class, f"{a.target_name}.cls", bb.schema)
               for a in bb.artifacts if not a.is_lwc}
-    bb.schema, bb.reconciliation = reconcile_schema(bb.schema, prelim, bb.source_corpus)
-    if bb.reconciliation["added_fields"] or bb.reconciliation["added_objects"]:
+    # Reconciliation reads a target's own evidence that the schema is short a field.
+    # Salesforce has that evidence; a target with no compiler does not, and says so
+    # rather than reporting a clean reconciliation that never ran. [1.33]
+    bb.schema, bb.reconciliation = (
+        _pl.target.reconcile(bb.schema, prelim, bb.source_corpus) if _pl is not None
+        else reconcile_schema(bb.schema, prelim, bb.source_corpus))
+    if bb.reconciliation.get("added_fields") or bb.reconciliation.get("added_objects"):
         bb.record("Reconciler", "schema_augmented",
                   f"+{len(bb.reconciliation['added_objects'])} object(s), "
                   f"+{len(bb.reconciliation['added_fields'])} field(s)")
@@ -1067,14 +1102,31 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     if bb.pipeline_id:
         from src.pipeline import ensure_registered, get as get_pipeline
         ensure_registered()
-        get_pipeline(bb.pipeline_id).target.emit(
-            output_dir, bb.generated_dicts(), _data_model, config)
+        # A target that assembles a *package* rather than a flat tree needs more than the
+        # artifact list: which unit became which kind, and the source model the jobs and
+        # data model come from. Both are on the blackboard; neither was being passed, so
+        # the Hybris target refused at the last step of an otherwise complete run. [1.33]
+        emit_config = dict(config or {})
+        emit_config.setdefault("source_model", getattr(bb, "source_model", None))
+        emit_config.setdefault("plan", getattr(bb, "plan", None) or [])
+        emit_config.setdefault("mappings", mappings)
+        _target = get_pipeline(bb.pipeline_id).target
+        _target.emit(output_dir, bb.generated_dicts(), _data_model, emit_config)
+        # What the emitter planned and deliberately did not write. Believed over the
+        # Builder's view, which cannot see a loss that happens after it finishes. [1.33]
+        for row in ((getattr(_target, "last_emit", None) or {}).get("manual") or []):
+            for src_name in (row.get("sources") or []):
+                if src_name:
+                    bb.not_emitted[src_name] = row.get("reason", "planned, not written")
     else:
         write_outputs(output_dir, bb.generated_dicts(), bb.item_types, mappings,
                       bb.schema)
     _write_flow_outputs(output_dir, getattr(bb, "flows", []),
                         getattr(bb, "flow_invocables", {}))
-    meta = write_schema_metadata(output_dir, bb.schema)
+    # Salesforce writes the data model as separate metadata files; a Hybris extension
+    # carries its types inside items.xml, which `emit` already wrote. [1.33]
+    meta = (_pl.target.emit_schema(output_dir, bb.schema) if _pl is not None
+            else write_schema_metadata(output_dir, bb.schema))
     print(f"    ✓ classes + {len(meta)} metadata file(s)")
     # Surface exactly which schema changes the AI made (and its evidence) so the
     # reviewer can see the reconciliation reasoning, not just a count.

@@ -95,6 +95,10 @@ class PlannerAgent:
                     target_name=t["target_name"], layer=t["layer"], domain=domain,
                     source_classes=t["source_classes"],
                     apex_pattern=_LAYER_TO_PATTERN.get(t["layer"], "Utility"),
+                    # The target adapter already decided what this becomes and why.
+                    # Both were being dropped here. [1.33]
+                    kind=t.get("kind", ""),
+                    rationale=t.get("rationale", ""),
                 ))
 
         # 2. Annotate with Apex/Native/Skip judgment (LLM), or default to Apex.
@@ -103,7 +107,10 @@ class PlannerAgent:
             self._annotate_with_llm(bb, base)
         else:
             for p in base:
-                p.rationale = "deterministic default (mock/offline): converted as Apex"
+                # Only where the adapter gave no reason. Overwriting one it did give
+                # replaces a real explanation with a placeholder. [1.33]
+                if not p.rationale:
+                    p.rationale = "deterministic default (mock/offline): converted as Apex"
 
         bb.plan = base
         n_convert = sum(1 for p in base if p.target_kind == "Convert")

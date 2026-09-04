@@ -84,6 +84,15 @@ MAGENTO_MARKERS = (
 )
 
 
+
+def _preflight_summary(project: dict) -> str:
+    """What was found, in the customer's own vocabulary. [1.33]"""
+    mods = project.get("modules") or []
+    bits = [f"{len(mods)} module(s)" + (f" [{', '.join(mods[:3])}]" if mods else ""),
+            f"{project.get('php_files', 0)} PHP file(s)"]
+    return "Adobe Commerce (Magento 2) project — " + ", ".join(bits) + "."
+
+
 class AdobeCommerceSource:
     platform = "adobe-commerce"
     label = "Adobe Commerce (Magento 2 · PHP)"
@@ -180,6 +189,60 @@ class AdobeCommerceSource:
             "summary": (f"Adobe Commerce (Magento 2) project detected ({confidence}% "
                         f"confidence) — {len(project['modules'])} module(s) [{mods}], "
                         f"{project['php_files']} PHP file(s). Migration not implemented yet."),
+        }
+
+    def preflight(self, root: str) -> dict:
+        """Is there an Adobe Commerce estate here worth migrating? [1.33]
+
+        Built on `detect`, which already knows what a Magento module looks like, so the
+        two cannot disagree about whether this is Adobe Commerce. The gate this replaces
+        looked for Java and Angular, and told a Magento project full of PHP that "there
+        is nothing to migrate".
+
+        Refuses on the two things that make a run pointless rather than merely thin: the
+        path is not a codebase, or it is one and there is no PHP in it.
+        """
+        from pathlib import Path
+
+        got = self.detect(root)
+        p = Path(root)
+        # `detect` folds "not implemented yet" into its own verdict and blockers. That is
+        # a fact about this adapter's maturity, not about the customer's codebase, and
+        # refusing an unrunnable pipeline is `pipeline.require_runnable`'s job. Preflight
+        # answers only "is there an estate here worth migrating", so the blockers are
+        # built here rather than inherited.
+        if not p.exists() or not p.is_dir():
+            blockers = ["That path is not a readable folder."]
+        elif not got.get("is_magento"):
+            blockers = ["This does not look like an Adobe Commerce (Magento 2) codebase — "
+                        "no `registration.php`, `etc/module.xml` or Magento composer type "
+                        "was found."]
+        elif not (got.get("project", {}) or {}).get("php_files"):
+            blockers = ["No PHP sources were found — there is nothing to migrate."]
+        else:
+            blockers = []
+
+        project = dict(got.get("project") or {})
+        warnings = list(got.get("warnings") or [])
+        if project.get("modules") and not project.get("db_schema_files"):
+            # An estate with code and no declared tables converts logic that reads
+            # entities the target will not have. Worth knowing before paying for a run.
+            warnings.append(
+                "No `db_schema.xml` was found, so no data model can be derived. Services "
+                "will be generated against types this extension does not declare.")
+
+        return {
+            "ok": not blockers,
+            "verdict": "reject" if blockers else "ok",
+            "confidence": got.get("confidence", 0),
+            "project": project,
+            "signals": list(got.get("signals") or []),
+            "blockers": blockers,
+            "warnings": warnings,
+            "secrets": list(got.get("secrets") or []),
+            "counts": {"php_files": project.get("php_files", 0),
+                       "modules": len(project.get("modules") or [])},
+            "summary": (blockers[0] if blockers else _preflight_summary(project)),
         }
 
     def read(self, root: str):

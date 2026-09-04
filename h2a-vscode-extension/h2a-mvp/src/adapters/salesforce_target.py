@@ -17,6 +17,29 @@ class SalesforceTarget:
     has_oracle = True                      # `sf project deploy --dry-run`
     code_language = "Apex"                 # what generated code is called, in reports
 
+    #: An org can be queried before generating, and its contents can collide with the
+    #: plan. See `orgfit`. [1.33]
+    has_org = True
+
+    def schema(self, item_types: list, relations: list, enum_types: list) -> dict:
+        """SObjects, exactly as the shipped path builds them.
+
+        Delegates to the same `build_schema` the orchestrator called directly, so routing
+        through the adapter cannot change a single field. [1.33]
+        """
+        from src.schema import build_schema
+        return build_schema(item_types, relations, enum_types)
+
+    def reconcile(self, schema: dict, prelim: dict, corpus: str) -> tuple:
+        """Add fields the generated Apex proves must exist. Unchanged behaviour. [1.33]"""
+        from src.schema import reconcile_schema
+        return reconcile_schema(schema, prelim, corpus)
+
+    def emit_schema(self, output_dir: str, schema: dict) -> list:
+        """One file per object and field, under `force-app`. Unchanged behaviour. [1.33]"""
+        from src.metadata_generator import write_schema_metadata
+        return write_schema_metadata(output_dir, schema)
+
     def plan(self, units: list, config: dict) -> list:
         """What Salesforce builds from these source units: Selectors, Services, LWC…
 

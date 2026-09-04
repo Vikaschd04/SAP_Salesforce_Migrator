@@ -64,6 +64,21 @@ class SourceAdapter(Protocol):
     def read(self, root: str) -> object:
         """The whole source, as an `ir.SourceModel`."""
 
+    def preflight(self, root: str) -> dict:
+        """Should a migration start on this codebase at all? No model calls.
+
+        Asked of the *source*, because "is there anything here to migrate" is a question
+        about the estate being read, and the answer is in that platform's own vocabulary.
+        Hybris looks for Java, `items.xml` and ImpEx; Adobe Commerce looks for PHP modules
+        and `db_schema.xml`. Held in one place, this gate silently refused every codebase
+        that was not Hybris — with the words "there is nothing to migrate", about a
+        Magento project full of code. [1.33]
+
+        Returns the shape the orchestrator already consumes — `verdict` (`"reject"`
+        refuses the run), `blockers`, `warnings`, `signals`, `secrets`, `summary` — so the
+        shipped gate satisfies it without being rewritten.
+        """
+
 
 @runtime_checkable
 class TargetAdapter(Protocol):
@@ -71,6 +86,11 @@ class TargetAdapter(Protocol):
     label: str
     #: Can generated output be compiled/deployed by an authoritative oracle?
     has_oracle: bool
+    #: Is there a live target environment to inspect before generating? Salesforce has an
+    #: org whose existing objects can collide with the plan; a Hybris extension is built
+    #: from source with nothing to query. Checked before the org step runs, because an
+    #: Adobe→Hybris run was querying a Salesforce org and reporting on it. [1.33]
+    has_org: bool
 
     def plan(self, units: list, config: dict) -> list:
         """Source units → the targets this platform would build from them.
@@ -105,6 +125,33 @@ class TargetAdapter(Protocol):
         Returns `{"ran": False, ...}` when there is no oracle to ask — which is a fact
         about the platform, not a failure, and the sign-off contract reports the
         difference rather than blurring it.
+        """
+
+    def schema(self, item_types: list, relations: list, enum_types: list) -> dict:
+        """The source data model, expressed as *this* platform's target data model. [1.33]
+
+        `{name: {"code": str, "fields": {field: type}, ...}}` — objects with fields, which
+        is the one shape both platforms share and everything downstream reads. Salesforce
+        builds SObjects with `__c` names and picklists; Hybris builds `items.xml` types
+        with Java types. The orchestrator called the Salesforce builder unconditionally,
+        so an Adobe→Hybris run derived SObjects nothing would ever emit.
+        """
+
+    def reconcile(self, schema: dict, prelim: dict, corpus: str) -> tuple:
+        """Add what the generated code proves the schema needs. Returns `(schema, notes)`.
+
+        Salesforce mines validation failures for field references that must exist. A
+        target with no such evidence returns the schema unchanged and says it added
+        nothing — which is different from having reconciled and found nothing wrong, so
+        the notes say which.
+        """
+
+    def emit_schema(self, output_dir: str, schema: dict) -> list:
+        """Write the data model as metadata, if it is written separately from the code.
+
+        Salesforce writes one file per object and field. A Hybris extension carries its
+        types *inside* `items.xml`, which `emit` already writes — so this returns nothing
+        rather than writing a second copy.
         """
 
 

@@ -27,6 +27,12 @@ class PlanItem:
     # review suggestion (`native_recommendation`) on a Convert item instead.
     target_kind: str = "Convert"       # Convert | Skip
     apex_pattern: str = ""             # Selector | Service | Controller | Utility | Component
+    #: The *target platform's* own name for what this unit becomes — Hybris SERVICE, JOB,
+    #: DECORATOR, LISTENER, MANUAL. `apex_pattern` is Salesforce vocabulary derived from
+    #: the source layer; this is the target adapter's decision, and it was being dropped
+    #: on the way from the adapter to emission, which discarded the entire reason
+    #: `hybris_plan` exists. Empty for a target that has no such notion. [1.33]
+    kind: str = ""
     rationale: str = ""
     native_recommendation: str = ""    # review suggestion only, e.g. "Salesforce CPQ"
 
@@ -85,6 +91,12 @@ class Blackboard:
     input_dir: str
     output_dir: str
     offline: bool = False
+
+    #: `source class name -> why it was not written`, reported by the target's emitter.
+    #: An artifact can be built, reviewed and accepted and still never reach disk when a
+    #: target has no emitter for its kind. The Builder cannot see that — the loss happens
+    #: after it is done — so the emitter tells the ledger directly. [1.33]
+    not_emitted: dict = field(default_factory=dict)
 
     # Repository analysis (filled by the orchestrator's ingest step)
     domains: dict = field(default_factory=dict)
@@ -170,11 +182,34 @@ class Blackboard:
     def code_plan(self) -> list:
         return [p for p in self.plan if p.is_code]
 
+    #: Source-file suffix per target language. The ledger names files, and a Hybris run
+    #: was naming them `.cls` — Salesforce's extension for a Java extension's classes.
+    #: Wrong in a report a customer reads to find the file. [1.33]
+    _SUFFIX = {"Apex": ".cls", "Java": ".java"}
+
+    def target_suffix(self) -> str:
+        """The running target's source-file extension, `.cls` when unknown.
+
+        `.cls` is the default because it is what every existing run produces and what the
+        golden baseline records; a pipeline that does not say gets today's answer.
+        """
+        try:
+            from src import pipeline
+            if not self.pipeline_id:
+                return ".cls"
+            pipeline.ensure_registered()
+            lang = getattr(pipeline.get(self.pipeline_id).target, "code_language", "")
+            return self._SUFFIX.get(lang, ".cls")
+        except Exception:
+            return ".cls"
+
     def output_path(self, artifact) -> str:
         """Where an artifact lands on disk. The unit a collision is measured in — an
         Apex `Pricing.cls` and an LWC `lwc/Pricing` share a name but not a file."""
         name = getattr(artifact, "target_name", "")
-        return f"lwc/{name}" if getattr(artifact, "layer", "") == "Component" else f"{name}.cls"
+        if getattr(artifact, "layer", "") == "Component":
+            return f"lwc/{name}"
+        return f"{name}{self.target_suffix()}"
 
     def output_collisions(self) -> dict:
         """Artifacts that would write to the same path, keyed by that path.
@@ -251,7 +286,17 @@ class Blackboard:
                         "nothing on the target runs it today.")
                 flagged = bool(notes)
                 target = self.output_path(art)
-                if id(art) in collided:
+                # The emitter is the authority on what reached disk. An artifact can be
+                # built, reviewed and accepted and still not be written — a target may
+                # have no emitter for its kind yet — and reporting that as `converted`
+                # is the exact loss this ledger exists to prevent. The Builder's own view
+                # cannot see it, because the loss happens after the Builder is done.
+                # [1.33]
+                if name in self.not_emitted:
+                    rows.append({
+                        "source": name, "layer": layer, "outcome": "manual",
+                        "target": "—", "note": self.not_emitted[name]})
+                elif id(art) in collided:
                     rows.append({
                         "source": name, "layer": layer, "outcome": "overwritten",
                         "target": target,

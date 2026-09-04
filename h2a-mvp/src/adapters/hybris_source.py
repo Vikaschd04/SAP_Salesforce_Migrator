@@ -20,6 +20,15 @@ class HybrisSource:
         from src.preflight import inspect
         return inspect(root)
 
+    def preflight(self, root: str) -> dict:
+        """Should a migration start? The shipped gate, unchanged. [1.33]
+
+        Delegates to the same `preflight.inspect` the orchestrator called directly, so
+        routing it through the adapter cannot change a single verdict.
+        """
+        from src.preflight import inspect
+        return inspect(root)
+
     def read(self, root: str) -> ir.SourceModel:
         """The whole source as an IR model.
 
