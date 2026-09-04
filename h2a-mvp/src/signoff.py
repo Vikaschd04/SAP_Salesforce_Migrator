@@ -99,7 +99,8 @@ def build_signoff(bb, *, accounting: dict | None = None, cost: dict | None = Non
             seen.add(n.get("code"))
             relation_notes.append(n)
     caveats = _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
-                       getattr(bb, "cycle_cuts", None) or [], shape_notes, relation_notes)
+                       getattr(bb, "cycle_cuts", None) or [], shape_notes, relation_notes,
+                       getattr(bb, "upsert_blockers", None) or [])
 
     contract = {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
@@ -184,7 +185,8 @@ def _languages() -> tuple:
 
 
 def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
-             cycle_cuts=(), shape_notes=(), relation_notes=()) -> list[str]:
+             cycle_cuts=(), shape_notes=(), relation_notes=(),
+             upsert_blockers=()) -> list[str]:
     """Everything this document does not certify. Assembled from the same data as the
     claims, so it cannot drift out of step with them."""
     src, tgt = _languages()
@@ -263,6 +265,13 @@ def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
         elif note.get("demoted"):
             out.append(f"**`{note['code']}` no longer deletes its children with their "
                        f"parent.** {note['lost']}")
+
+    for blocked in upsert_blockers or ():
+        # The runbook prints a confident load command for each of these. Whichever way
+        # the key is missing, the load fails on its first row, and the table it is
+        # recorded in is not the document anyone reads before scheduling a cutover.
+        # [1.25]
+        out.append(f"**Data load blocked.** {blocked['detail']}")
 
     for cut in cycle_cuts or ():
         # A cycle had to be cut somewhere or nothing could be scheduled. Which side was

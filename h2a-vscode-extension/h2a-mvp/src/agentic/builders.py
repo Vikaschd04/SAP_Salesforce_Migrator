@@ -58,6 +58,40 @@ def _transaction_shapes(source_classes: list) -> str:
         return ""
 
 
+def _rest_shapes(source_classes: list) -> str:
+    """How many endpoints share a verb, and whether the path can be declared. [1.25]
+
+    Left to the model, a controller with two `GET` mappings becomes a class with two
+    `@HttpGet` methods, which does not compile — and a path with a variable in the middle
+    becomes a `urlMapping` that never matches, which does.
+    """
+    try:
+        from src import pipeline, runctx
+        from src.adapters.rest_surface import grounding_for
+
+        pipeline.ensure_registered()
+        pid = runctx.pipeline_id()
+        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        if p.source_platform != "hybris":
+            return ""
+        return grounding_for([c.get("source", "") for c in (source_classes or [])])
+    except Exception:
+        return ""
+
+
+def _angular_gaps(component: dict) -> str:
+    """Constructs with no LWC equivalent, for the generator's prompt. [1.24]
+
+    Decided from the source rather than left to the model, which reaches for `@wire`
+    because that is the answer to the question it is asked most often — and the wrong one
+    for a poll, which `@wire` cannot do at all.
+    """
+    if not component:
+        return ""
+    from src.adapters.angular_gaps import grounding_for
+    return grounding_for(component)
+
+
 class BuilderAgent:
     """Generates one target's Apex, then repairs objective (governor/schema) issues."""
     name = "Builder"
@@ -80,7 +114,8 @@ class BuilderAgent:
         # Queries this target's own source contains, already translated. Derived, not
         # generated — and a query that can be derived should never be generated. [1.23b]
         for block in (_derived_queries(plan_item.source_classes),
-                      _transaction_shapes(plan_item.source_classes)):
+                      _transaction_shapes(plan_item.source_classes),
+                      _rest_shapes(plan_item.source_classes)):
             if block:
                 grounding = (grounding + "\n\n" + block) if grounding else block
         gen = generate_apex(target, bb.comprehensions, scoped_sigs,
@@ -127,6 +162,9 @@ class BuilderAgent:
             grounding = retriever.grounding_block(
                 "LWC lightning web component api wire apex CustomEvent for:each if:true "
                 "getter template data binding accessibility")
+        gaps = _angular_gaps(component)
+        if gaps:
+            grounding = (grounding + "\n\n" + gaps) if grounding else gaps
         gen = generate_lwc(
             {"target_name": plan_item.target_name, "component": component},
             bb.comprehensions, bb.schema, offline=bb.offline, grounding=grounding)

@@ -201,6 +201,13 @@ def _java_findings(path: Path, rel: str) -> list[dict]:
     out.extend(_flexsearch_findings(text, rel, cls, lines))
     out.extend(_lifecycle_findings(text, rel, cls, lines))
 
+    # The REST surface. Spring resolves any number of endpoints at any path shape; Apex
+    # REST allows one method per verb per class and a urlMapping of one trailing
+    # wildcard, so a controller can be untranslatable in ways that only surface as a
+    # compile error or an endpoint that never matches. [1.25]
+    from src.adapters.rest_surface import findings as _rest_findings
+    out.extend(_rest_findings(raw, rel, cls))
+
     # Parsed rather than matched: whether a getter is guarded is a question about the
     # method around it, and every regex answer to that is wrong in one direction. [1.30]
     from src.adapters.java_nullability import findings as _null_findings
@@ -504,6 +511,34 @@ _SKIP_DIRS = {".git", "node_modules", "target", "build", "dist", "__pycache__",
               ".venv", "venv", ".idea", ".vscode", "__MACOSX"}
 
 
+
+def _frontend_findings(path: Path, rel: str) -> list[dict]:
+    """Angular constructs LWC cannot carry across. [1.24]
+
+    The storefront was outside the radar entirely — it scanned `.java` and nothing else —
+    so a component that polls, or renders money through a `currency` pipe, produced a
+    clean report and a component that silently never updates. These land in
+    ANTI_PATTERNS.md beside the backend hazards because that is the file a reviewer
+    actually opens.
+    """
+    from src.adapters import angular_gaps
+
+    try:
+        source = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return []
+    # Angular keeps the template beside the component under the same stem. An inline
+    # `template:` string is already in the source, so it is scanned either way.
+    html = path.with_name(path.name[:-3] + ".html")
+    try:
+        template = html.read_text(encoding="utf-8", errors="ignore") if html.exists() else ""
+    except OSError:
+        template = ""
+    template_rel = rel[:-3] + ".html" if template else ""
+    return angular_gaps.findings(source, template, rel,
+                                 path.stem.replace(".component", ""), template_rel)
+
+
 def scan(input_dir: str) -> dict:
     """Every Hybris-specific hazard in a codebase. Deterministic; no model calls."""
     root = Path(input_dir)
@@ -519,6 +554,8 @@ def scan(input_dir: str) -> dict:
     for p in files:
         if p.suffix.lower() == ".java":
             findings += _java_findings(p, str(p.relative_to(root)))
+        elif p.name.endswith(".component.ts"):
+            findings += _frontend_findings(p, str(p.relative_to(root)))
     findings += _project_findings(root, files)
 
     # Worst first: a reviewer with ten minutes should spend them on the critical rows.
@@ -574,6 +611,19 @@ _RULE_TITLES = {
     "LOCALIZED_ATTRIBUTE": "Localized attribute",
     "IMPEX_VOLUME": "Large ImpEx load",
     "CRONJOB_CONCURRENCY": "Cronjob concurrency",
+    # Frontend. [1.24]
+    "NG_RXJS": "RxJS operator with no LWC equivalent",
+    "NG_PIPE": "Template pipe with no LWC equivalent",
+    "NG_SLOT": "Content projection by selector",
+    "NG_CMS": "Component chosen at runtime",
+    "NG_BINDING": "Two-way binding",
+    "NG_CONTROL_FLOW": "Named template branch",
+    "NG_LIFECYCLE": "Lifecycle hook called by hand",
+    # Integration surface. [1.25]
+    "REST_VERB_COLLISION": "Two endpoints share an HTTP verb",
+    "REST_PATH_TEMPLATE": "Path template no urlMapping can express",
+    "REST_GUEST_ACCESS": "Endpoint called without a session",
+    "REST_PAYLOAD_CAP": "Response bounded by heap, not streamed",
 }
 
 

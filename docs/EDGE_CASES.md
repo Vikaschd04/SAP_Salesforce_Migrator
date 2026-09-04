@@ -62,19 +62,19 @@ producing a green tick that means nothing.
 
 | # | Edge case | Why a plausible conversion is wrong | Status |
 |---|---|---|---|
-| D1 | `[(ngModel)]` two-way binding | No LWC equivalent; needs an explicit change handler, or the field silently never updates. | **partial** — knowledge pack covers the pattern; not verified in output |
-| D2 | RxJS operator chains | `switchMap` / `combineLatest` have no `@wire` equivalent — `@wire` is push-based but not composable. A literal translation loses cancellation semantics. | **gap** — 1.24 |
-| D3 | Content projection with selectors | `<ng-content select=".x">` → LWC named slots, which do **not** support CSS selectors. | **gap** — 1.24 |
-| D4 | CMS-driven dynamic components | Spartacus instantiates components by CMS type at runtime. LWC has no general runtime instantiation. | **gap** — 1.24 |
+| D1 | `[(ngModel)]` two-way binding | No LWC equivalent; needs an explicit change handler, or the field silently never updates. | **covered** — `NG_BINDING`, and the generator is told the handler is not optional — 1.24 |
+| D2 | RxJS operator chains | `switchMap` / `combineLatest` have no `@wire` equivalent — `@wire` is push-based but not composable, and cannot be driven by a timer at all. A literal translation loses cancellation. | **covered** — `NG_RXJS` decides per operator (cancellation, teardown, composition) and the wrong blanket rule was removed from the generator's system prompt — 1.24 |
+| D3 | Content projection with selectors | `<ng-content select=".x">` → LWC named slots, which do **not** support CSS selectors. | **covered** — `NG_SLOT`; the fix names the consumers as work, since every one of them must add a matching `slot=` attribute — 1.24 |
+| D4 | CMS-driven dynamic components | Spartacus instantiates components by CMS type at runtime. LWC has no general runtime instantiation. | **covered** — `NG_CMS`; `lwc:is` still needs a statically imported constructor, so the answer is an explicit registry and an admission that the design changes — 1.24 |
 | D5 | `*ngIf` on a component root | Needs a wrapping `<template>` in LWC; omitted, the directive is silently ignored. | **partial** — pattern in the pack |
 
 ## E. Integration and non-code assets
 
 | # | Edge case | Status |
 |---|---|---|
-| E1 | OCC REST endpoints → `@RestResource`, with 6 MB request / 12 MB response caps and no streaming | **gap** — 1.25 |
-| E2 | PSP callbacks need a Site, guest user, and CSP/CORS entries — guest-user permissions fail silently | **gap** — 1.25 |
-| E3 | ImpEx volume and `INSERT_UPDATE` ≈ upsert on External Id, which must exist as a field | **covered** (volume) / **gap** (the External Id requirement) |
+| E1 | OCC REST endpoints → `@RestResource`, with heap-bounded payloads and no streaming | **covered** — `REST_VERB_COLLISION` (one method per verb per class), `REST_PATH_TEMPLATE` (a `urlMapping` is a literal prefix plus one trailing `*`), `REST_PAYLOAD_CAP` — 1.25 |
+| E2 | PSP callbacks need a Site, guest user, and CSP/CORS entries — guest-user permissions fail silently | **covered** — `REST_GUEST_ACCESS`, with the prerequisites as a checklist and the note that a signed-in test proves nothing — 1.25 |
+| E3 | ImpEx volume and `INSERT_UPDATE` ≈ upsert on External Id, which must exist as a field | **covered** — `impex.upsert_blockers` reports an object with no key, no such field, or no object at all as a cutover blocker in the sign-off — 1.25 |
 | E4 | Generated `*Model.java` / `*Data.java` must be skipped, not converted — otherwise most of the run's budget is spent regenerating generated code | **covered** — 1.26. Detection uses machine-written evidence only (a build-owned directory, or a generator's banner); `extends Generated*` is deliberately *not* evidence, because Hybris generates an editable half of that pair |
 
 ### Found while building 1.20

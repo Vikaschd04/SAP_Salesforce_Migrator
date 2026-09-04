@@ -1089,6 +1089,9 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     from src.impex import translate_impex_dir
     impex = translate_impex_dir(input_dir, output_dir)   # runs after metadata so ext-id fields are patched
     if impex["impex_files"]:
+        # Kept for the sign-off: an object the runbook tells you to load and the org
+        # cannot accept is a cutover blocker, not a footnote in a table. [1.25]
+        bb.upsert_blockers = impex.get("upsert_blockers") or []
         bb.record("DataMigrator", "impex",
                   f"{len(impex['objects'])} object(s), {impex['record_total']} record(s) → CSV + runbook")
         print(f"    ✓ ImpEx: {impex['record_total']} record(s) across "

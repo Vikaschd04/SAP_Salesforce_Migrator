@@ -288,6 +288,90 @@ def mark_external_id_fields(output_dir: str, plan: list) -> list:
     return patched
 
 
+
+#: Hybris platform types that describe *how the platform runs*, not customer data. ImpEx
+#: files configure them the same way they seed data, so the data plan picks them up and
+#: the runbook offers to load them — into objects that do not exist, because nothing
+#: generated them and nothing should have. Scheduling is code on the target, not rows.
+_PLATFORM_TYPES = {
+    "CronJob", "Trigger", "ServicelayerJob", "CronJobHistory", "Job", "JobLog",
+    "ComposedCronJob", "ScriptingJob", "EmailPage", "Media", "MediaFolder",
+}
+
+
+def _missing_object_detail(code: str, obj_api: str, n: int) -> str:
+    """Why this object is absent — the three reasons need three different answers."""
+    if code in _PLATFORM_TYPES:
+        return (f"`{obj_api}` has {n} row(s) in the data plan, and it is a platform type: "
+                f"`{code}` configures how the source platform runs rather than holding "
+                "business data. There is no object to load it into and there should not "
+                "be — schedules are generated as scheduled code, not as records. Drop "
+                "these rows from the load; the runbook lists them only because the source "
+                "configured them through the same file format as its data.")
+    try:
+        from src.relations import OOTB_TARGETS
+    except Exception:
+        OOTB_TARGETS = {}
+    if code in OOTB_TARGETS:
+        targets = " or ".join(f"`{x}`" for x in OOTB_TARGETS[code])
+        return (f"`{obj_api}` has {n} record(s) to load and no such object exists — `{code}` "
+                f"is an out-of-the-box type whose counterpart is the standard {targets}. "
+                "Loading it into a custom twin of a standard object is not the fix; decide "
+                "which standard object these records are, then re-map the columns to it.")
+    return (f"`{obj_api}` has {n} record(s) to load and no object metadata was generated "
+            "for it. The runbook's upsert command names an object that will not exist in "
+            "the org.")
+
+
+def upsert_blockers(output_dir: str, plan: list, *, mark_metadata: bool = True) -> list[dict]:
+    """Objects the runbook tells you to load that cannot actually be loaded. [1.25, E3]
+
+    `INSERT_UPDATE` is an upsert, and an upsert needs a key the target enforces. Three
+    things can be missing, and all three used to fail at cutover rather than here:
+
+    - no unique column in the source, so there is no key to upsert on;
+    - a key was chosen but the object has no such field, so the command names a field
+      that does not exist;
+    - the object itself was never generated, so the load has nowhere to go.
+
+    The last one is the quietest: `mark_external_id_fields` skips a missing file by
+    design — that is correct for a standalone data run — and the runbook still prints a
+    confident `sf data upsert` line for it.
+    """
+    base = Path(output_dir) / "force-app" / "main" / "default" / "objects"
+    # With no generated metadata at all this is a data-only run, and none of it applies.
+    if not mark_metadata or not base.exists():
+        return []
+
+    out: list[dict] = []
+    for obj in plan:
+        if not obj.records:
+            continue
+        obj_dir = base / obj.object_api
+        if not obj_dir.exists():
+            code = obj.object_api[:-3] if obj.object_api.endswith("__c") else obj.object_api
+            out.append({
+                "object": obj.object_api,
+                "reason": "platform_type" if code in _PLATFORM_TYPES else "no_object",
+                "detail": _missing_object_detail(code, obj.object_api, len(obj.records)),
+            })
+            continue
+        if not obj.external_id:
+            out.append({"object": obj.object_api, "reason": "no_key",
+                        "detail": f"`{obj.object_api}` has no column marked unique in the "
+                                  "source, so there is no External Id to upsert on. Loading "
+                                  "it as an insert makes the run non-repeatable: a second "
+                                  "attempt duplicates every record instead of updating it."})
+            continue
+        field = obj_dir / "fields" / f"{obj.external_id}.field-meta.xml"
+        if not field.exists():
+            out.append({"object": obj.object_api, "reason": "no_field",
+                        "detail": f"`{obj.object_api}` is set to upsert on "
+                                  f"`{obj.external_id}`, and no such field was generated. "
+                                  "The load fails on the first row."})
+    return out
+
+
 # ── Directory driver ──────────────────────────────────────────────────────────
 
 def find_impex_files(input_dir: str) -> list:
@@ -310,4 +394,6 @@ def translate_impex_dir(input_dir: str, output_dir: str, *, mark_metadata: bool 
         "files_written": written,
         "metadata_patched": patched,
         "record_total": sum(len(o.records) for o in plan),
+        # What the runbook asks for and the org cannot supply. [1.25, E3]
+        "upsert_blockers": upsert_blockers(output_dir, plan, mark_metadata=mark_metadata),
     }
