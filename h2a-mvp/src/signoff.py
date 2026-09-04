@@ -239,8 +239,11 @@ def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
         out.append(f"{prov['source_without_target']} {src} method(s) have no traceable {tgt} "
                    "counterpart. Some are inlined helpers; some may be lost logic.")
     if prov.get("target_without_origin"):
-        out.append(f"{prov['target_without_origin']} generated method(s) trace to no Java "
-                   "origin — scaffolding, or invented.")
+        # `src`, not "Java" — one line below a sibling that already parameterised it.
+        # An Adobe→Hybris run reported methods tracing to "no Java origin" while Java was
+        # the language it had just emitted. [1.36]
+        out.append(f"{prov['target_without_origin']} generated method(s) trace to no "
+                   f"{src} origin — scaffolding, or invented.")
 
     crit = (radar.get("critical") or 0) + (radar.get("high") or 0)
     if crit:

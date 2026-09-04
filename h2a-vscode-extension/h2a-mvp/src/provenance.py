@@ -171,8 +171,22 @@ def build_provenance(bb) -> dict:
             "source_without_target": lost, "methods": total,
             "coverage": round(100 * linked / total) if total else None,
             "high": sum(1 for m in maps for l in m["links"] if l["confidence"] == "high"),
+            # Whether the code this measured was actually generated. A stub run produces
+            # one placeholder method per artifact, so coverage measures the placeholder
+            # and not the migration — and reads as though the tool invented almost
+            # everything. Recorded so the report can say which it is. [1.36]
+            "generated": bool(getattr(bb, "artifacts", None)) and not _stubbed(),
         },
     }
+
+
+def _stubbed() -> bool:
+    """True when no real model produced this output, so coverage means nothing."""
+    try:
+        from src.llm import _get_provider, _load_config
+        return _get_provider(_load_config()) == "mock"
+    except Exception:
+        return False
 
 
 def headline(s: dict) -> str:
@@ -180,7 +194,14 @@ def headline(s: dict) -> str:
     t = s.get("methods") or 0
     if not t:
         return "No generated methods to trace."
-    line = f"{s['linked']}/{t} generated method(s) traced to their Java origin ({s.get('coverage', 0)}%)"
+    # `src`, not "Java". This line is the one that reaches the console and the sign-off,
+    # and it named the *target's* language as the origin: an Adobe→Hybris run reported
+    # methods "traced to their Java origin" while Java was what it had just written. The
+    # word was right for the shipped pipeline, which is exactly why it survived 4.4 —
+    # that item fixed the same class of bug in the sentences either side of this one.
+    # [1.36]
+    line = (f"{s['linked']}/{t} generated method(s) traced to their {src} origin "
+            f"({s.get('coverage', 0)}%)")
     tail = []
     if s.get("target_without_origin"):
         tail.append(f"{s['target_without_origin']} with no origin")
@@ -196,6 +217,16 @@ def write_provenance_md(output_dir: str, prov: dict) -> str:
            "Answers the first question any reviewer asks. Built by locating methods in both "
            "texts, so the line numbers are facts rather than a model's recollection.", "",
            f"**{headline(s)}**", ""]
+
+    if s.get("methods") and not s.get("generated"):
+        # Without this the percentage is read as a quality figure. It is not one here:
+        # a stub run emits a single placeholder per artifact, which traces to nothing by
+        # construction, and the number that comes out looks like a tool inventing most of
+        # its output. Saying so is cheaper than being misread in a demo. [1.36]
+        out += ["> ℹ️ **No model generated this output** — it was produced with the stub "
+                "provider, which emits one placeholder method per artifact. The coverage "
+                "figure above therefore measures the placeholders, not a migration. Re-run "
+                "with a real provider before reading it as a quality signal.", ""]
 
     if s.get("source_without_target"):
         out += [f"> ⚠️ **{s['source_without_target']} {src} method(s) have no {tgt} "

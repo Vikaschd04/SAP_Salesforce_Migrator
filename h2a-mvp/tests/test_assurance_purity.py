@@ -34,7 +34,7 @@ ASSURANCE_MODULES = [
 
 _PLATFORM_WORD = re.compile(
     r"\bapex\b|\bsalesforce\b|\bsobject\b|\bsoql\b|__c\b|fflib|sfdx|\blwc\b|"
-    r"\bhybris\b|\bimpex\b|\bmagento\b|\bphp\b",
+    r"\bhybris\b|\bimpex\b|\bmagento\b|\bphp\b|\bjava\b",
     re.IGNORECASE,
 )
 
