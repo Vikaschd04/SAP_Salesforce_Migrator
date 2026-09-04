@@ -76,9 +76,55 @@ def _candidate_targets(bb, classes: list) -> list:
         from src.pipeline import ensure_registered, get as get_pipeline
         from src.llm import _load_config
         ensure_registered()
-        return get_pipeline(bb.pipeline_id).target.plan(classes, _load_config())
+        # The source's own wiring, handed to the target so a decision that depends on it
+        # is made rather than defaulted. Magento's di.xml says which plugins may decline
+        # to call the original, and that is the whole difference between a decorator and
+        # an interceptor — an interceptor cannot express skipping. Without it both
+        # plugins routed to "could not be classified, use the safe superset", which is
+        # the right default and the wrong answer when the file that settles it was read
+        # three stages earlier. [1.34]
+        cfg = dict(_load_config())
+        _model = getattr(bb, "source_model", None)
+        wiring = (getattr(_model, "extra", None) or {}).get("di") if _model else None
+        if wiring:
+            cfg["wiring"] = wiring
+        return get_pipeline(bb.pipeline_id).target.plan(classes, cfg)
     from src.generate import plan_targets
     return plan_targets(classes)
+
+
+
+def _fold_duplicate_targets(items: list) -> list:
+    """One artifact per target name, carrying every source that maps to it. [1.34]
+
+    A target adapter folds duplicates already, but it is asked *per dependency domain*,
+    so it never sees two domains proposing the same artifact. Magento's
+    `PricingServiceInterface` (Api) and `PricingService` (Model) are exactly that: one
+    Hybris service, planned twice, built twice, and written to one file — so one of them
+    overwrote the other and the completeness ledger reported the loss after the fact.
+
+    Folding here rather than tolerating the collision downstream keeps the guarantee the
+    ledger makes: an input that reached an artifact is in the output. The sources are
+    concatenated so nothing is dropped, and the first item's kind and rationale win —
+    they are equal by construction, since both came from the same adapter for the same
+    target name.
+    """
+    by_name: dict = {}
+    for item in items:
+        seen = by_name.get(item.target_name)
+        if seen is None:
+            by_name[item.target_name] = item
+            continue
+        known = {c.get("class_name") for c in seen.source_classes}
+        for c in item.source_classes:
+            if c.get("class_name") not in known:
+                seen.source_classes.append(c)
+        # A reason from the adapter beats none; neither is overwritten by the other.
+        if not seen.rationale and item.rationale:
+            seen.rationale = item.rationale
+        if not seen.kind and item.kind:
+            seen.kind = item.kind
+    return list(by_name.values())
 
 
 class PlannerAgent:
@@ -100,6 +146,8 @@ class PlannerAgent:
                     kind=t.get("kind", ""),
                     rationale=t.get("rationale", ""),
                 ))
+
+        base = _fold_duplicate_targets(base)
 
         # 2. Annotate with Apex/Native/Skip judgment (LLM), or default to Apex.
         provider = _get_provider(_load_config())

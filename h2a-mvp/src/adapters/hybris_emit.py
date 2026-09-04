@@ -21,13 +21,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.adapters import hybris_data, hybris_extension, hybris_service
-from src.adapters.hybris_plan import DAO, DATA, JOB, SERVICE
+from src.adapters import hybris_data, hybris_extension, hybris_hooks, hybris_service
+from src.adapters.hybris_plan import (DAO, DATA, DECORATOR, EVENT_LISTENER,
+                                      INTERCEPTOR, JOB, SERVICE)
 
 #: Kinds assembly writes today — services and DAOs through the target loop, jobs through
 #: their own path, because a job is joined to a crontab entry the target list does not
 #: carry. Everything else is planned, reported, and left to a human with the reason.
-EMITTABLE = {SERVICE, DAO, JOB}
+#:
+#: `DATA` is here without an emitter of its own: a Magento data patch *is* the data model,
+#: and `build_items_xml` already wrote its EAV attributes onto the platform type they
+#: extend. Listing it as unwritten claimed a loss that had not happened — the mirror of
+#: the failure this set exists to prevent. [1.34]
+EMITTABLE = {SERVICE, DAO, JOB, DATA, DECORATOR, INTERCEPTOR, EVENT_LISTENER}
 
 
 def _pkg_dir(root: Path, package: str, *parts: str) -> Path:
@@ -111,6 +117,51 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
     di = (getattr(source_model, "extra", None) or {}).get("di", {})
     arguments = di.get("arguments", [])
 
+    # Plugins and observers: invoked by the platform rather than by a caller you can see,
+    # which is what makes them easy to convert wrongly. `hybris_plan` already decided
+    # decorator vs interceptor from di.xml; this writes whichever it chose. [1.34]
+    observers = (getattr(source_model, "extra", None) or {}).get("observers", []) or []
+    event_of = {}
+    for o in observers:
+        inst = (o.get("instance") or "").replace("\\", ".").split(".")[-1]
+        if inst:
+            event_of.setdefault(inst, o.get("event", ""))
+
+    hooks: list = []
+    seen_events: set = set()
+    for t_row in targets or []:
+        kind = t_row.get("kind")
+        if kind not in (DECORATOR, INTERCEPTOR, EVENT_LISTENER):
+            continue
+        sources = [units_by_name[c["class_name"]] for c in t_row.get("source_classes", [])
+                   if c.get("class_name") in units_by_name]
+        if not sources:
+            continue
+        unit = sources[0]
+        target_name = t_row.get("target_name", "")
+        if kind == DECORATOR:
+            write(_pkg_dir(src, package, "decorators", f"{target_name}.java"),
+                  hybris_hooks.build_decorator(
+                      unit, package, di,
+                      {hybris_service.service_name(u.name) for u in services}))
+            hooks.append({"kind": kind, "name": target_name})
+        elif kind == INTERCEPTOR:
+            write(_pkg_dir(src, package, "interceptors", f"{target_name}.java"),
+                  hybris_hooks.build_interceptor(unit, package, di))
+            hooks.append({"kind": kind, "name": target_name,
+                          "type_code": hybris_hooks._short(
+                              hybris_hooks._target_type(unit, di))})
+        else:
+            event = event_of.get(unit.name, "")
+            if event and event not in seen_events:
+                seen_events.add(event)
+                write(_pkg_dir(src, package, "events",
+                               f"{hybris_hooks.event_class_for(event)}.java"),
+                      hybris_hooks.build_event(event, package))
+            write(_pkg_dir(src, package, "listeners", f"{target_name}.java"),
+                  hybris_hooks.build_event_listener(unit, package, event))
+            hooks.append({"kind": kind, "name": target_name, "event": event})
+
     write(root / "project.properties", hybris_data.build_properties(arguments, name))
     write(resources / f"{name}-seed.impex",
           hybris_data.build_seed_impex(name, source_model.data_model.types))
@@ -121,7 +172,7 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
     # Rewritten last, because it has to name every service actually written rather than
     # every service that was planned.
     write(resources / f"{name}-spring.xml",
-          _spring(services, arguments, package, name, jobs=jobs))
+          _spring(services, arguments, package, name, jobs=jobs, hooks=hooks))
 
     from src import assurance
     from src.adapters.java_static_check import check_tree
@@ -137,15 +188,15 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
 
 
 def _spring(units: list, arguments: list, package: str, extension: str,
-            jobs: dict | None = None) -> str:
+            jobs: dict | None = None, hooks: list | None = None) -> str:
     """Bean definitions, with the migrated configuration wired onto them. [3.2, 3.5]"""
     return _spring_with_properties(
         units, hybris_data.build_bean_properties(arguments, extension), package,
-        extension, jobs or {})
+        extension, jobs or {}, hooks or [])
 
 
 def _spring_with_properties(units: list, props: dict, package: str, extension: str,
-                            jobs: dict | None = None) -> str:
+                            jobs: dict | None = None, hooks: list | None = None) -> str:
     out = ['<?xml version="1.0" encoding="UTF-8"?>',
            '<beans xmlns="http://www.springframework.org/schema/beans"',
            '       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"',
@@ -177,6 +228,11 @@ def _spring_with_properties(units: list, props: dict, package: str, extension: s
                 f'          class="{package}.jobs.{performable}"',
                 '          parent="abstractJobPerformable"/>', ""]
 
+    # Decorators, interceptors and listeners. A listener that is never declared here
+    # compiles, deploys and never fires — the failure has no error to attach itself to.
+    # [1.34]
+    out += hybris_hooks.spring_fragments(hooks or [], package)
+
     out += ["</beans>", ""]
     return "\n".join(out)
 
@@ -206,6 +262,11 @@ def _bean_id(class_name: str) -> str:
     return class_name[:1].lower() + class_name[1:]
 
 
+#: Packages the platform provides. A bean naming one of these is correctly wired, not
+#: missing — see `cross_reference_issues`. [1.34]
+_PLATFORM_PACKAGES = ("de.hybris.", "org.springframework.", "java.", "javax.")
+
+
 def cross_reference_issues(root) -> list:
     """Spring beans and ImpEx rows that name something nothing emits. [3.10]
 
@@ -229,6 +290,13 @@ def cross_reference_issues(root) -> list:
 
     issues = []
     for cls in sorted(set(re.findall(r'class="([\w.]+)"', spring))):
+        # Platform classes are supplied by SAP Commerce, not by this migration, and
+        # referring to one is how you wire anything at all — an InterceptorMapping is a
+        # platform bean by definition. Flagging them made the rule fire on correct
+        # wiring, and a critical finding that is usually wrong is a rule people learn to
+        # scroll past. [1.34]
+        if cls.startswith(_PLATFORM_PACKAGES):
+            continue
         if cls.rsplit(".", 1)[-1] not in java_classes:
             issues.append({
                 "rule": "bean_class_missing", "file": "spring.xml", "line": 0,

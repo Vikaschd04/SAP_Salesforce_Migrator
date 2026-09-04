@@ -66,10 +66,15 @@ class NotImplementedYet(NotImplementedError):
     """
 
     def __init__(self, what: str, item: str):
+        # The tail of this message used to read "it cannot run a migration", which was
+        # true while the pipeline was a scaffold and became a lie the moment it was not:
+        # 1.34 made Adobe→Hybris runnable, and the *remaining* gaps are individual
+        # capabilities, not the pipeline. A warning that overstates what is broken is
+        # read as noise, and then so is the next one. [1.34]
         super().__init__(
             f"{what} is not implemented for Adobe Commerce yet (delivery item {item}). "
-            "This pipeline is registered so the architecture can be exercised against two "
-            "platforms; it cannot run a migration.")
+            "The migration itself runs; this capability is the part that does not, so "
+            "whatever it would have contributed is absent from the output.")
         self.item = item
 
 

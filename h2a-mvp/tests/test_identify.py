@@ -23,13 +23,21 @@ def test_a_hybris_project_is_runnable():
     assert [p["id"] for p in r["pipelines"]] == ["hybris->salesforce"]
 
 
-def test_a_magento_project_is_recognised_but_not_runnable():
-    """The distinction this item exists for."""
+def test_a_magento_project_is_recognised_and_runnable():
+    """`identify` separates three answers — runnable, recognised-but-not, unrecognised —
+    and Magento moved from the second to the first in 1.34."""
     r = pipeline.identify(str(TESTING / "acme-commerce-magento"))
-    assert r["status"] == "recognised"
+    assert r["status"] == "runnable"
     assert r["platform"] == "adobe-commerce"
     assert [p["id"] for p in r["pipelines"]] == ["adobe->hybris"]
-    assert r["pipelines"][0]["implemented"] is False
+    assert r["pipelines"][0]["implemented"] is True
+
+
+def test_a_runnable_magento_pipeline_still_cannot_claim_verification():
+    """Running and proving are different claims, and only one of them is available
+    here — SAP lends no hosted compiler."""
+    r = pipeline.identify(str(TESTING / "acme-commerce-magento"))
+    assert r["pipelines"][0]["has_oracle"] is False
 
 
 def test_the_magento_summary_says_what_it_is_not_that_it_is_unknown():

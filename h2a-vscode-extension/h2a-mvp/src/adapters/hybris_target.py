@@ -26,13 +26,21 @@ from src.adapters.adobe_source import NotImplementedYet
 class HybrisTarget:
     platform = "hybris"
     label = "SAP Hybris (Java · Spring · items.xml)"
-    #: The target can now scaffold a whole extension — skeleton, items.xml, services,
-    #: DAOs, jobs, configuration and wiring — and check it at the `static` rung. What it
-    #: cannot yet do is *fill method bodies*: that needs a Hybris prompt pack (3.8), so a
-    #: run would produce an extension whose logic is all `UnsupportedOperationException`.
-    #: Claiming `implemented` for that would be the success-shaped failure this product is
-    #: arranged against, so it stays false until 3.8.
-    implemented = False
+    #: The target assembles a whole extension — skeleton, items.xml, services, DAOs,
+    #: jobs, decorators, interceptors, event listeners, configuration and wiring — and
+    #: checks it at the `static` rung: every file parses and every type it names resolves.
+    #:
+    #: This was false until 1.34, for two reasons that have both been answered. The first
+    #: was the prompt pack (3.8), without which method bodies would all have been
+    #: `UnsupportedOperationException`; that shipped. The second was that three kinds had
+    #: no emitter, so a run converted a third of its units — which the ledger reported
+    #: honestly, but a truthful thin migration is still a thin migration.
+    #:
+    #: What it still does not do is *verify*. See `has_oracle`: an Adobe→Hybris run is
+    #: statically checked, never compiled, and the sign-off says so in those words. That
+    #: is a property of the platform, not a gap in this flag — and `implemented` means
+    #: "can run a migration", not "can prove one".
+    implemented = True
 
     #: No free compile oracle. See the module docstring — this is honest, not pending.
     has_oracle = False

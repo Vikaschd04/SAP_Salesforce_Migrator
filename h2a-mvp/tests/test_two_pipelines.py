@@ -31,26 +31,47 @@ def test_the_shipped_pipeline_is_still_the_default():
     assert pipeline.default_pipeline().id == "hybris->salesforce"
 
 
-def test_only_the_shipped_pipeline_is_runnable():
+def test_both_pipelines_are_runnable():
+    """Adobe→Hybris became runnable in 1.34, once the three missing emitters landed. It
+    was held back deliberately before that: a run converted a third of its units and
+    reported the rest as manual, which was truthful and still not a migration."""
     assert pipeline.get("hybris->salesforce").implemented is True
-    assert pipeline.get("adobe->hybris").implemented is False
+    assert pipeline.get("adobe->hybris").implemented is True
+
+
+def test_being_runnable_is_not_the_same_as_being_verifiable():
+    """`implemented` means "can run a migration", never "can prove one". SAP lends no
+    hosted compiler, so an Adobe→Hybris run is statically checked and says so."""
+    assert pipeline.get("adobe->hybris").verifiable is False
+    assert pipeline.get("hybris->salesforce").verifiable is True
+
+
+def _scaffold():
+    """A pipeline whose target is not built, to keep testing the guard itself."""
+    class _T:
+        platform, label, has_oracle, implemented = "nowhere", "Nowhere", False, False
+
+    real = pipeline.get("adobe->hybris")
+    return pipeline.Pipeline(id="adobe->nowhere", source=real.source, target=_T(),
+                             label="Adobe Commerce → Nowhere")
 
 
 def test_the_guard_refuses_a_scaffolded_pipeline():
-    """Fails when a run is resolved — before a file is read or a token spent."""
+    """Fails when a run is resolved — before a file is read or a token spent. Both real
+    pipelines pass it now, so the guard is exercised against a synthetic scaffold; a
+    guard that stops being tested is a guard that stops working."""
     with pytest.raises(NotImplementedError, match="not implemented yet"):
-        pipeline.require_runnable(pipeline.get("adobe->hybris"))
+        pipeline.require_runnable(_scaffold())
 
 
 def test_the_guard_names_what_is_missing_and_where_to_look():
     """An error that says only 'not implemented' sends the reader hunting."""
     with pytest.raises(NotImplementedError) as e:
-        pipeline.require_runnable(pipeline.get("adobe->hybris"))
+        pipeline.require_runnable(_scaffold())
     msg = str(e.value)
-    # It names the half that is missing, and only that half. Once the source adapter
-    # was built, saying "the adobe-commerce source is a scaffold" would have been false
-    # — and a guard that misstates why it is blocking teaches people to ignore it.
-    assert "hybris target" in msg
+    # It names the half that is missing, and only that half. A guard that misstates why
+    # it is blocking teaches people to ignore it.
+    assert "nowhere target" in msg
     assert "adobe-commerce source" not in msg
     assert "V2_DELIVERY_PLAN" in msg
 
@@ -235,11 +256,10 @@ def test_hybris_validate_checks_rather_than_raising():
     assert bad and bad[0]["rule"] == "java_syntax"
 
 
-def test_hybris_plan_no_longer_raises_but_the_pipeline_still_cannot_run():
-    """3.2b built plan(). The pipeline is still blocked, and for a different reason —
-    emit() and validate() are Phase 3's remaining half. Those are different claims and
-    the guard has to keep them apart."""
+def test_the_hybris_target_plans_and_now_also_emits():
+    """3.2b built plan() while emit() was still a stub, and the guard had to keep those
+    two claims apart. 1.34 finished the second half."""
     from src.adapters.hybris_target import ADAPTER
 
     assert ADAPTER.plan([], {}) == []
-    assert not pipeline.get("adobe->hybris").implemented
+    assert pipeline.get("adobe->hybris").implemented

@@ -138,10 +138,21 @@ def test_the_hybris_corpus_still_resolves_to_hybris():
     assert report["verdict"] == "ok"
 
 
-def test_a_recognised_but_unimplemented_pipeline_still_refuses_to_run():
+def test_a_magento_project_resolves_to_a_runnable_pipeline():
+    """It refused until 1.34, when the last three emitters landed. The guard itself is
+    still exercised — against a synthetic scaffold — in `test_two_pipelines`."""
     pipeline.ensure_registered()
     p = pipeline.resolve(str(MAGENTO))
-    assert not p.implemented
+    assert p.id == "adobe->hybris"
+    assert pipeline.require_runnable(p) is p
+
+
+def test_a_runnable_pipeline_still_refuses_when_its_target_is_not_built(monkeypatch):
+    """The guard is what stops a scaffolded pipeline walking every stage, converting
+    nothing, and reporting a clean ledger over an empty output."""
+    pipeline.ensure_registered()
+    p = pipeline.resolve(str(MAGENTO))
+    monkeypatch.setattr(p.target, "implemented", False)
     with pytest.raises(Exception):
         pipeline.require_runnable(p)
 

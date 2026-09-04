@@ -1114,6 +1114,19 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         _target.emit(output_dir, bb.generated_dicts(), _data_model, emit_config)
         # What the emitter planned and deliberately did not write. Believed over the
         # Builder's view, which cannot see a loss that happens after it finishes. [1.33]
+        # The emitter already checked what it wrote. Keeping that verdict is the
+        # difference between a sign-off saying "not checked at all" and one saying "every
+        # file parses and every type resolves, and no compiler ran" — the second is what
+        # happened. Under-claiming is safer than over-claiming and still wrong: it throws
+        # away a real result and tells the reader less than the run knows. [1.34]
+        _static = (getattr(_target, "last_emit", None) or {}).get("static") or {}
+        if _static.get("rung") and not (bb.verify_result or {}).get("ran"):
+            bb.verify_result = {
+                "ran": True, "success": not _static.get("issues"),
+                "rung": _static["rung"], "errors": list(_static.get("issues") or []),
+                "message": _static.get("message", ""),
+            }
+
         for row in ((getattr(_target, "last_emit", None) or {}).get("manual") or []):
             for src_name in (row.get("sources") or []):
                 if src_name:
@@ -1297,6 +1310,10 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     signoff = build_signoff(
         bb, accounting=acct, cost=cost, recipe=(_recipe if "_recipe" in dir() else ""),
         verified={"verified": bool(_v.get("ran") and _v.get("success")),
+                  # The rung, not just yes/no. Flattened to a boolean the ladder cannot
+                  # tell "statically checked" from "not checked", which is the whole
+                  # distinction 3.9 exists to keep. [1.34]
+                  "rung": _v.get("rung", ""),
                   "message": _v.get("message", ""), "errors": len(_v.get("errors") or [])})
     write_signoff_md(output_dir, signoff)
     bb.record("SignOff", "issued", _sh(signoff))

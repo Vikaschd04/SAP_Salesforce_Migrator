@@ -46,15 +46,28 @@ def test_an_unrecognised_source_refuses_with_the_specific_reason(tmp_path):
     assert "nothing to migrate" in str(e.value)
 
 
-def test_a_recognised_but_unrunnable_source_says_which_it_is(capsys):
+def test_a_recognised_but_unrunnable_source_says_which_it_is(monkeypatch, capsys):
     """"Recognised and not yet supported" is a roadmap fact. Reporting it as a detection
-    failure would send someone looking for a problem with their codebase."""
+    failure would send someone looking for a problem with their codebase.
+
+    Magento is runnable since 1.34, so the flag is flipped back for this test: the
+    message is for whichever platform is registered-but-unbuilt next, and it has to keep
+    working until then."""
+    from src import pipeline
+
+    pipeline.ensure_registered()
+    monkeypatch.setattr(pipeline.get("adobe->hybris").target, "implemented", False)
     with pytest.raises(SystemExit) as e:
         _resolve_pipeline(MAGENTO, None)
     msg = str(e.value)
     assert "Adobe Commerce" in msg
     assert "no migration from it can run yet" in msg
     assert "not a detection failure" in msg
+
+
+def test_a_runnable_source_resolves_instead_of_exiting():
+    """The other half of the same behaviour, and the one that is live now."""
+    assert _resolve_pipeline(MAGENTO, None).id == "adobe->hybris"
 
 
 def test_an_unknown_pipeline_id_is_rejected():
@@ -81,15 +94,19 @@ def test_identify_reports_a_runnable_source(capsys):
 
 
 def test_identify_reports_what_a_run_could_claim(capsys):
-    """The oracle difference belongs beside the choice, not in the sign-off afterwards."""
+    """The oracle difference belongs beside the choice, not in the sign-off afterwards.
+
+    It matters more now that the pipeline runs: before 1.34 "not implemented yet" was the
+    headline, and the compiler caveat was a detail under it. Now the run is available and
+    the only thing separating it from the Salesforce path is what it can *claim*."""
     from src.main import cmd_identify
 
     with pytest.raises(SystemExit) as e:
         cmd_identify(_Args(MAGENTO))
-    assert e.value.code == 2, "recognised-but-unrunnable is its own answer, not a failure"
+    assert e.value.code == 0, "a runnable source is not an error"
     out = capsys.readouterr().out
-    assert "not implemented yet" in out
     assert "no compiler for this target" in out
+    assert "statically checked" in out
 
 
 def test_the_three_answers_get_three_exit_codes(tmp_path, capsys):
@@ -97,12 +114,31 @@ def test_the_three_answers_get_three_exit_codes(tmp_path, capsys):
     from src.main import cmd_identify
 
     codes = {}
-    for label, root in (("runnable", HYBRIS), ("recognised", MAGENTO),
+    # Both real sources are runnable since 1.34, so `2` — recognised but not runnable —
+    # has no live example. The code stays, and stays tested: it is what a scaffolded
+    # pipeline will report the next time one is registered, and an exit code nothing
+    # exercises is one that has quietly stopped working by the time it is needed.
+    for label, root in (("runnable", HYBRIS), ("also runnable", MAGENTO),
                         ("unrecognised", str(tmp_path))):
         with pytest.raises(SystemExit) as e:
             cmd_identify(_Args(root))
         codes[label] = e.value.code
-    assert codes == {"runnable": 0, "unrecognised": 1, "recognised": 2}
+    assert codes == {"runnable": 0, "also runnable": 0, "unrecognised": 1}
+
+
+def test_the_recognised_but_unrunnable_exit_code_is_still_reachable(monkeypatch, capsys):
+    """`2` distinguishes "we know what this is and cannot migrate it" from "we have no
+    idea what this is", which is the difference a script most needs to act on."""
+    import pytest as _pytest
+    from src import pipeline
+    from src.main import cmd_identify
+
+    pipeline.ensure_registered()
+    # `Pipeline` is frozen, so the flag is flipped on the target object itself.
+    monkeypatch.setattr(pipeline.get("adobe->hybris").target, "implemented", False)
+    with _pytest.raises(SystemExit) as e:
+        cmd_identify(_Args(MAGENTO))
+    assert e.value.code == 2
 
 
 def test_identify_exits_nonzero_on_an_unrecognised_upload(tmp_path, capsys):

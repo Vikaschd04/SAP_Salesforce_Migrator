@@ -147,10 +147,21 @@ def test_the_discount_policy_survives_into_the_wiring(built):
 
 # ── what was planned and deliberately not written ─────────────────────────────
 
-def test_unwritten_kinds_are_reported_with_a_reason(built):
+def test_every_planned_kind_is_now_written(built):
+    """These four were the `manual` list until 1.34 — decorator, interceptor,
+    event-listener and data. The first three got emitters; `data` never needed one,
+    because a Magento data patch *is* the data model and `build_items_xml` had been
+    writing its EAV attributes onto the platform type all along. Reporting it as unwritten
+    claimed a loss that had not happened, which is this ledger's failure mode pointed the
+    other way."""
     result, _ = built
-    kinds = {m["kind"] for m in result["manual"]}
-    assert kinds == {"event-listener", "decorator", "interceptor", "data"}
+    assert {m["kind"] for m in result["manual"]} == set()
+
+
+def test_anything_still_unwritten_would_carry_a_reason(built):
+    """The mechanism has to survive being empty: a kind with no emitter must still be
+    reported rather than silently dropped, which is what it is for."""
+    result, _ = built
     for m in result["manual"]:
         assert "no emitter for" in m["reason"]
 
