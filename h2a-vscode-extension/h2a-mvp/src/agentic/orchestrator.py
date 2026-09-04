@@ -1201,6 +1201,50 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         bb.emitted_as.update(
             (getattr(_target, "last_emit", None) or {}).get("emitted_as") or {})
 
+        # Attribute each finding to the artifact whose file it is in, so triage can see
+        # it. A file the checker rejected belongs to a target that does not build, and
+        # "does not build" is already a must-review condition — it was simply never
+        # reaching one. [1.40]
+        _by_target: dict = {}
+        for issue in (_static.get("issues") or []):
+            stem = Path(issue.get("file", "")).stem
+            name = stem[len("Default"):] if stem.startswith("Default") else stem
+            _by_target.setdefault(name, []).append(issue)
+        bb.build_failures = _by_target
+
+        # Types the emitter could not map to anything the target has, counted from the
+        # files it actually wrote. These compile — they render as `Object` with a comment
+        # — so no checker objects, and without this they were invisible: a real
+        # third-party module produced 120 of them across 18 files and triage called every
+        # artifact routine. A placeholder that compiles is exactly the kind of quiet gap
+        # this product is arranged to surface. [1.40]
+        _ext_root = Path(output_dir)
+        for _name, _rel in (bb.emitted_as or {}).items():
+            _f = _ext_root / "hybris" / "bin" / "custom" / \
+                emit_config.get("extension_name", "migrated") / _rel
+            try:
+                _n = _f.read_text(encoding="utf-8").count("TYPE-UNRESOLVED")
+            except OSError:
+                continue
+            if _n:
+                # Keyed by *target* name, which is what triage looks up. `emitted_as` is
+                # keyed by source class, and keying this the same way meant the count was
+                # gathered correctly and then matched nothing. [1.40]
+                _stem = Path(_rel).stem
+                _target_name = _stem[len("Default"):] if _stem.startswith("Default") else _stem
+                bb.unmappable_types[_target_name] = (
+                    bb.unmappable_types.get(_target_name, 0) + _n)
+        if bb.unmappable_types:
+            _tot = sum(bb.unmappable_types.values())
+            print(f"  ⚠ {_tot} type(s) across {len(bb.unmappable_types)} artifact(s) have "
+                  "no equivalent on the target and were left for a person to decide.")
+        if _by_target:
+            n = sum(len(v) for v in _by_target.values())
+            print(f"  ⚠ {n} problem(s) in {len(_by_target)} generated file(s) — the output "
+                  "does not resolve. See SIGN_OFF.md and TRIAGE.md.")
+            bb.record("Verifier", "static_failed",
+                      f"{n} finding(s) across {len(_by_target)} generated file(s)")
+
         for row in ((getattr(_target, "last_emit", None) or {}).get("manual") or []):
             for src_name in (row.get("sources") or []):
                 if src_name:

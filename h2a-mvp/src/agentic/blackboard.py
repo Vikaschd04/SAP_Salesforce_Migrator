@@ -104,6 +104,19 @@ class Blackboard:
     #: would look for and not find. [1.35]
     emitted_as: dict = field(default_factory=dict)
 
+    #: `target name -> the checker's findings against the file emitted for it`. The
+    #: static check and the compiler both run *after* the Builder is done, so neither
+    #: reaches an artifact's own status — and triage, which reads that status, called
+    #: eighteen artifacts "routine" over an extension with twenty-eight unresolvable
+    #: types. Nothing was wrong with any single check; nothing carried the answer back.
+    #: [1.40]
+    build_failures: dict = field(default_factory=dict)
+
+    #: `target name -> how many of its types the migration could not map`. These render
+    #: as `Object` with a comment, so they compile and no checker objects — which is
+    #: precisely why they need counting somewhere a reviewer looks. [1.40]
+    unmappable_types: dict = field(default_factory=dict)
+
     # Repository analysis (filled by the orchestrator's ingest step)
     domains: dict = field(default_factory=dict)
     adjacency: dict = field(default_factory=dict)
@@ -321,7 +334,15 @@ class Blackboard:
                 # is the exact loss this ledger exists to prevent. The Builder's own view
                 # cannot see it, because the loss happens after the Builder is done.
                 # [1.33]
-                if name in self.not_emitted:
+                # A class can appear in more than one plan target — a Magento model is
+                # both a service and a resource model. If *any* of them wrote a file, it
+                # was converted; `manual` is only true when nothing was written for it at
+                # all. Checking `not_emitted` first marked such a class manual while its
+                # service sat on disk. [1.40]
+                emitted_here = (cls.get("file") in self.emitted_as
+                                or name in self.emitted_as)
+                if not emitted_here and (name in self.not_emitted
+                                         or cls.get("file") in self.not_emitted):
                     rows.append({
                         "source": name, "layer": layer, "outcome": "manual",
                         "target": "—", "note": self.not_emitted[name]})
@@ -338,7 +359,10 @@ class Blackboard:
                                  # What was written, where the emitter said so. Falls back
                                  # to the conventional name for targets that do not
                                  # report one. [1.35]
-                                 "target": self.emitted_as.get(name, target),
+                                 # By source file: a class name is not unique. [1.40]
+                                 "target": self.emitted_as.get(
+                                     cls.get("file", ""),
+                                     self.emitted_as.get(name, target)),
                                  "note": "; ".join(notes) if flagged else ""})
             elif name in skipped:
                 rows.append({"source": name, "layer": layer, "outcome": "skipped",

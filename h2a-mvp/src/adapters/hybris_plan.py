@@ -126,7 +126,11 @@ def plan_targets(units: list, wiring: dict | None = None) -> list:
             "rationale": why,
             "source_classes": [{"class_name": u.name, "layer": layer,
                                 "source": getattr(u, "source", ""),
-                                "file": getattr(u, "file", "")}],
+                                "file": getattr(u, "file", ""),
+                                # Two classes with the same short name are only telling
+                                # apart by where they live. [1.40]
+                                "namespace": (getattr(u, "extra", None) or {})
+                                .get("namespace", "")}],
         })
     return _merge(out)
 
@@ -149,7 +153,99 @@ def _merge(targets: list) -> list:
                 existing["rationale"] += f"; also {t['rationale']}"
         else:
             by_key[key] = t
-    return list(by_key.values())
+    return _disambiguate(list(by_key.values()))
+
+
+def _disambiguate(targets: list) -> list:
+    """Two source classes with the *same short name* are not the same class. [1.40]
+
+    Folding is right for `PricingServiceInterface` and `PricingService`: one contract in
+    two files, which is how Magento spells what Hybris spells as an interface plus a
+    Default implementation. Those have *different* names that collapse to one target, and
+    they stay folded.
+
+    It is wrong for `Controller\\Adminhtml\\Index\\Index`, `Controller\\Customer\\Index` and
+    `Controller\\Index\\Index` — three unrelated controllers all literally called `Index`,
+    which a real third-party module has and a hand-written fixture does not. Folded, all
+    three were reported as converted into one `IndexService` and two of them were not in
+    it.
+
+    So the discriminator is not the namespace — the interface and its implementation live
+    in different namespaces too — but whether the short names are *identical*. Where they
+    are, the extra ones are split out and named for the namespace segment that tells them
+    apart.
+    """
+    out = []
+    for t in targets:
+        classes = t.get("source_classes", []) or []
+        seen: dict = {}
+        for c in classes:
+            seen.setdefault(c.get("class_name", ""), []).append(c)
+        duplicated = {n for n, group in seen.items() if len(group) > 1}
+        if not duplicated:
+            out.append(t)
+            continue
+
+        # The first of each duplicated name keeps the plain target; the rest are split
+        # out. Anything not duplicated stays with the first, so an interface and its
+        # implementation are never separated by this.
+        namespaces = [c.get("namespace", "") for n in duplicated for c in seen[n]]
+        primary, extras = [], []
+        for name, group in seen.items():
+            if name in duplicated:
+                primary.append(group[0])
+                extras.extend(group[1:])
+            else:
+                primary.extend(group)
+
+        head = dict(t)
+        head["source_classes"] = primary
+        out.append(head)
+
+        taken = {t["target_name"]}
+        for c in extras:
+            qualifier = _distinguishing_segment(c.get("namespace", ""), namespaces)
+            copy = dict(t)
+            copy["source_classes"] = [c]
+            # `...\\Controller\\Index` yields the qualifier `Index`, and `IndexService`
+            # already starts with it — so the "already qualified" shortcut handed back
+            # the primary's own name and the two re-folded downstream, putting us back
+            # where we started. Uniqueness is checked, not assumed. [1.40]
+            candidate = (f"{pascal(qualifier)}{t['target_name']}"
+                         if qualifier and not t["target_name"].startswith(pascal(qualifier))
+                         else t["target_name"])
+            if candidate in taken:
+                segments = [s for s in (c.get("namespace", "") or "").split("\\") if s]
+                candidate = f"{''.join(pascal(s) for s in segments[-2:])}{t['target_name']}"
+            taken.add(candidate)
+            copy["target_name"] = candidate
+            copy["rationale"] = (
+                t["rationale"] + f"; named for `{qualifier}`, because more than one source "
+                "class is called this and they are different classes")
+            out.append(copy)
+    return out
+
+
+def _distinguishing_segment(ns: str, all_ns: list) -> str:
+    """The first namespace segment that tells `ns` apart from its siblings.
+
+    The *last* segment is not it: `...\\Controller\\Adminhtml\\Index` and
+    `...\\Controller\\Index` both end in `Index`, so naming by it would leave the
+    collision exactly where it was.
+    """
+    parts = [n.split("\\") for n in all_ns if n]
+    mine = ns.split("\\") if ns else []
+    if not mine:
+        return ""
+    if len(parts) < 2:
+        return mine[-1]
+    common = 0
+    for i in range(min(len(p) for p in parts)):
+        if len({p[i] for p in parts}) == 1:
+            common = i + 1
+        else:
+            break
+    return mine[common] if common < len(mine) else mine[-1]
 
 
 def _name_for(unit, kind: str) -> str:

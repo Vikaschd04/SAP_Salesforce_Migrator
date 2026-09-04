@@ -53,6 +53,11 @@ def _sev(findings, *names) -> int:
 def build_triage(bb) -> dict:
     """Rank every artifact by how much it needs a person. Deterministic; no model calls."""
     radar = getattr(bb, "radar", None) or {}
+    # What the checker said about the file emitted for each target. See the field's own
+    # note on the blackboard: this cannot be part of an artifact's status, because the
+    # check runs after the Builder has finished with it. [1.40]
+    build_failures = getattr(bb, "build_failures", None) or {}
+    unmappable = getattr(bb, "unmappable_types", None) or {}
     # Which source files carry which hazards, so an artifact inherits the risk of the
     # code it was built from.
     hazards_by_file: dict[str, list] = {}
@@ -145,10 +150,26 @@ def build_triage(bb) -> dict:
         # sum happens to clear a threshold. Tuning a weight until it crosses the line
         # would express the same policy far less clearly, and would silently stop
         # holding the moment any other weight changed.
+        # Findings the checker raised against the file emitted for this target. They
+        # arrive separately because the check runs after the Builder is finished, so
+        # they can never be part of an artifact's own status. [1.40]
+        build_issues = (build_failures or {}).get(a.target_name) or []
+        unmapped = unmappable.get(a.target_name, 0)
+        if unmapped:
+            reasons.append(
+                f"{unmapped} type(s) have no equivalent on the target and were emitted as "
+                "placeholders — each is a modelling decision, and the file compiles either "
+                "way")
         forced = (getattr(a, "status", "") == "error"      # it does not build
+                  or bool(build_issues)                    # …and neither does this one
+                  or unmapped > 0                          # a type has no target equivalent
                   or crit > 0                              # breaches a limit at volume
                   or errs > 0                              # the Critic still objects
                   or bool(untyped))                        # a type would have to be guessed
+        if build_issues:
+            reasons.append(
+                f"{len(build_issues)} finding(s) against the emitted file — it does not "
+                f"resolve: {build_issues[0].get('message', '')[:90]}")
         mechanical = (a.layer in _MECHANICAL and not reasons)
         band = ("must" if (forced or score >= MUST_REVIEW)
                 else "review" if score >= ELEVATED

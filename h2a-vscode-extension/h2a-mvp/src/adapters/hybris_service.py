@@ -129,8 +129,32 @@ def _rename(java: str, renames: dict | None) -> str:
     named a PHP interface that no longer exists anywhere, and the file did not compile —
     invisible to the static rung, which had `LoyaltyAccountInterface` in its known set
     because the *source* declared it.
+
+    Anything that is neither a migrated type nor a type the target platform has becomes
+    `UNRESOLVED`, which renders as `Object` with a comment saying a decision is owed.
+    Passing it through instead put *Magento framework* classes into Java signatures —
+    `Redirect`, `RequestInterface`, `ResolveInfo` — types that will never exist on Hybris.
+    On a real third-party module that was 28 unresolvable references across 8 files, and
+    the emitter had produced every one of them confidently. A type the migration cannot
+    map is a decision for a person, and the generated code should say so rather than
+    name something imaginary. [1.40]
     """
-    return (renames or {}).get(java, java)
+    mapped = (renames or {}).get(java)
+    if mapped:
+        return mapped
+    return java if _is_available(java) else UNRESOLVED
+
+
+def _is_available(java: str) -> bool:
+    """Will this type exist on the target once the extension is built?"""
+    if not java or java == UNRESOLVED:
+        return False
+    bare = java.split("<")[0].rsplit(".", 1)[-1]
+    if java in _JAVA.values() or bare in _JAVA:
+        return False if bare not in _JAVA and java not in _JAVA.values() else True
+    from src.adapters.java_static_check import PLATFORM_TYPES, _JDK
+
+    return bare in PLATFORM_TYPES or bare in _JDK or bare.endswith("Model")
 
 
 def _types_for(unit, resolutions: list) -> dict:
@@ -147,9 +171,16 @@ def _public_methods(unit) -> list:
 
 
 def build_interface(unit, package: str, resolutions: list,
-                    renames: dict | None = None) -> str:
-    """The service contract. Every signature is derived; none is invented. [3.2]"""
-    name = service_name(unit.name)
+                    renames: dict | None = None, name: str | None = None) -> str:
+    """The service contract. Every signature is derived; none is invented. [3.2]
+
+    `name` is the planner's own target name, and passing it is the point: the file is
+    written as `<target_name>.java` while this used to re-derive the class name from the
+    unit. 1.38 made the two derivations agree; they came apart again the moment the
+    planner qualified a name to tell two same-named classes apart, and Java rejects a
+    public type whose name does not match its file. One derivation, handed down. [1.40]
+    """
+    name = name or service_name(unit.name)
     types = _types_for(unit, resolutions)
     out = [f"package {package}.service;", ""]
 
@@ -172,9 +203,13 @@ def build_interface(unit, package: str, resolutions: list,
 
 
 def build_implementation(unit, package: str, resolutions: list,
-                         renames: dict | None = None) -> str:
-    """The Spring service. Signatures derived; bodies left for the Builder. [3.2]"""
-    iface = service_name(unit.name)
+                         renames: dict | None = None, name: str | None = None) -> str:
+    """The Spring service. Signatures derived; bodies left for the Builder. [3.2]
+
+    See `build_interface` on `name`: the planner owns it, and re-deriving it here is what
+    put `class DefaultIndexService` inside `DefaultAdminhtmlIndexService.java`. [1.40]
+    """
+    iface = name or service_name(unit.name)
     name = f"Default{iface}"
     types = _types_for(unit, resolutions)
 

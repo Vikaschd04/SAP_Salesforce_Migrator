@@ -92,8 +92,8 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                 # A data patch *is* the data model; its attributes were written onto the
                 # types they extend, inside items.xml.
                 for c in t.get("source_classes", []):
-                    if c.get("class_name"):
-                        emitted_as[c["class_name"]] = f"resources/{name}-items.xml"
+                    if c.get("file"):
+                        emitted_as[c["file"]] = f"resources/{name}-items.xml"
                 continue
             if kind not in EMITTABLE:
                 manual.append({
@@ -110,14 +110,19 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
         # merged into one target, the interface's own methods are already part of it.
         unit = max(sources, key=lambda u: len(getattr(u, "methods", None) or []))
         write(_pkg_dir(src, package, "service", f"{t['target_name']}.java"),
-              hybris_service.build_interface(unit, package, resolutions, renames))
+              hybris_service.build_interface(unit, package, resolutions, renames,
+                                             name=t['target_name']))
         write(_pkg_dir(src, package, "service", "impl",
                        f"Default{t['target_name']}.java"),
-              hybris_service.build_implementation(unit, package, resolutions, renames))
+              hybris_service.build_implementation(unit, package, resolutions, renames,
+                                                  name=t['target_name']))
         services.append(unit)
         for c in t.get("source_classes", []):
-            if c.get("class_name"):
-                emitted_as[c["class_name"]] = (
+            # Keyed by the source *file*. Three controllers in one Magento module are all
+            # called `Index`, so a class-name key made the last one win and the ledger
+            # pointed all three rows at one file. [1.40]
+            if c.get("file"):
+                emitted_as[c["file"]] = (
                     f"src/{package.replace('.', '/')}/service/{t['target_name']}.java")
 
     # DAOs come from the data model rather than from source units: a Magento
@@ -144,9 +149,27 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
             if t_row.get("target_name") != performable:
                 continue
             for c in t_row.get("source_classes", []):
-                if c.get("class_name"):
-                    emitted_as[c["class_name"]] = (
+                if c.get("file"):
+                    emitted_as[c["file"]] = (
                         f"src/{package.replace('.', '/')}/jobs/{performable}.java")
+
+    # DAOs are emitted from the *data model*, so a unit routed to DAO — a Magento
+    # `Collection`, say — gets no file unless a declared table happens to match its name.
+    # `DAO` being in EMITTABLE meant those were skipped silently and the ledger reported
+    # `CollectionDao.java`, a file nothing wrote. [1.40]
+    for t_row in targets or []:
+        if t_row.get("kind") != DAO:
+            continue
+        if any(c.get("file") in emitted_as for c in t_row.get("source_classes", [])):
+            continue
+        manual.append({
+            "target": t_row.get("target_name", ""), "kind": DAO,
+            "sources": [c.get("class_name") for c in t_row.get("source_classes", [])],
+            "reason": "DAOs are generated from the declared data model, and no declared "
+                      "table matches this class — so nothing was written for it. A "
+                      "Magento collection or resource model with no `db_schema.xml` table "
+                      "behind it has no Hybris counterpart to generate.",
+        })
 
     di = (getattr(source_model, "extra", None) or {}).get("di", {})
     arguments = di.get("arguments", [])
@@ -179,7 +202,7 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                       unit, package, di,
                       {hybris_service.service_name(u.name) for u in services}))
             hooks.append({"kind": kind, "name": target_name})
-            emitted_as[unit.name] = (
+            emitted_as[getattr(unit, "file", "") or unit.name] = (
                 f"src/{package.replace('.', '/')}/decorators/{target_name}.java")
         elif kind == INTERCEPTOR:
             write(_pkg_dir(src, package, "interceptors", f"{target_name}.java"),
@@ -187,7 +210,7 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
             hooks.append({"kind": kind, "name": target_name,
                           "type_code": hybris_hooks._short(
                               hybris_hooks._target_type(unit, di))})
-            emitted_as[unit.name] = (
+            emitted_as[getattr(unit, "file", "") or unit.name] = (
                 f"src/{package.replace('.', '/')}/interceptors/{target_name}.java")
         else:
             event = event_of.get(unit.name, "")
@@ -199,7 +222,7 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
             write(_pkg_dir(src, package, "listeners", f"{target_name}.java"),
                   hybris_hooks.build_event_listener(unit, package, event))
             hooks.append({"kind": kind, "name": target_name, "event": event})
-            emitted_as[unit.name] = (
+            emitted_as[getattr(unit, "file", "") or unit.name] = (
                 f"src/{package.replace('.', '/')}/listeners/{target_name}.java")
 
     write(root / "project.properties", hybris_data.build_properties(arguments, name))
