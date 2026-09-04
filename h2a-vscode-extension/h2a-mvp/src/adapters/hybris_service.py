@@ -68,8 +68,18 @@ def service_name(unit_name: str) -> str:
 
     Appending unconditionally produced `PricingServiceService`, which is the kind of
     detail that makes generated code read as generated.
+
+    The trailing `Interface` is stripped *here* rather than by the caller. `hybris_plan`
+    stripped it before asking for a name while the emitters asked with the raw unit name,
+    so `LoyaltyAccountInterface` was written into `LoyaltyAccountService.java` as
+    `interface LoyaltyAccountInterfaceService` — a file whose name and whose class do not
+    match, which Java rejects outright. Two derivations of one name is the bug; this is
+    the one. [1.38]
     """
-    n = pascal(unit_name)
+    base = unit_name or ""
+    if base.endswith("Interface") and len(base) > len("Interface"):
+        base = base[: -len("Interface")]
+    n = pascal(base)
     return n if n.endswith("Service") else f"{n}Service"
 
 
@@ -91,24 +101,36 @@ def _javadoc(doc: str, indent: str = "    ") -> list:
     return out
 
 
-def _signature(m, types: dict) -> tuple:
+def _signature(m, types: dict, renames: dict | None = None) -> tuple:
     """`(java_signature, unresolved_names)` for one method."""
     unresolved = []
 
     ret_ir = types.get(f"{m.name}()", "")
-    ret = java_type(ret_ir)
+    ret = _rename(java_type(ret_ir), renames)
     if ret == UNRESOLVED:
         unresolved.append("return")
 
     params = []
     for p in getattr(m, "parameters", None) or []:
         ir_t = types.get(f"{m.name}(${p.get('name', '')})", "")
-        jt = java_type(ir_t)
+        jt = _rename(java_type(ir_t), renames)
         if jt == UNRESOLVED:
             unresolved.append(p.get("name", "?"))
         params.append(f"{jt} {_camel(p.get('name', 'arg'))}")
 
     return f"{ret} {_camel(m.name)}({', '.join(params)})", unresolved
+
+
+def _rename(java: str, renames: dict | None) -> str:
+    """A signature naming another *source* class must name what that class became. [1.38]
+
+    `LoyaltyAccountRepository::getByCode()` returns a `LoyaltyAccountInterface`, which
+    this migration converts into `LoyaltyAccountService`. Emitted unchanged the signature
+    named a PHP interface that no longer exists anywhere, and the file did not compile —
+    invisible to the static rung, which had `LoyaltyAccountInterface` in its known set
+    because the *source* declared it.
+    """
+    return (renames or {}).get(java, java)
 
 
 def _types_for(unit, resolutions: list) -> dict:
@@ -124,7 +146,8 @@ def _public_methods(unit) -> list:
             and not m.name.startswith("__")]
 
 
-def build_interface(unit, package: str, resolutions: list) -> str:
+def build_interface(unit, package: str, resolutions: list,
+                    renames: dict | None = None) -> str:
     """The service contract. Every signature is derived; none is invented. [3.2]"""
     name = service_name(unit.name)
     types = _types_for(unit, resolutions)
@@ -136,7 +159,7 @@ def build_interface(unit, package: str, resolutions: list) -> str:
     out += [f"public interface {name}", "{"]
 
     for m in _public_methods(unit):
-        sig, unresolved = _signature(m, types)
+        sig, unresolved = _signature(m, types, renames)
         out += [""]
         out += _javadoc(getattr(m, "doc", ""))
         if unresolved:
@@ -148,14 +171,27 @@ def build_interface(unit, package: str, resolutions: list) -> str:
     return "\n".join(out)
 
 
-def build_implementation(unit, package: str, resolutions: list) -> str:
+def build_implementation(unit, package: str, resolutions: list,
+                         renames: dict | None = None) -> str:
     """The Spring service. Signatures derived; bodies left for the Builder. [3.2]"""
     iface = service_name(unit.name)
     name = f"Default{iface}"
     types = _types_for(unit, resolutions)
 
-    out = [f"package {package}.service.impl;", "",
-           f"import {package}.service.{iface};", "",
+    # Every migrated type this class names, not just its own interface. The
+    # implementation sits in `.service.impl` and the types it returns sit in `.service`,
+    # so one import is not enough — and the missing ones are invisible until a compiler
+    # looks, because the *names* all resolve. [1.38]
+    referenced = {iface}
+    for m in _public_methods(unit):
+        sig, _ = _signature(m, types, renames)
+        for word in re.findall(r"\b[A-Z]\w*\b", sig):
+            if word in (renames or {}).values():
+                referenced.add(word)
+
+    out = [f"package {package}.service.impl;", ""]
+    out += [f"import {package}.service.{n};" for n in sorted(referenced)]
+    out += ["",
            "/**",
            f" * Migrated from the Adobe Commerce class {unit.name}"
            f" ({getattr(unit, 'file', '')}).",
@@ -168,7 +204,7 @@ def build_implementation(unit, package: str, resolutions: list) -> str:
            f"public class {name} implements {iface}", "{"]
 
     for m in _public_methods(unit):
-        sig, unresolved = _signature(m, types)
+        sig, unresolved = _signature(m, types, renames)
         ret = sig.split(" ", 1)[0]
         out += ["", "    @Override"]
         if unresolved:

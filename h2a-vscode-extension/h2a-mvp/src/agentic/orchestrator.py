@@ -67,6 +67,62 @@ def _augment_domains_and_schedule(bb) -> None:
         bb.domains.setdefault(dom, []).append(cls)
         if dom not in bb.schedule:
             bb.schedule.append(dom)
+    _order_schedule_by_source(bb)
+
+
+def _order_schedule_by_source(bb) -> None:
+    """Build in the order the *source adapter* worked out, where it worked one out.
+
+    `build_dependency_graph` reads Java, so for any other source it returns nothing and
+    every unit lands in one wave — built with none of its dependencies' signatures in
+    scope, which is the whole reason the schedule exists. The Adobe reader already
+    computes a topological order (`StoreConfig`, `Money`, then `PricingService`) and it
+    was being discarded: the orchestrator recomputed the answer with an analyser that
+    cannot read the language. [1.38]
+
+    Ordering rather than replacing: the domains stay as they are, and only their sequence
+    changes, so a source that supplies no order keeps exactly today's behaviour.
+    """
+    # Only where the graph analyser found nothing. It reads Java, so on the shipped path
+    # it fills `adjacency` and this must not touch anything: reordering there changed the
+    # build sequence under v2 and broke the v1/v2 equivalence the whole seam rests on.
+    # This is the fallback for a source the analyser cannot read, not a second opinion
+    # about one it can. [1.38]
+    if bb.adjacency:
+        return
+
+    model = getattr(bb, "source_model", None)
+    order = list(getattr(model, "dependency_order", None) or [])
+    if not order or len(bb.schedule) < 2:
+        return
+
+    rank = {name: i for i, name in enumerate(order)}
+    fallback = len(rank)
+
+    def earliest(domain: str) -> int:
+        members = bb.domains.get(domain) or []
+        return min((rank.get(c.get("class_name"), fallback) for c in members),
+                   default=fallback)
+
+    bb.schedule.sort(key=lambda d: (earliest(d), d))
+
+    # Ordering the schedule is not enough on its own: the build runs in *wavefronts*, and
+    # those are computed from `adjacency`, which the Java-only analyser also leaves empty.
+    # With no edges every domain sits at depth 0 and the whole estate builds in one wave,
+    # each target seeing none of its dependencies' signatures. The units already carry
+    # `referenced_types`; this lifts them to domain edges. [1.38]
+    domain_of = {c.get("class_name"): d
+                 for d, members in bb.domains.items() for c in members}
+    edges: dict = {d: set() for d in bb.domains}
+    for unit in (getattr(model, "units", None) or []):
+        mine = domain_of.get(getattr(unit, "name", ""))
+        if not mine:
+            continue
+        for ref in (getattr(unit, "referenced_types", None) or []):
+            theirs = domain_of.get(ref)
+            if theirs and theirs != mine:
+                edges[mine].add(theirs)
+    bb.adjacency = {d: sorted(v) for d, v in edges.items() if v}
 
 
 _TREE_SKIP = {".git", "node_modules", "target", "build", "dist", "__pycache__",

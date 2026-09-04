@@ -61,6 +61,16 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
         path.write_text(body, encoding="utf-8")
         created.append(str(path))
 
+    # What each source class became, so a signature naming one names its migrated form.
+    # Built from the plan rather than guessed, and including the `Interface` twin that
+    # `_merge` folded away — the repository's methods return that twin by name. [1.38]
+    renames: dict = {}
+    for t_row in targets or []:
+        for c in t_row.get("source_classes", []):
+            src_name = c.get("class_name")
+            if src_name and t_row.get("target_name"):
+                renames[src_name] = t_row["target_name"]
+
     services, manual = [], []
     #: source class name -> the path this migration actually wrote for it, relative to
     #: the extension root. The ledger named files by convention (`<target>.java`) and so
@@ -100,10 +110,10 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
         # merged into one target, the interface's own methods are already part of it.
         unit = max(sources, key=lambda u: len(getattr(u, "methods", None) or []))
         write(_pkg_dir(src, package, "service", f"{t['target_name']}.java"),
-              hybris_service.build_interface(unit, package, resolutions))
+              hybris_service.build_interface(unit, package, resolutions, renames))
         write(_pkg_dir(src, package, "service", "impl",
                        f"Default{t['target_name']}.java"),
-              hybris_service.build_implementation(unit, package, resolutions))
+              hybris_service.build_implementation(unit, package, resolutions, renames))
         services.append(unit)
         for c in t.get("source_classes", []):
             if c.get("class_name"):

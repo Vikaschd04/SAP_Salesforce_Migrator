@@ -247,3 +247,69 @@ def test_skipped_units_reach_the_ledger_as_dicts():
     dicts — as an AttributeError."""
     model = _p("adobe->hybris").source.read(CORPUS_MAGENTO)
     assert all(isinstance(s, dict) for s in model.to_ingest()["frontend_skipped"])
+
+
+# ── the build order comes from whoever can read the source [1.38] ─────────────
+
+def test_a_source_the_java_analyser_cannot_read_still_gets_an_order():
+    """`build_dependency_graph` reads Java, so for Magento it returns nothing and every
+    unit landed in one wave — each target built with none of its dependencies' signatures
+    in scope, which is the only reason the schedule exists. The Adobe reader already
+    computes a topological order and it was being discarded."""
+    from src.agentic.orchestrator import _augment_domains_and_schedule
+    from src.agentic.blackboard import Blackboard
+
+    model = _p("adobe->hybris").source.read(CORPUS_MAGENTO)
+    bb = Blackboard(input_dir=".", output_dir=".")
+    bb.source_model = model
+    bb.all_classes = model.to_ingest()["classes"]
+    bb.domains, bb.schedule, bb.adjacency = {}, [], {}
+    _augment_domains_and_schedule(bb)
+
+    assert bb.adjacency, "no domain edges were derived from the source's own references"
+    order = {name: i for i, name in enumerate(model.dependency_order)}
+    ranks = [min(order.get(c["class_name"], 10**6) for c in bb.domains[d])
+             for d in bb.schedule]
+    assert ranks == sorted(ranks), "the schedule does not follow the source's topology"
+
+
+def test_the_shipped_path_is_left_exactly_as_it_was():
+    """The analyser fills `adjacency` for Java, and reordering there changed the build
+    sequence under v2 — breaking the v1/v2 equivalence the whole seam rests on. This is a
+    fallback for a source the analyser cannot read, not a second opinion about one it
+    can."""
+    from src.agentic.orchestrator import _augment_domains_and_schedule
+    from src.agentic.blackboard import Blackboard
+
+    bb = Blackboard(input_dir=".", output_dir=".")
+    bb.all_classes = []
+    bb.domains = {"Z": [{"class_name": "Z"}], "A": [{"class_name": "A"}]}
+    bb.schedule = ["Z", "A"]
+    bb.adjacency = {"Z": ["A"]}
+    bb.source_model = type("M", (), {"dependency_order": ["A", "Z"], "units": []})()
+
+    _augment_domains_and_schedule(bb)
+    assert bb.schedule == ["Z", "A"], "an analyser-derived schedule must not be re-sorted"
+    assert bb.adjacency == {"Z": ["A"]}
+
+
+# ── one derivation of a name [1.38] ───────────────────────────────────────────
+
+def test_the_service_name_and_the_file_name_cannot_disagree():
+    """`hybris_plan` stripped `Interface` before asking for a name and the emitters asked
+    with the raw unit name, so `LoyaltyAccountInterface` was written into
+    `LoyaltyAccountService.java` as `interface LoyaltyAccountInterfaceService` — a file
+    whose name and class do not match, which Java rejects outright."""
+    from src.adapters.hybris_plan import SERVICE, _name_for
+    from src.adapters.hybris_service import service_name
+
+    unit = type("U", (), {"name": "LoyaltyAccountInterface"})()
+    assert service_name(unit.name) == "LoyaltyAccountService"
+    assert _name_for(unit, SERVICE) == service_name(unit.name)
+
+
+def test_a_name_that_already_ends_in_service_is_not_doubled():
+    from src.adapters.hybris_service import service_name
+
+    assert service_name("PricingService") == "PricingService"
+    assert service_name("PricingServiceInterface") == "PricingService"

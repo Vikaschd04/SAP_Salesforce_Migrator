@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+
+    <preference for="Acme\Loyalty\Api\LoyaltyAccountRepositoryInterface"
+                type="Acme\Loyalty\Model\LoyaltyAccountRepository"/>
+    <preference for="Acme\Loyalty\Api\Data\LoyaltyAccountInterface"
+                type="Acme\Loyalty\Model\LoyaltyAccount"/>
+    <preference for="Acme\Loyalty\Api\PricingServiceInterface"
+                type="Acme\Loyalty\Model\PricingService"/>
+
+    <type name="Acme\Loyalty\Model\PricingService">
+        <arguments>
+            <argument name="discountThreshold" xsi:type="number">200</argument>
+            <argument name="spendDiscountRate" xsi:type="number">0.10</argument>
+        </arguments>
+    </type>
+
+    <!-- `before`: adjusts the arguments and always proceeds. -->
+    <type name="Magento\Quote\Model\Quote\Address\Total\Subtotal">
+        <plugin name="acme_loyalty_subtotal" sortOrder="10"
+                type="Acme\Loyalty\Plugin\SubtotalPlugin"/>
+    </type>
+
+    <!-- `around`: this one can decline to call the original. -->
+    <type name="Magento\Sales\Model\Order">
+        <plugin name="acme_loyalty_order_total" sortOrder="20"
+                type="Acme\Loyalty\Plugin\OrderTotalPlugin"/>
+    </type>
+
+    <type name="Acme\Loyalty\Model\TierPolicy">
+        <arguments>
+            <argument name="tiers" xsi:type="array">
+                <item name="BRONZE" xsi:type="number">0</item>
+                <item name="SILVER" xsi:type="number">500</item>
+                <item name="GOLD" xsi:type="number">2000</item>
+            </argument>
+        </arguments>
+    </type>
+</config>

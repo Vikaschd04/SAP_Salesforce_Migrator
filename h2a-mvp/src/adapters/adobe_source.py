@@ -175,25 +175,26 @@ class AdobeCommerceSource:
             }
 
         mods = ", ".join(project["modules"][:4]) or "no named modules"
+        # `detect` answers "what is this codebase", and nothing else. It used to also
+        # answer "can a migration run against it" — hardcoded to no, with blockers citing
+        # items 2.3–2.9 that shipped long ago. So `identify` printed "Migration not
+        # implemented yet" directly above a list saying the pipeline was ready. Whether a
+        # migration can run is `Pipeline.implemented`'s question, and it is asked one
+        # level up where both halves are known. [1.38]
         return {
-            "verdict": "not_yet_supported",
+            "verdict": "ok",
             "confidence": confidence,
             "platform": self.platform,
-            "implemented": False,
+            "implemented": True,
             "is_magento": True,
             "signals": signals,
             "project": project,
-            "blockers": [
-                "Reading an Adobe Commerce codebase is not implemented yet (items 2.3–2.9). "
-                "This is a recognised Magento project, and the migration cannot run against "
-                "it — those are two different statements and the second one is not a "
-                "detection failure."
-            ],
+            "blockers": [],
             "warnings": [],
             "secrets": secrets,
             "summary": (f"Adobe Commerce (Magento 2) project detected ({confidence}% "
                         f"confidence) — {len(project['modules'])} module(s) [{mods}], "
-                        f"{project['php_files']} PHP file(s). Migration not implemented yet."),
+                        f"{project['php_files']} PHP file(s)."),
         }
 
     def preflight(self, root: str) -> dict:

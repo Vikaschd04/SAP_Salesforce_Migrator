@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Webapi:etc/webapi.xsd">
+
+    <route url="/V1/acme-loyalty/accounts/:code" method="GET">
+        <service class="Acme\Loyalty\Api\LoyaltyAccountRepositoryInterface" method="getByCode"/>
+        <resources>
+            <resource ref="Acme_Loyalty::accounts"/>
+        </resources>
+    </route>
+
+    <route url="/V1/acme-loyalty/accounts/:code/points" method="POST">
+        <service class="Acme\Loyalty\Api\LoyaltyAccountRepositoryInterface" method="addPoints"/>
+        <resources>
+            <resource ref="Acme_Loyalty::accounts"/>
+        </resources>
+    </route>
+
+    <route url="/V1/acme-loyalty/me/account" method="GET">
+        <service class="Acme\Loyalty\Api\LoyaltyAccountRepositoryInterface" method="getForCurrentCustomer"/>
+        <resources>
+            <resource ref="self"/>
+        </resources>
+    </route>
+</routes>

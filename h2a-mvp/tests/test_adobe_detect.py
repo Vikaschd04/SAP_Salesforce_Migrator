@@ -5,7 +5,10 @@ worst possible answer. Before this, a Magento project came back as "not identifi
 supported source" — which reads as *we do not know what this is*, when in fact the tool
 knew exactly what it was and simply could not migrate it yet.
 
-So `detect()` identifies the project and the verdict says `not_yet_supported`. The run
+So `detect()` identifies the project and says only that. Whether a migration can run
+against it is `Pipeline.implemented`'s question — the two were conflated until 1.38, when
+`identify` began printing "not implemented yet" above a list saying the pipeline was
+ready. The run
 still refuses to start, via `require_runnable()`; what changes is that the customer is told
 the truth about why.
 """
@@ -79,12 +82,27 @@ def test_a_magento_project_is_recognised():
     assert r["project"]["modules"] == ["Acme_Loyalty"]
 
 
-def test_recognised_is_not_the_same_as_supported():
-    """The distinction this item exists to make."""
+def test_detect_answers_what_this_is_and_nothing_else():
+    """It used to also answer "can a migration run" — hardcoded to no, with blockers
+    citing items that had shipped. So `identify` printed "Migration not implemented yet"
+    directly above a list saying the pipeline was ready. Runnability is
+    `Pipeline.implemented`'s question, asked where both halves are known. [1.38]"""
     r = ADAPTER.detect(str(MAGENTO))
-    assert r["verdict"] == "not_yet_supported"
-    assert r["implemented"] is False
-    assert any("not implemented yet" in b for b in r["blockers"])
+    assert r["verdict"] == "ok"
+    assert r["is_magento"] is True
+    assert r["blockers"] == []
+    assert "not implemented" not in r["summary"]
+
+
+def test_recognised_is_still_distinguishable_from_runnable():
+    """The distinction the original test existed to make, now asked of the thing that
+    actually knows: a source can be recognised while the pipeline for it cannot run."""
+    from src import pipeline
+
+    pipeline.ensure_registered()
+    got = pipeline.identify(str(MAGENTO))
+    assert got["status"] in ("runnable", "recognised")
+    assert got["platform"] == "adobe-commerce"
 
 
 def test_a_hybris_project_is_not_mistaken_for_magento():
@@ -101,7 +119,7 @@ def test_detection_never_raises_on_a_hostile_tree(tmp_path):
     (tmp_path / "composer.json").write_text("{ not json", encoding="utf-8")
     (tmp_path / "etc").mkdir()
     (tmp_path / "etc" / "module.xml").write_bytes(b"\xff\xfe\x00binary")
-    assert ADAPTER.detect(str(tmp_path))["verdict"] in ("reject", "not_yet_supported")
+    assert ADAPTER.detect(str(tmp_path))["verdict"] in ("reject", "ok")
 
 
 def test_env_php_credentials_are_reported_before_anything_is_uploaded(tmp_path):
@@ -127,7 +145,7 @@ def test_the_magento_project_resolves_to_the_adobe_pipeline():
     pipeline.ensure_registered()
     platform, report = pipeline.detect(str(MAGENTO))
     assert platform == "adobe-commerce"
-    assert report["verdict"] == "not_yet_supported"
+    assert report["verdict"] == "ok"
 
 
 def test_the_hybris_corpus_still_resolves_to_hybris():
@@ -172,7 +190,7 @@ def test_a_project_under_var_www_is_still_found(tmp_path):
     (root / "etc" / "module.xml").write_text('<config><module name="A_B"/></config>',
                                              encoding="utf-8")
     r = ADAPTER.detect(str(root))
-    assert r["verdict"] == "not_yet_supported"
+    assert r["verdict"] == "ok"
     assert r["project"]["modules"] == ["A_B"]
 
 

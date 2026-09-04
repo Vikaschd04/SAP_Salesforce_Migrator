@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+    <table name="acme_fulfilment_event" resource="default" engine="innodb"
+           comment="State transitions for an order's fulfilment">
+        <column xsi:type="bigint" name="event_id" unsigned="true" nullable="false" identity="true" comment="Event ID"/>
+        <column xsi:type="varchar" name="order_increment_id" nullable="false" length="50" comment="Order increment ID"/>
+        <column xsi:type="varchar" name="state" nullable="false" length="24" comment="Fulfilment state"/>
+        <column xsi:type="varchar" name="warehouse_code" nullable="true" length="24" comment="Warehouse code"/>
+        <column xsi:type="text" name="note" nullable="true" comment="Note"/>
+        <column xsi:type="timestamp" name="occurred_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Occurred at"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="event_id"/>
+        </constraint>
+        <index referenceId="ACME_FULFILMENT_EVENT_ORDER" indexType="btree">
+            <column name="order_increment_id"/>
+        </index>
+    </table>
+</schema>

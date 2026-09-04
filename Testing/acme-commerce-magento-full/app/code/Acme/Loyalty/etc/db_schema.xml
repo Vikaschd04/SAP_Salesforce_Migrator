@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+
+    <table name="acme_loyalty_account" resource="default" engine="innodb"
+           comment="One loyalty account per customer">
+        <column xsi:type="int" name="entity_id" unsigned="true" nullable="false" identity="true" comment="Entity ID"/>
+        <column xsi:type="int" name="customer_id" unsigned="true" nullable="false" comment="Customer ID"/>
+        <column xsi:type="varchar" name="code" nullable="false" length="32" comment="Account code"/>
+        <column xsi:type="varchar" name="tier" nullable="false" length="16" default="NONE" comment="Loyalty tier"/>
+        <column xsi:type="int" name="points_balance" unsigned="true" nullable="false" default="0" comment="Points balance"/>
+        <column xsi:type="decimal" name="lifetime_spend" scale="4" precision="20" nullable="false" default="0" comment="Lifetime spend"/>
+        <column xsi:type="timestamp" name="enrolled_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Enrolled at"/>
+        <column xsi:type="timestamp" name="updated_at" on_update="true" nullable="false" default="CURRENT_TIMESTAMP" comment="Updated at"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="entity_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="ACME_LOYALTY_ACCOUNT_CODE">
+            <column name="code"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="ACME_LOYALTY_ACCOUNT_CUSTOMER_ID"
+                    table="acme_loyalty_account" column="customer_id"
+                    referenceTable="customer_entity" referenceColumn="entity_id" onDelete="CASCADE"/>
+        <index referenceId="ACME_LOYALTY_ACCOUNT_TIER" indexType="btree">
+            <column name="tier"/>
+        </index>
+    </table>
+
+    <table name="acme_loyalty_points_ledger" resource="default" engine="innodb"
+           comment="Every points movement, append only">
+        <column xsi:type="bigint" name="ledger_id" unsigned="true" nullable="false" identity="true" comment="Ledger ID"/>
+        <column xsi:type="int" name="account_id" unsigned="true" nullable="false" comment="Account ID"/>
+        <column xsi:type="varchar" name="order_increment_id" nullable="true" length="50" comment="Order increment ID"/>
+        <column xsi:type="int" name="points" nullable="false" comment="Points delta, may be negative"/>
+        <column xsi:type="varchar" name="reason" nullable="false" length="64" comment="Reason code"/>
+        <column xsi:type="timestamp" name="expires_at" on_update="false" nullable="true" comment="Expires at"/>
+        <column xsi:type="timestamp" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Created at"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="ledger_id"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="ACME_LOYALTY_LEDGER_ACCOUNT_ID"
+                    table="acme_loyalty_points_ledger" column="account_id"
+                    referenceTable="acme_loyalty_account" referenceColumn="entity_id" onDelete="CASCADE"/>
+        <index referenceId="ACME_LOYALTY_LEDGER_EXPIRES_AT" indexType="btree">
+            <column name="expires_at"/>
+        </index>
+    </table>
+</schema>

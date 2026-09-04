@@ -163,7 +163,9 @@ def _name_for(unit, kind: str) -> str:
         base = base[: -len("Interface")]
     n = pascal(base)
     if kind == SERVICE:
-        return service_name(base)
+        # `service_name` strips the suffix itself now, so both this and the emitters
+        # derive the same name from the same input rather than agreeing by luck. [1.38]
+        return service_name(unit.name)
     if kind == DAO:
         return f"{n}Dao"
     if kind == INTERCEPTOR:

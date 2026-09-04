@@ -1,0 +1,10 @@
+<?php /** @var \Acme\Fulfilment\Block\Tracker $block */ ?>
+<div class="acme-fulfilment-tracker">
+    <ol>
+        <?php foreach ($block->getSteps() as $step): ?>
+            <li class="<?= $step === $block->getCurrentState() ? 'is-current' : '' ?>">
+                <?= $block->escapeHtml($step) ?>
+            </li>
+        <?php endforeach; ?>
+    </ol>
+</div>
