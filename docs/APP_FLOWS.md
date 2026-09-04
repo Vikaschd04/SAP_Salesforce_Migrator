@@ -1,8 +1,16 @@
 # Application Flows
 
-**Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.10.0
+**Product:** Portage — multi-platform commerce migration
+**Version:** 0.11.0
 **Audience:** Anyone who wants to see exactly what happens, step by step
+
+> **Two pipelines, one engine.** Portage runs **SAP Hybris → Salesforce** (the shipped
+> path, deploy-verified against a real org) and **Adobe Commerce → SAP Hybris**
+> (type-checked, because SAP lends no hosted compiler). Where this document says "Hybris"
+> as the source or "Apex" as the target, read it as *the running pipeline's* source and
+> target — the engine is shared and the adapters differ. See
+> [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md).
+
 
 This document walks through every flow a user or the system goes through — from clicking a button to getting deployable Salesforce code. For the *why* behind these flows, see [TDD.md](TDD.md).
 

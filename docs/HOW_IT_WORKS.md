@@ -1,6 +1,6 @@
 # How It All Works — A Plain-English Guide
 
-**Version:** 0.10.0 · No technical background required
+**Version:** 0.11.0 · No technical background required
 
 This explains the whole project simply, as if you've never seen the code.
 
@@ -8,7 +8,18 @@ This explains the whole project simply, as if you've never seen the code.
 
 ## The problem, in one sentence
 
-A company runs its store on **SAP Hybris** (written in Java) and wants to move to **Salesforce** (which uses its own language, **Apex**) — and rewriting all that code by hand would take months.
+A company runs its store on one commerce platform and wants to move to another — and
+rewriting all that code by hand would take months.
+
+Two moves are supported today:
+
+- **SAP Hybris → Salesforce.** Java and Spring become Apex and SObjects.
+- **Adobe Commerce → SAP Hybris.** PHP and Magento's XML wiring become a Hybris extension.
+
+The rest of this guide uses the first as its example, because it is the one with the
+deepest evidence behind it. Everything described applies to both unless it says otherwise —
+with one difference worth knowing up front, which is at the end of this document under
+*"How sure can it be?"*.
 
 ## What this tool does
 
@@ -440,3 +451,28 @@ The re-run number is the one people underestimate. Migrations are never one-shot
 - **Want to set it up yourself?** [HOW_TO_USE.md](HOW_TO_USE.md)
 - **Want the technical detail?** [TDD.md](TDD.md) and [CODEBASE_GUIDE.md](CODEBASE_GUIDE.md)
 - **Want to know what's coming?** [ROADMAP.md](ROADMAP.md)
+
+---
+
+## How sure can it be? (and why that differs by migration)
+
+The tool never says "verified" when it means "generated". It reports the strongest thing it
+actually did, on a ladder of five rungs:
+
+| Rung | What happened | What it does **not** establish |
+|---|---|---|
+| **none** | Nothing outside the tool looked at the output | That it compiles |
+| **static** | Every file parses and every type it names resolves | Anything a compiler catches — signatures, missing imports |
+| **type-checked** | A real compiler accepted it, against the tool's own declaration of the platform's API | That it builds against the *real* platform — where that declaration is wrong, the compiler accepts wrong code just as confidently |
+| **compiled** | The target platform's own compiler accepted it | That it behaves like the original |
+| **replayed** | Compiled, and the behaviours recorded from the original's tests ran against it | Nothing further is available today |
+
+**Why the two migrations reach different rungs.** Salesforce gives away a hosted compiler,
+so a Hybris → Salesforce run can be deploy-verified against a real org and reach
+*compiled*, or *replayed* when the original had tests. SAP does not: compiling a Hybris
+extension needs a licensed multi-gigabyte platform. So an Adobe → Hybris run reaches
+*type-checked* and the sign-off says exactly that.
+
+That is a fact about what the two vendors give away, not a difference in how carefully the
+two pipelines were built — and stating it plainly is the whole point of having a ladder
+rather than a yes/no.

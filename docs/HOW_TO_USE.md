@@ -1,10 +1,21 @@
 # How to Use It
 
-**Version:** 0.10.0
+**Version:** 0.11.0
 **Audience:** Anyone setting up and running a migration — cockpit, extension or CLI
 
 There are three surfaces over **one engine**. They produce identical output from identical
 code and differ only in how much they show you along the way.
+
+**Two migrations run today**, and you do not choose between them: the source platform is
+detected and the migration for it is selected. `identify` will tell you what it found
+before you commit to a run.
+
+| Migration | Point it at | Produces |
+|---|---|---|
+| SAP Hybris → Salesforce | a Hybris extension tree | a Salesforce DX package |
+| Adobe Commerce → SAP Hybris | a Magento 2 project (`app/code/...`) | a Hybris extension |
+
+Use `--pipeline` only when there is more than one valid answer, which there is not today.
 
 ---
 
@@ -77,15 +88,15 @@ ANTHROPIC_API_KEY=sk-ant-your-key-here
 ### 2. Run a migration
 ```bash
 # Recommended: the full agentic run (Planner + Builder + Critic + Verifier + RAG)
-python -m src.main agent-migrate --input <path-to-hybris-code> --output <output-dir>
+python -m src.main agent-migrate --input <path-to-source-code> --output <output-dir>
 
 # Or the simpler linear pipeline (fewer LLM calls)
-python -m src.main repo-migrate --input <path-to-hybris-code> --output <output-dir>
+python -m src.main repo-migrate --input <path-to-hybris-code> --output <output-dir>   # Hybris → Salesforce only
 ```
 
 ### 3. Try it for free first (no API key needed)
 ```bash
-H2A_PROVIDER=mock python -m src.main agent-migrate --input <path-to-hybris-code> --output <output-dir>
+H2A_PROVIDER=mock python -m src.main agent-migrate --input <path-to-source-code> --output <output-dir>
 ```
 This exercises the entire pipeline — parsing, planning, schema derivation, metadata, data, scheduling, reporting — with clearly-labeled placeholder Apex instead of real AI-written code. Use this to sanity-check your source is being read correctly before spending API credits.
 
@@ -94,11 +105,15 @@ Requires the [Salesforce CLI](https://developer.salesforce.com/tools/salesforcec
 ```bash
 sf org login web         # one-time
 python -m src.main agent-migrate --input <dir> --output <out> --verify
+# --verify deploys to a real org, so it applies to the Salesforce target only. An
+# Adobe→Hybris run type-checks its output against a stand-in for the platform
+# instead, automatically, and the sign-off states which of the two happened.
 ```
 This dry-run deploys the output and self-heals any real compiler errors or low test coverage before finishing.
 
 ### 5. Just the data or just the scheduled jobs
 ```bash
+python -m src.main identify --input <dir>                            # what is this, and what can run on it?
 python -m src.main impex   --input <hybris_dir> --output <out_dir>   # ImpEx → CSVs + upsert runbook
 python -m src.main cronjob --input <hybris_dir> --output <out_dir>   # cron triggers → Scheduled Apex runbook
 ```

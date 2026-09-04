@@ -105,7 +105,7 @@ def header(s, eyebrow, title, n):
 
 def foot(s, n):
     tf = tf_box(s, MX, PH - 0.44, CW / 2, 0.24)
-    para(tf, [("H2A  ·  HYBRIS TO SALESFORCE", dict(size=8, color=FAINT, name=MONO, track=1.4))])
+    para(tf, [("PORTAGE  ·  HYBRIS TO SALESFORCE", dict(size=8, color=FAINT, name=MONO, track=1.4))])
     tf = tf_box(s, MX + CW / 2, PH - 0.44, CW / 2, 0.24)
     para(tf, [(f"{n:02d} / {N:02d}", dict(size=8, color=FAINT, name=MONO))],
          align=PP_ALIGN.RIGHT)

@@ -1,8 +1,16 @@
 # Technical Design Document (TDD)
 
-**Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.10.0
+**Product:** Portage — multi-platform commerce migration
+**Version:** 0.11.0
 **Audience:** Engineers who need to understand, extend, or debug the system
+
+> **Two pipelines, one engine.** Portage runs **SAP Hybris → Salesforce** (the shipped
+> path, deploy-verified against a real org) and **Adobe Commerce → SAP Hybris**
+> (type-checked, because SAP lends no hosted compiler). Where this document says "Hybris"
+> as the source or "Apex" as the target, read it as *the running pipeline's* source and
+> target — the engine is shared and the adapters differ. See
+> [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md).
+
 
 This document explains the **architecture** — how the pieces fit together and why they're built this way. For plain-English "what does it do," see [HOW_IT_WORKS.md](HOW_IT_WORKS.md). For requirements, see [PRD.md](PRD.md) / [TRD.md](TRD.md).
 

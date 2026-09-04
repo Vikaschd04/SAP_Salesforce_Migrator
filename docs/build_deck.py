@@ -1,5 +1,11 @@
 #!/usr/bin/env python
-"""Build the H2A Migrator 10-slide executive accelerator deck (A4 landscape PPTX)."""
+"""Build the Portage 10-slide executive accelerator deck (A4 landscape PPTX).
+
+The narrative walks SAP Hybris to Salesforce, which is the pipeline with the deepest
+evidence behind it and therefore the one worth showing an executive. The framing says
+there are two, because a deck that implies a single-platform tool undersells the
+engine and is contradicted by the first screen of the product. [4.6]
+"""
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -73,7 +79,7 @@ def title(s,lines,size=29,dark=False,y=TITLE_Y):
 
 def footer(s,page,dark=False):
     col=RGBColor(0x6a,0x6d,0x70) if dark else FAINT
-    tf=tf_box(s,MX,FOOT_Y,4,0.25); para(tf,[("H2A MIGRATOR · ACCELERATOR",dict(size=8,color=col,name=MONO,track=1.2))])
+    tf=tf_box(s,MX,FOOT_Y,4,0.25); para(tf,[("PORTAGE · MIGRATION ACCELERATOR",dict(size=8,color=col,name=MONO,track=1.2))])
     tf2=tf_box(s,PW-MX-2.2,FOOT_Y,2.0,0.25); para(tf2,[(f"{page:02d} / {N_SLIDES}",dict(size=8,color=col,name=MONO,track=1.2))],align=PP_ALIGN.RIGHT)
     rect(s,PW-MX-0.14,FOOT_Y+0.025,0.09,0.09,fill=GREEN,shape=MSO_SHAPE.OVAL)
 
@@ -113,13 +119,13 @@ s=slide()
 rect(s,7.9,0.7,4.9,4.9,ln=GREEN,lw=1.5,shape=MSO_SHAPE.OVAL)
 rect(s,9.2,3.4,3.2,3.2,ln=LINE,lw=1.0,shape=MSO_SHAPE.OVAL)
 rect(s,7.62,1.02,0.32,0.32,fill=GREEN,shape=MSO_SHAPE.OVAL)
-eyebrow(s,"Migration Accelerator · Executive Overview")
+eyebrow(s,"Portage · Two pipelines, one engine · Executive Overview")
 tf=tf_box(s,MX,1.4,7.6,1.6)
 para(tf,[("SAP Hybris to Salesforce.",dict(size=34,bold=True,color=BLACK))],line=1.05,sa=0)
 para(tf,[("Migrated by AI. Proven to run",dict(size=34,bold=True,color=BLACK)),(".",dict(size=34,bold=True,color=GREEN))],line=1.05,sa=0)
 rect(s,MX,2.85,0.95,0.08,fill=GREEN)
 tf=tf_box(s,MX,3.15,7.1,1.2)
-para(tf,"Migrating a complete Hybris estate is a multi-month program. This accelerator removes the biggest bottleneck — it uses AI to do the manual code-move, and then proves the result actually works, before your experts spend a minute on it.",size=13.5,color=GRAY,line=1.3)
+para(tf,"Migrating a commerce estate is a multi-month program. Portage removes the biggest bottleneck — it uses AI to do the manual code-move, then proves the result actually works before your experts spend a minute on it. Two migrations run today: SAP Hybris to Salesforce, shown here, and Adobe Commerce to SAP Hybris.",size=13.5,color=GRAY,line=1.3)
 fx=MX
 for t,c,arrow in [("SAP HYBRIS · JAVA",COPPER,True),("AI AGENT TEAM",BLACK,True),("SALESFORCE · APEX",TEAL,False)]:
     w=0.3+len(t)*0.083

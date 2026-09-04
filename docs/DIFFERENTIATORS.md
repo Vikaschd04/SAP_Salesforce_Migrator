@@ -1,4 +1,4 @@
-# What would make H2A beat every other migration tool
+# What would make Portage beat every other migration tool
 
 Not a feature list — a set of **specific, defensible bets**. Generic ideas (better prompts,
 more models, prettier UI) are table stakes and copyable in a week. These are chosen because
@@ -6,8 +6,16 @@ they're hard to copy, they attack the *actual* reason migrations fail, and most 
 from data the engine **already computes**.
 
 The thesis: **every competitor sells conversion. Nobody sells _proof_.** A CTO doesn't fear
-"will it produce Apex" — they fear "will it silently change how pricing works and we find out
-in production." Own *proof* and the category is yours.
+"will it produce code" — they fear "will it silently change how pricing works and we find
+out in production." Own *proof* and the category is yours.
+
+A second bet has since been made and settled: **the proof machinery is not platform-specific.**
+Two migrations now run over one engine — SAP Hybris → Salesforce and Adobe Commerce → SAP
+Hybris — and the completeness ledger, the provenance map, the assurance ladder and the
+sign-off contract are shared, not duplicated. A test forbids the assurance layer from
+naming any platform at all, so the claim cannot quietly become a Salesforce claim again.
+That is what makes the third and fourth migrations cheap, and it is why the differentiators
+below are stated in terms of *evidence* rather than of Apex.
 
 ---
 

@@ -1,8 +1,16 @@
 # Technical Requirements Document (TRD)
 
-**Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.10.0
+**Product:** Portage — multi-platform commerce migration
+**Version:** 0.11.0
 **Audience:** Engineers implementing, extending, or operating the system
+
+> **Two pipelines, one engine.** Portage runs **SAP Hybris → Salesforce** (the shipped
+> path, deploy-verified against a real org) and **Adobe Commerce → SAP Hybris**
+> (type-checked, because SAP lends no hosted compiler). Where this document says "Hybris"
+> as the source or "Apex" as the target, read it as *the running pipeline's* source and
+> target — the engine is shared and the adapters differ. See
+> [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md).
+
 
 This document lists *what the system must do and support* (requirements). For *how* it does it, see [TDD.md](TDD.md).
 

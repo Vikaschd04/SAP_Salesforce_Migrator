@@ -1,9 +1,13 @@
 # Stakeholder Demo Script
 
-**Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.10.0
+**Product:** Portage — multi-platform commerce migration
+**Version:** 0.11.0
 **Duration:** ~20–25 minutes (15 min demo + 5–10 min Q&A)
 **Audience:** This is the document to run *from* when presenting to stakeholders.
+**Pipeline:** This script demos **SAP Hybris → Salesforce**, which has the deepest
+evidence. For **Adobe Commerce → SAP Hybris**, see the last section of
+[COCKPIT_GUIDE.md](COCKPIT_GUIDE.md) — four panels differ and it is worth knowing which
+before you are on screen.
 
 ---
 

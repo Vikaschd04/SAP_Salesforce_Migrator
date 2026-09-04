@@ -1,11 +1,22 @@
-# SAP Hybris → Salesforce Apex Migrator — Documentation
+# Portage — Documentation
 
-**Version:** 0.10.0
+**Version:** 0.11.0
 
-An AI-powered platform that translates a SAP Hybris (Java/Spring) codebase into
-deployment-ready Salesforce Apex — code, data model, data, scheduled jobs, and Lightning
-Web Components — and then **proves the result still behaves the same**: rule by rule, line
-by line, against your own org.
+An AI-powered platform that migrates a commerce codebase from one platform to another and
+then **proves the result still behaves the same** — rule by rule, method by method, against
+evidence rather than assertion.
+
+Two pipelines run today, over one engine:
+
+| Migration | Reads | Writes | Strongest claim available |
+|---|---|---|---|
+| **SAP Hybris → Salesforce** | Java, Spring, `items.xml`, ImpEx, Spartacus | Apex, SObjects, Flows, LWC | **deploy-verified** against a real org |
+| **Adobe Commerce → SAP Hybris** | PHP, `di.xml`, `db_schema.xml`, EAV patches | A Hybris extension: services, DAOs, jobs, interceptors, listeners, `items.xml` | **type-checked** — SAP lends no hosted compiler |
+
+That last column is the point, and it is why the two rows differ. Salesforce lends a free
+hosted compiler, so a Hybris→Salesforce run can say *proven to run*. SAP does not, so an
+Adobe→Hybris run says *statically checked and type-checked against a stand-in* — and the
+sign-off says exactly that rather than borrowing the stronger word.
 
 It ships as three surfaces over one engine: a **web cockpit**, a **VS Code extension**, and
 a **command-line engine**.
@@ -28,23 +39,25 @@ This folder is the single home for every project document.
 | **Run it for a team (accounts, keys, queue, spend caps)** | [SETUP.md](SETUP.md) |
 | **Deploy the web platform** | [DEPLOY_RENDER.md](DEPLOY_RENDER.md) |
 | **Know what's shipped vs still open** | [ROADMAP.md](ROADMAP.md) · [ROADMAP_INDUSTRIAL.md](ROADMAP_INDUSTRIAL.md) |
-| **Build the second migration pipeline** | [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md) |
+| **Understand how one engine runs two migrations** | [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md) |
 | **Run or verify the v2 engine** | [V2_ENGINE.md](V2_ENGINE.md) |
 | **See what is built and what is next, task by task** | [V2_DELIVERY_PLAN.md](V2_DELIVERY_PLAN.md) |
 | **Understand where a plausible-looking conversion is silently wrong** | [EDGE_CASES.md](EDGE_CASES.md) |
 
 ## The one-paragraph pitch
 
-Point the tool at a Hybris codebase. Before it spends a penny it tells you what the
-codebase is, what the run will cost, what will collide in your Salesforce org, and where
-the migration hazards are. Then a team of AI agents — a Planner, a Builder, a Critic and a
+Point the tool at a commerce codebase. Before it spends a penny it tells you what the
+codebase is, which migrations can run against it, what the run will cost, and where the
+migration hazards are — in that platform's own vocabulary, because a Magento estate is not
+measured for Java habits. Then a team of AI agents — a Planner, a Builder, a Critic and a
 Verifier — convert **everything** (a native-product fit is flagged for review, never a
-reason to silently drop logic), review it adversarially, and optionally deploy it to a real
-org and self-heal genuine compiler errors. You stop at three review gates along the way.
-What comes out is a deployable Salesforce DX package **plus the evidence**: every business
-rule tracked from source to generated method, the original JUnit tests replayed against the
-new Apex, every generated method traced to the Java that produced it, and a sign-off
-contract recording who approved what — including, prominently, whatever it could not prove.
+reason to silently drop logic), review it adversarially, and check the result as strongly
+as the target platform allows. You stop at three review gates along the way.
+
+What comes out is a deployable package **plus the evidence**: every business rule tracked
+from source to generated method, every generated method traced back to the source that
+produced it, a completeness ledger accounting for every input file, and a sign-off contract
+recording who approved what — including, prominently, whatever it could not prove.
 
 > **The one-line version:** *Every other tool converts your code. This one proves it still
 > behaves the same.*
@@ -107,28 +120,38 @@ contract recording who approved what — including, prominently, whatever it cou
 
 | Folder | What it is |
 |---|---|
-| `h2a-mvp/` | **The engine** — the Python pipeline that does the actual work. 339 tests. |
+| `h2a-mvp/` | **The engine** — the Python pipeline that does the actual work, both pipelines and the adapters between them. 1,109 tests. |
 | `h2a-web/` | **The web platform** — FastAPI backend + React cockpit, with accounts, per-tenant keys, a run queue and durable history. 45 tests. |
 | `h2a-vscode-extension/` | **The VS Code extension** — bundles a synced copy of the engine, so it is self-contained |
-| `Testing/` | `acme-commerce-hybris`, a realistic SAP Commerce sample used for development and demos, plus a deterministic capability tour |
+| `Testing/` | Three sample estates: `acme-commerce-hybris` (SAP Commerce), `acme-commerce-magento` (a single Magento module, the fast regression fixture) and `acme-commerce-magento-full` (an industry-scale three-module Adobe Commerce suite), plus a deterministic capability tour |
 
 ## Quick start
 
+Both pipelines run keylessly with the `mock` provider. The source is detected, so you
+point it at a codebase rather than choosing a migration.
+
 ```bash
-# Free, keyless, instant — exercises the whole pipeline with placeholder code
 cd h2a-mvp && source .venv/bin/activate
+
+# Which migrations can run against this codebase?
+python -m src.main identify --input ../Testing/acme-commerce-magento-full
+
+# SAP Hybris → Salesforce
 H2A_PROVIDER=mock python -m src.main agent-migrate \
-  --input ../Testing/acme-commerce-hybris --output /tmp/out
+  --input ../Testing/acme-commerce-hybris --output /tmp/sf
 
-# What the run left behind, and what it could not prove
-cat /tmp/out/SIGN_OFF.md
+# Adobe Commerce → SAP Hybris
+H2A_PROVIDER=mock python -m src.main agent-migrate \
+  --input ../Testing/acme-commerce-magento-full --output /tmp/hy
 
-# Snapshots taken before each review gate
-python -m src.main checkpoints --output /tmp/out
+# What each run left behind, and what it could not prove
+cat /tmp/sf/SIGN_OFF.md
+cat /tmp/hy/SIGN_OFF.md
 ```
 
 > **Note on `mock`:** it exercises every stage for free but does not *infer* anything — so
-> the panels that depend on real comprehension (business rules, alignment) will be empty.
-> That is the mock provider being honest, not a bug.
+> the panels that depend on real comprehension (business rules, alignment) will be empty,
+> and the provenance report says in as many words that its coverage figure is measuring
+> placeholders. That is the mock provider being honest, not a bug.
 
 Full instructions: [HOW_TO_USE.md](HOW_TO_USE.md).

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Build docs/ARCHITECTURE_DECK.pptx — the 10-slide H2A architecture deck (A4 landscape).
+"""Build docs/ARCHITECTURE_DECK.pptx — the 10-slide Portage architecture deck (A4 landscape).
 
 Shares the visual language of build_deck.py (same palette, geometry, and helpers) so the
 two decks sit together without looking like they came from different projects.
@@ -87,7 +87,7 @@ def title(s,lines,size=29,dark=False,y=TITLE_Y):
 
 def footer(s,page,dark=False):
     col=RGBColor(0x6a,0x6d,0x70) if dark else FAINT
-    tf=tf_box(s,MX,FOOT_Y,4.6,0.25); para(tf,[("H2A MIGRATOR · ARCHITECTURE",dict(size=8,color=col,name=MONO,track=1.2))])
+    tf=tf_box(s,MX,FOOT_Y,4.6,0.25); para(tf,[("PORTAGE · ARCHITECTURE",dict(size=8,color=col,name=MONO,track=1.2))])
     tf2=tf_box(s,PW-MX-2.2,FOOT_Y,2.0,0.25); para(tf2,[(f"{page:02d} / {N_SLIDES}",dict(size=8,color=col,name=MONO,track=1.2))],align=PP_ALIGN.RIGHT)
     rect(s,PW-MX-0.14,FOOT_Y+0.025,0.09,0.09,fill=GREEN,shape=MSO_SHAPE.OVAL)
 
@@ -139,9 +139,9 @@ para(tf,[("Application Architecture",dict(size=34,bold=True,color=BLACK))],line=
 para(tf,[("Three surfaces. One engine",dict(size=34,bold=True,color=BLACK)),(".",dict(size=34,bold=True,color=GREEN))],line=1.05,sa=0)
 rect(s,MX,2.95,0.95,0.08,fill=GREEN)
 tf=tf_box(s,MX,3.25,7.1,1.3)
-para(tf,"H2A converts a SAP Hybris commerce monolith — Java/Spring, items.xml, and a Spartacus storefront — into a deployable Salesforce project of Apex, LWC, and metadata, with a human review gate at every consequential step.",size=13.5,color=GRAY,line=1.3)
+para(tf,"Portage converts a SAP Hybris commerce monolith — Java/Spring, items.xml, and a Spartacus storefront — into a deployable Salesforce project of Apex, LWC, and metadata, with a human review gate at every consequential step.",size=13.5,color=GRAY,line=1.3)
 fx=MX
-for t,c,arrow in [("SAP HYBRIS",COPPER,True),("H2A ENGINE",BLACK,True),("SALESFORCE",TEAL,False)]:
+for t,c,arrow in [("SAP HYBRIS",COPPER,True),("PORTAGE ENGINE",BLACK,True),("SALESFORCE",TEAL,False)]:
     w=0.3+len(t)*0.095
     rect(s,fx,4.85,w,0.42,ln=c,lw=1.5)
     tf=tf_box(s,fx,4.85,w,0.42,anchor=MSO_ANCHOR.MIDDLE,wrap=False)

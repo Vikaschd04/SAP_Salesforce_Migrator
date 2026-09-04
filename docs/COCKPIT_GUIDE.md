@@ -4,8 +4,21 @@
 **How to use it:** read the "Say this" line out loud, then point at the thing.
 
 Every other migration tool converts your code. **This one proves it still behaves the
-same** — rule by rule, line by line, against your own org. Nearly every panel below exists
-to support that one sentence, so if you only remember one thing, remember that.
+same** — rule by rule, method by method, as strongly as the target platform allows. Nearly
+every panel below exists to support that one sentence, so if you only remember one thing,
+remember that.
+
+> **Two migrations run in this cockpit**, and the operator does not choose between them —
+> the source is detected and the migration for it is selected:
+>
+> - **SAP Hybris → Salesforce**, the shipped path, and the one this script walks. It has
+>   the deepest evidence because Salesforce lends a free hosted compiler.
+> - **Adobe Commerce → SAP Hybris**, which runs end to end and produces a real extension.
+>
+> The script below is written for the first, deliberately: a vague demo script is a worse
+> demo script. Where the second differs, it differs *visibly*, and the last section says
+> exactly how — read it before demoing a Magento project, because two panels are absent by
+> design and being surprised by that on screen is avoidable.
 
 ---
 
@@ -37,8 +50,10 @@ cost estimate can be shown *before* you spend anything.
 | **API keys** | Your own provider key, encrypted at rest. Each customer bills their own account | "Your key, your bill. We never see it in plain text." |
 | **Account menu** | Sign in / out. Every run belongs to one account and nobody else can open it | "Multi-tenant — your source code is yours." |
 
-**If you upload something that isn't Hybris,** it refuses before creating a run and tells
-you why. That's a nice thing to demo deliberately — it also reports any passwords or keys
+**If you upload something no migration can read,** it refuses before creating a run and
+tells you why — and it distinguishes *"we do not recognise this"* from *"we recognise it
+and cannot migrate it yet"*, which are different problems for the person holding the
+codebase. That's a nice thing to demo deliberately — it also reports any passwords or keys
 it found inside the archive.
 
 ---
@@ -205,3 +220,20 @@ input class: converted, flagged, skipped (with a reason), or — loudly — unac
 | "Fully automated" | "Automated, with three points where a human decides" |
 | "It's verified" | "It's deploy-verified when you connect an org — otherwise it says it isn't" |
 | "It understands your code" | "It extracts the business rules and shows you them, so you can check" |
+
+---
+
+## Demoing Adobe Commerce → SAP Hybris instead
+
+Everything above holds, with four visible differences. Say them before someone asks.
+
+| What changes | Why | The line to say |
+|---|---|---|
+| **No "Target org fit" panel** | There is no org to read. A Hybris extension is built from source; nothing can be queried ahead of time. | *"Nothing to query — this one is built from source, so a name collision shows up at build time rather than being predictable now."* |
+| **No Flow scaffolds** | Flows are a Salesforce construct. Magento also has no business-process definitions, so there is nothing to convert *into* one — that is a fact about the source, and the run says so rather than leaving a gap. | *"Magento has no process definitions. We report that we looked, rather than silently finding nothing."* |
+| **Different hazards** | The radar reads the source's own habits: `around` plugins that can skip the original, observers mutating the shared event payload, EAV attributes that exist only in the database. | *"These are Magento habits that become problems on Hybris. Different platform, different landmines."* |
+| **"Type-checked", not "deploy-verified"** | SAP lends no hosted compiler. The output is compiled by a real compiler against a declared stand-in for the platform, which catches signatures and imports — and cannot catch a stand-in that is itself wrong. | *"We compile it for real, against our own declaration of SAP's API. That is weaker than SAP's own build and the sign-off says so in those words."* |
+
+The last one is worth dwelling on rather than glossing. It is the same discipline as the
+rest of the product: the run reports the rung it actually reached and never borrows the
+stronger word from the other pipeline.

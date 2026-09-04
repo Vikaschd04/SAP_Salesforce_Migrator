@@ -1,8 +1,16 @@
 # Understanding the Codebase — A Teacher's Walkthrough
 
-**Version:** 0.10.0 · **Audience:** anyone who wants to *actually understand* how this engine works — no prior AI-agent background assumed.
+**Version:** 0.11.0 · **Audience:** anyone who wants to *actually understand* how this engine works — no prior AI-agent background assumed.
 
 This is the "sit down and explain it to me" document. We'll build your mental model from the top down: first the big idea, then the journey one migration takes, then the agents (what they *really* are), how they coordinate, and finally the machinery that turns an "agent" into a real Claude API call.
+
+> **Two pipelines share this engine.** SAP Hybris → Salesforce and Adobe Commerce → SAP
+> Hybris differ only at the two ends: a **source adapter** reads a platform into a shared
+> IR, a **target adapter** writes the IR out in that platform's own layout, and everything
+> between them — planning, building, reviewing, the completeness ledger, provenance, the
+> assurance ladder — is common. Directory and environment-variable names still say `h2a`
+> and `H2A_`; those are identifiers, not branding, and renaming them would be a code change
+> rather than a documentation one.
 
 > **The single most important takeaway, up front:** an "agent" here is **not** a mysterious autonomous being. It is **a plain Python class with a method** that (usually) makes one well-crafted call to Claude and interprets the answer. The intelligence comes from *how the classes are organised and how they hand work to each other* — not from any one magic object. By the end of this doc that sentence will feel obvious.
 

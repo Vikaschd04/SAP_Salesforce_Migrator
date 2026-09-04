@@ -1,8 +1,16 @@
 # Product Requirements Document (PRD)
 
-**Product:** SAP Hybris → Salesforce Apex Migrator
-**Version:** 0.10.0 · **Status:** Active development, Phase 2 in progress
+**Product:** Portage — multi-platform commerce migration
+**Version:** 0.11.0 · **Status:** Active development, Phase 2 in progress
 **Audience:** Product owners, engineering leadership, stakeholders evaluating the product
+
+> **Two pipelines, one engine.** Portage runs **SAP Hybris → Salesforce** (the shipped
+> path, deploy-verified against a real org) and **Adobe Commerce → SAP Hybris**
+> (type-checked, because SAP lends no hosted compiler). Where this document says "Hybris"
+> as the source or "Apex" as the target, read it as *the running pipeline's* source and
+> target — the engine is shared and the adapters differ. See
+> [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md).
+
 
 ---
 

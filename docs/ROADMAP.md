@@ -1,6 +1,7 @@
-# Product Roadmap — SAP Hybris → Salesforce Apex Migrator
+# Product Roadmap — Portage
 
-**From a code translator to an autonomous, verifiable migration platform.**
+**From a code translator to an autonomous, verifiable migration platform — now
+running two migrations over one engine.**
 
 > Interactive version of this roadmap:
 > https://claude.ai/code/artifact/cbe5e7ae-2bb4-4891-97ee-3863fb955b66
