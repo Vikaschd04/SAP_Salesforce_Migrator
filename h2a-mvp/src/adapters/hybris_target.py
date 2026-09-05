@@ -45,6 +45,11 @@ class HybrisTarget:
     #: No free compile oracle. See the module docstring — this is honest, not pending.
     has_oracle = False
     code_language = "Java"
+    #: See `SalesforceTarget.retrieval_terms`. These name what the Adobe→Hybris
+    #: pack actually documents: the type system, the query language, the two hook
+    #: mechanisms and the scheduler. [1.48]
+    retrieval_terms = ("hybris service layer spring bean flexiblesearch interceptor "
+                       "decorator cronjob performable items.xml model impex")
 
     #: Nothing to query before generating — an extension is built from source. [1.33]
     has_org = False

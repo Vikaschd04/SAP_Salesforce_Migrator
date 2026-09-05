@@ -106,6 +106,30 @@ def _angular_gaps(component: dict) -> str:
     return grounding_for(component)
 
 
+#: What the Builder searched for before the target was asked. Kept as the fallback for
+#: the v1 path, which pins no pipeline — losing these terms silently shrank the shipped
+#: migration's prompt by ~500 tokens a call, which the golden baseline caught. [1.48]
+_LEGACY_TERMS = "apex fflib governor limits SOQL DML security bulkification testing"
+
+
+def _target_of(bb):
+    """The target adapter for this run, or None.
+
+    Taken from the Blackboard rather than `pipeline.current_target()`, which reads
+    `runctx` and returns None on the v1 path — where the Builder still runs, and still
+    needs its terms.
+    """
+    pid = getattr(bb, "pipeline_id", "")
+    if not pid:
+        return None
+    try:
+        from src import pipeline
+        pipeline.ensure_registered()
+        return pipeline.get(pid).target
+    except Exception:
+        return None
+
+
 class BuilderAgent:
     """Generates one target's Apex, then repairs objective (governor/schema) issues."""
     name = "Builder"
@@ -121,9 +145,21 @@ class BuilderAgent:
             rules = []
             for c in plan_item.source_classes:
                 rules += bb.comprehensions.get(c.get("class_name", ""), {}).get("business_rules", []) or []
+            # The retriever reads the *pipeline's* pack, so on Adobe→Hybris the shelf is
+            # already Hybris documents — but the query was Apex vocabulary and the heading
+            # said "Salesforce reference (use these facts, don't invent APIs)". A model
+            # writing Java was handed the worst matches on a Java shelf and told they were
+            # authoritative Salesforce. Both halves now come from the target. [1.48]
+            _t = _target_of(bb)
+            _terms = getattr(_t, "retrieval_terms", "") or _LEGACY_TERMS
+            _platform = (getattr(_t, "label", "") or "").split(" (")[0] if _t else ""
+            # Spaced exactly as the hardcoded string was, so a pipeline whose terms are
+            # unchanged sends a byte-identical prompt and the shipped baseline holds.
             grounding = retriever.grounding_block(
-                f"{plan_item.apex_pattern} apex fflib governor limits SOQL DML security "
-                f"bulkification testing {' '.join(rules)}")
+                f"{plan_item.kind or plan_item.apex_pattern} {_terms} "
+                f"{' '.join(rules)}",
+                **({"label": f"{_platform} reference (retrieved — use these facts, "
+                             "don't invent APIs)"} if _platform else {}))
 
         # Queries this target's own source contains, already translated. Derived, not
         # generated — and a query that can be derived should never be generated. [1.23b]

@@ -722,3 +722,55 @@ def test_a_target_with_no_platform_kind_is_asked_for_its_own_name():
 
     assert "class_name" in inspect.signature(generate_apex).parameters
     assert inspect.signature(generate_apex).parameters["class_name"].default == ""
+
+
+# ── the shelf the Builder searches, and whose it says it is [1.48] ────────────
+
+def test_each_target_names_its_own_retrieval_terms():
+    """The Builder hardcoded Apex vocabulary. The retriever reads the *pipeline's* pack,
+    so on Adobe→Hybris that query searched a shelf of Hybris documents — items.xml,
+    FlexibleSearch, interceptors, cronjobs — for "apex fflib governor limits", and handed
+    back whatever matched worst under a heading that called it a Salesforce reference. A
+    model writing Java was told those were the authoritative APIs."""
+    from src.adapters.hybris_target import ADAPTER as hybris
+    from src.adapters.salesforce_target import ADAPTER as salesforce
+
+    assert "apex" in salesforce.retrieval_terms
+    assert "flexiblesearch" in hybris.retrieval_terms
+    assert "apex" not in hybris.retrieval_terms
+
+
+def test_the_grounding_heading_names_the_platform_it_came_from():
+    import inspect
+
+    from src.agentic import builders
+
+    src = inspect.getsource(builders.BuilderAgent.build)
+    assert '_platform} reference' in src
+
+
+def test_the_terms_are_read_from_the_blackboard_not_the_context_var():
+    """`pipeline.current_target()` reads `runctx`, which is unset on the v1 path — where
+    the Builder still runs. Taking the target from there dropped the terms entirely and
+    silently shrank the shipped migration's prompt by ~500 tokens a call. The golden
+    baseline caught it; this keeps it caught.
+
+    Asserted by behaviour with `runctx` deliberately empty, rather than by reading the
+    source — the first version of this test matched the word in the docstring.
+    """
+    from src import runctx
+    from src.agentic.builders import _target_of
+
+    assert runctx.pipeline_id() is None, "this test is meaningless with one pinned"
+    got = _target_of(type("BB", (), {"pipeline_id": "adobe->hybris"})())
+    assert got is not None and got.code_language == "Java"
+
+
+def test_a_run_with_no_pipeline_keeps_the_historical_terms():
+    """Falling back to nothing is what broke the baseline. The v1 path pins no pipeline
+    and still needs a query."""
+    from src.agentic.builders import _LEGACY_TERMS, _target_of
+
+    assert _target_of(None) is None
+    assert _target_of(type("BB", (), {"pipeline_id": ""})()) is None
+    assert "apex fflib governor limits" in _LEGACY_TERMS

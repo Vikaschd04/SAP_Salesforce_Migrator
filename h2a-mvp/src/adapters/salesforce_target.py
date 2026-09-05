@@ -16,6 +16,12 @@ class SalesforceTarget:
     label = "Salesforce (Apex · LWC · metadata)"
     has_oracle = True                      # `sf project deploy --dry-run`
     code_language = "Apex"                 # what generated code is called, in reports
+    #: Terms that retrieve this platform's knowledge from the pack. The Builder used
+    #: to hardcode these, so a run on the *other* pipeline searched a shelf of Hybris
+    #: documents for "apex fflib governor limits" and was handed whatever matched
+    #: worst — under a heading that called it a Salesforce reference. [1.48]
+    retrieval_terms = ("apex fflib governor limits SOQL DML security bulkification "
+                       "testing")
 
     #: An org can be queried before generating, and its contents can collide with the
     #: plan. See `orgfit`. [1.33]
