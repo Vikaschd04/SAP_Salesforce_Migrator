@@ -205,3 +205,61 @@ def test_the_reference_extension_compiles_end_to_end(tmp_path):
     assert result["static"]["rung"] == assurance.TYPECHECKED, result["static"]["issues"][:3]
     assert result["static"]["issues"] == []
     assert MODEL_SUBPACKAGE == "model"
+
+
+# ── what four real modules taught the emitters [1.45] ─────────────────────────
+
+def test_a_type_the_source_owns_beats_a_jdk_name():
+    """`Collection` is `java.util.Collection` in the JDK list and
+    `Model\\ResourceModel\\WhitelistEntry\\Collection` in the module being migrated. It was
+    resolving to the JDK one, producing `Collection getCollection()` with no import and no
+    such type."""
+    from src.adapters.hybris_service import _rename, UNRESOLVED
+
+    assert _rename("Collection", {}, {"Collection"}) == UNRESOLVED
+    assert _rename("Collection", {}, set()) == "Collection"
+
+
+def test_a_name_is_never_mapped_to_itself():
+    """A `manual` target keeps the bare class name, so including it in the rename map
+    mapped a PHP type to itself — which looks like a successful rename and defeats the
+    guard that would have marked it unresolved."""
+    from src.adapters.hybris_service import _rename, UNRESOLVED
+
+    assert _rename("WhitelistEntry", {"WhitelistEntry": "WhitelistEntry"},
+                   {"WhitelistEntry"}) == "WhitelistEntry", (
+        "the map is the caller's contract; the caller must not build one like this")
+    # …which is why `hybris_emit` refuses to, and the guard then does its job:
+    assert _rename("WhitelistEntry", {}, {"WhitelistEntry"}) == UNRESOLVED
+
+
+def test_only_models_this_migration_generates_count_as_models():
+    """`endswith("Model")` stood in for "the platform generates this from items.xml". It
+    also matched `AbstractModel` and every other Magento framework class ending the same
+    way, which reached the output as Java types nothing declares."""
+    from src.adapters.hybris_service import _is_available
+
+    assert _is_available("AcmeModel", {"AcmeModel"}) is True
+    assert _is_available("AbstractModel", {"AcmeModel"}) is False
+    # With no set supplied the old heuristic still applies, for callers that have none.
+    assert _is_available("AbstractModel") is True
+
+
+@needs_javac
+def test_a_decorator_does_not_claim_an_interface_it_cannot_meet(tmp_path):
+    """A Hybris decorator must implement the whole wrapped interface, and the methods
+    generated here are the *plugin's*. Declaring `implements` produced a class that
+    overrode nothing and would not compile — turning honest scaffolding into a build
+    failure."""
+    from src.adapters.hybris_hooks import build_decorator
+
+    unit = type("U", (), {"name": "OrderTotalPlugin", "file": "a.php", "methods": [],
+                          "extra": {"fqn": "A\\B\\OrderTotalPlugin"}})()
+    wiring = {"plugins": [{"type": "A\\B\\OrderTotalPlugin", "on": "Sales\\Order"}]}
+    body = build_decorator(unit, "com.x", wiring, {"OrderService"})
+    declaration = next(l for l in body.splitlines() if l.startswith("public class "))
+    assert "implements" not in declaration, declaration
+    assert "@Override" not in body, "there is no supertype for it to refer to"
+    # The clause is still *named* as the remaining work, in the comment.
+    assert "TO FINISH: declare `implements OrderService`" in body
+    assert "private OrderService delegate;" in body, "the delegate is still typed"

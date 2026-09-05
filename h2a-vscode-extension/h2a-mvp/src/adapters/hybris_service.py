@@ -101,19 +101,20 @@ def _javadoc(doc: str, indent: str = "    ") -> list:
     return out
 
 
-def _signature(m, types: dict, renames: dict | None = None) -> tuple:
+def _signature(m, types: dict, renames: dict | None = None,
+               source_names: set | None = None, models: set | None = None) -> tuple:
     """`(java_signature, unresolved_names)` for one method."""
     unresolved = []
 
     ret_ir = types.get(f"{m.name}()", "")
-    ret = _rename(java_type(ret_ir), renames)
+    ret = _rename(java_type(ret_ir), renames, source_names, models)
     if ret == UNRESOLVED:
         unresolved.append("return")
 
     params = []
     for p in getattr(m, "parameters", None) or []:
         ir_t = types.get(f"{m.name}(${p.get('name', '')})", "")
-        jt = _rename(java_type(ir_t), renames)
+        jt = _rename(java_type(ir_t), renames, source_names, models)
         if jt == UNRESOLVED:
             unresolved.append(p.get("name", "?"))
         params.append(f"{jt} {_camel(p.get('name', 'arg'))}")
@@ -121,7 +122,8 @@ def _signature(m, types: dict, renames: dict | None = None) -> tuple:
     return f"{ret} {_camel(m.name)}({', '.join(params)})", unresolved
 
 
-def _rename(java: str, renames: dict | None) -> str:
+def _rename(java: str, renames: dict | None, source_names: set | None = None,
+            models: set | None = None) -> str:
     """A signature naming another *source* class must name what that class became. [1.38]
 
     `LoyaltyAccountRepository::getByCode()` returns a `LoyaltyAccountInterface`, which
@@ -142,10 +144,18 @@ def _rename(java: str, renames: dict | None) -> str:
     mapped = (renames or {}).get(java)
     if mapped:
         return mapped
-    return java if _is_available(java) else UNRESOLVED
+    # A name the *source* declares means the source's class, whatever Java happens to
+    # call something similar. `Collection` is `java.util.Collection` in the JDK list and
+    # `Model\ResourceModel\WhitelistEntry\Collection` in the module being migrated —
+    # and it was resolving to the JDK one, producing `Collection getCollection()` with no
+    # import and no such type. If it were converted it would be in `renames`; reaching
+    # here means it was not. [1.45]
+    if java in (source_names or set()):
+        return UNRESOLVED
+    return java if _is_available(java, models) else UNRESOLVED
 
 
-def _is_available(java: str) -> bool:
+def _is_available(java: str, models: set | None = None) -> bool:
     """Will this type exist on the target once the extension is built?"""
     if not java or java == UNRESOLVED:
         return False
@@ -154,7 +164,16 @@ def _is_available(java: str) -> bool:
         return False if bare not in _JAVA and java not in _JAVA.values() else True
     from src.adapters.java_static_check import PLATFORM_TYPES, _JDK
 
-    return bare in PLATFORM_TYPES or bare in _JDK or bare.endswith("Model")
+    if bare in PLATFORM_TYPES or bare in _JDK:
+        return True
+    # `endswith("Model")` was standing in for "the platform generates this from
+    # items.xml". It also matched `AbstractModel`, `ResourceModel` and every other
+    # Magento framework class ending the same way, which then reached the output as Java
+    # types nothing declares. Only the models this migration actually generates count,
+    # and the caller knows which those are. [1.45]
+    if models is not None:
+        return bare in models
+    return bare.endswith("Model")
 
 
 def _types_for(unit, resolutions: list) -> dict:
@@ -171,7 +190,9 @@ def _public_methods(unit) -> list:
 
 
 def build_interface(unit, package: str, resolutions: list,
-                    renames: dict | None = None, name: str | None = None) -> str:
+                    renames: dict | None = None, name: str | None = None,
+                    source_names: set | None = None,
+                    models: set | None = None) -> str:
     """The service contract. Every signature is derived; none is invented. [3.2]
 
     `name` is the planner's own target name, and passing it is the point: the file is
@@ -190,7 +211,7 @@ def build_interface(unit, package: str, resolutions: list,
     out += [f"public interface {name}", "{"]
 
     for m in _public_methods(unit):
-        sig, unresolved = _signature(m, types, renames)
+        sig, unresolved = _signature(m, types, renames, source_names, models)
         out += [""]
         out += _javadoc(getattr(m, "doc", ""))
         if unresolved:
@@ -203,7 +224,9 @@ def build_interface(unit, package: str, resolutions: list,
 
 
 def build_implementation(unit, package: str, resolutions: list,
-                         renames: dict | None = None, name: str | None = None) -> str:
+                         renames: dict | None = None, name: str | None = None,
+                    source_names: set | None = None,
+                    models: set | None = None) -> str:
     """The Spring service. Signatures derived; bodies left for the Builder. [3.2]
 
     See `build_interface` on `name`: the planner owns it, and re-deriving it here is what
@@ -219,7 +242,7 @@ def build_implementation(unit, package: str, resolutions: list,
     # looks, because the *names* all resolve. [1.38]
     referenced = {iface}
     for m in _public_methods(unit):
-        sig, _ = _signature(m, types, renames)
+        sig, _ = _signature(m, types, renames, source_names, models)
         for word in re.findall(r"\b[A-Z]\w*\b", sig):
             if word in (renames or {}).values():
                 referenced.add(word)
@@ -239,7 +262,7 @@ def build_implementation(unit, package: str, resolutions: list,
            f"public class {name} implements {iface}", "{"]
 
     for m in _public_methods(unit):
-        sig, unresolved = _signature(m, types, renames)
+        sig, unresolved = _signature(m, types, renames, source_names, models)
         ret = sig.split(" ", 1)[0]
         out += ["", "    @Override"]
         if unresolved:

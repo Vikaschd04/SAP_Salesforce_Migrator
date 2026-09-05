@@ -23,7 +23,7 @@
     "hybris/bin/custom/migrated/src/com/migrated/daos/AcmeLoyaltyPointsLedgerDao.java": "2a327dede43d381d",
     "hybris/bin/custom/migrated/src/com/migrated/daos/impl/DefaultAcmeLoyaltyAccountDao.java": "306f9c8d8ee0e088",
     "hybris/bin/custom/migrated/src/com/migrated/daos/impl/DefaultAcmeLoyaltyPointsLedgerDao.java": "10371f1a2cc82c46",
-    "hybris/bin/custom/migrated/src/com/migrated/decorators/OrderTotalPluginDecorator.java": "20c7035c312ee609",
+    "hybris/bin/custom/migrated/src/com/migrated/decorators/OrderTotalPluginDecorator.java": "bac4f440cb66cbd4",
     "hybris/bin/custom/migrated/src/com/migrated/events/CheckoutCartProductAddAfterEvent.java": "319d261f109df6c6",
     "hybris/bin/custom/migrated/src/com/migrated/events/SalesOrderPlaceAfterEvent.java": "212d8d72979b5c67",
     "hybris/bin/custom/migrated/src/com/migrated/interceptors/SubtotalPluginInterceptor.java": "7f310dab999b7393",

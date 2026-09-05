@@ -89,7 +89,12 @@ def build_decorator(unit, package: str, wiring: dict | None = None,
     iface = service_name(target) if target else ""
     wrappable = bool(iface) and iface in (emitted_services or set())
 
-    out = [f"package {package}.decorators;", "", "/**",
+    out = [f"package {package}.decorators;", ""]
+    if wrappable:
+        # It sits in `.decorators` and implements a type in `.service`. Same omission the
+        # DAOs had in 1.37: the name resolves, the file does not compile. [1.45]
+        out += [f"import {package}.service.{iface};", ""]
+    out += ["/**",
            f" * Migrated from the Adobe Commerce plugin {unit.name}"
            f" ({getattr(unit, 'file', '')}).",
            " *"]
@@ -123,9 +128,23 @@ def build_decorator(unit, package: str, wiring: dict | None = None,
     out += [" * A decorator rather than an interceptor because this plugin can decline to",
             " * call the original. An interceptor runs alongside an operation and cannot",
             " * replace it, so it cannot express skipping at all.",
-            " */"]
+            " *"]
     if wrappable:
-        out += [f"public class {name} implements {iface}", "{",
+        out += [f" * TO FINISH: declare `implements {iface}` and implement every method on",
+                " * it, delegating the ones this plugin does not touch. The methods below",
+                " * are the *plugin's* — they are where its behaviour was — and they do not",
+                " * match the wrapped interface's signatures, so the clause is left off",
+                " * rather than emitted as a claim the class does not meet.",
+                " *"]
+    out += [" */"]
+    if wrappable:
+        # Typed delegate, but *no* `implements` clause. A Hybris decorator must implement
+        # the whole interface, and the methods here are the plugin's — `beforeCollect`,
+        # `aroundGetGrandTotal` — not the wrapped type's. Declaring `implements` produced
+        # a class that did not override anything and would not compile, which turned a
+        # piece of honest scaffolding into a build failure. The clause is left off and the
+        # remaining work is stated. [1.45]
+        out += [f"public class {name}", "{",
                 f"    private {iface} delegate;", ""]
     else:
         out += [f"public class {name}", "{", ""]
@@ -143,8 +162,8 @@ def build_decorator(unit, package: str, wiring: dict | None = None,
         elif pre == "around":
             out.append(f"    // `{mname}` wrapped the call and could return without "
                        "making it.")
-        if wrappable:
-            out.append("    @Override")
+        # No `@Override`: there is no `implements` clause for it to refer to, and there
+        # cannot be until the wrapped interface is implemented in full. [1.45]
         out += [f"    public Object {wrapped}(final Object... args)",
                 "    {",
                 f"        // TODO migrate: {unit.name}::{mname}",
@@ -268,12 +287,18 @@ def build_event(event_name: str, package: str) -> str:
 def build_event_listener(unit, package: str, event_name: str = "") -> str:
     """`AbstractEventListener<T>` for a Magento observer. [1.34]"""
     name = f"{pascal(unit.name)}Listener"
-    cls = event_class_for(event_name) if event_name else "TODO_Event"
+    # An unmatched observer used to extend `TODO_Event`, a type that does not exist —
+    # so a *finding* became a compile error, and the reviewer's attention went to the
+    # wrong place. It extends the platform's own base event instead, and the class
+    # comment says the binding is unknown. [1.45]
+    cls = event_class_for(event_name) if event_name else "AbstractEvent"
 
     out = [f"package {package}.listeners;", "",
            "import de.hybris.platform.servicelayer.event.impl.AbstractEventListener;", ""]
     if event_name:
         out += [f"import {package}.events.{cls};", ""]
+    else:
+        out += ["import de.hybris.platform.servicelayer.event.events.AbstractEvent;", ""]
     out += ["/**",
             f" * Migrated from the Adobe Commerce observer {unit.name}"
             f" ({getattr(unit, 'file', '')}).",
@@ -281,6 +306,12 @@ def build_event_listener(unit, package: str, event_name: str = "") -> str:
     if event_name:
         out.append(f" * Bound to `{event_name}` in events.xml.")
         out.append(" *")
+    else:
+        out += [" * NO EVENT BINDING WAS FOUND for this observer in events.xml, so what",
+                " * publishes it is unknown and the base event type stands in. Bind it to a",
+                " * real event before wiring: a listener on the base type receives every",
+                " * event the platform raises.",
+                " *"]
     out += [" * TWO THINGS CHANGED, AND NEITHER FAILS LOUDLY:",
             " *",
             " * 1. Magento called observers synchronously, so the code that dispatched the",

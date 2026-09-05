@@ -72,12 +72,45 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
     # What each source class became, so a signature naming one names its migrated form.
     # Built from the plan rather than guessed, and including the `Interface` twin that
     # `_merge` folded away — the repository's methods return that twin by name. [1.38]
+    #: Kinds that produce a Java type something else can name. A `manual` target keeps
+    #: the bare class name, so including it mapped a type *to itself* — which looks like a
+    #: successful rename and silently defeats the guard that would otherwise have marked
+    #: it unresolved. Found on a real module: `WhitelistEntry` appeared in a signature as
+    #: `WhitelistEntry`, a PHP class, in Java that then did not compile. [1.45]
+    #: In precedence order, because one source class is routed to several targets — a
+    #: Magento model is a service *and* a resource model — and the map must name the one
+    #: that gets written. Taking whichever came last named `WhitelistEntryDao`, a DAO the
+    #: data model never produced, so the signature referred to a file nothing wrote.
+    #: Services are emitted whenever they have sources; DAOs only when a declared table
+    #: matches, which is checked below. [1.45]
+    _NAMES_A_TYPE = (SERVICE, DECORATOR, INTERCEPTOR, EVENT_LISTENER, JOB, DAO)
+
+    _dao_types = {hybris_extension.pascal(getattr(dt, "code", ""))
+                  for dt in (getattr(source_model.data_model, "types", None) or [])}
+
+    # Every class the source declares, so a name it owns is never mistaken for a Java
+    # type that happens to share it. [1.45]
+    source_names = {getattr(u, "name", "") for u in units_by_name.values()}
+    # The models the platform will generate from the items.xml this run writes.
+    generated_models = {f"{hybris_extension.pascal(getattr(dt, 'code', ''))}Model"
+                        for dt in (getattr(source_model.data_model, "types", None) or [])}
+
     renames: dict = {}
-    for t_row in targets or []:
-        for c in t_row.get("source_classes", []):
-            src_name = c.get("class_name")
-            if src_name and t_row.get("target_name"):
-                renames[src_name] = t_row["target_name"]
+    for kind in _NAMES_A_TYPE:
+        for t_row in targets or []:
+            if t_row.get("kind") != kind:
+                continue
+            target_name = t_row.get("target_name")
+            if not target_name:
+                continue
+            if kind == DAO and target_name[:-len("Dao")] not in _dao_types:
+                continue          # no declared table behind it, so no file will exist
+            for c in t_row.get("source_classes", []):
+                src_name = c.get("class_name")
+                # Never map a name to itself: that is not a rename, it is a claim that
+                # the PHP class survives into Java under its own name, which it does not.
+                if src_name and src_name != target_name and src_name not in renames:
+                    renames[src_name] = target_name
 
     services, manual = [], []
     #: source class name -> the path this migration actually wrote for it, relative to
@@ -125,11 +158,15 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
         unit = max(sources, key=lambda u: len(getattr(u, "methods", None) or []))
         write(_pkg_dir(src, package, "service", f"{t['target_name']}.java"),
               hybris_service.build_interface(unit, package, resolutions, renames,
-                                             name=t['target_name']))
+                                             name=t['target_name'],
+                                             source_names=source_names,
+                                             models=generated_models))
         write(_pkg_dir(src, package, "service", "impl",
                        f"Default{t['target_name']}.java"),
               hybris_service.build_implementation(unit, package, resolutions, renames,
-                                                  name=t['target_name']))
+                                                  name=t['target_name'],
+                                             source_names=source_names,
+                                             models=generated_models))
         services.append(unit)
         for c in t.get("source_classes", []):
             # Keyed by the source *file*. Three controllers in one Magento module are all
@@ -216,6 +253,16 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
         if inst:
             event_of.setdefault(inst, o.get("event", ""))
 
+    # The service names actually written, not names re-derived from the units. A module
+    # with several classes called `Template` writes one `TemplateService` and the rest
+    # under disambiguated names; deriving from unit names claimed all of them existed,
+    # and the decorator then implemented an interface nobody wrote. [1.45]
+    emitted_service_names = {
+        t_row["target_name"] for t_row in (targets or [])
+        if t_row.get("kind") == SERVICE and t_row.get("target_name")
+        and any(c.get("class_name") in units_by_name
+                for c in t_row.get("source_classes", []))}
+
     hooks: list = []
     seen_events: set = set()
     for t_row in targets or []:
@@ -231,8 +278,7 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
         if kind == DECORATOR:
             write(_pkg_dir(src, package, "decorators", f"{target_name}.java"),
                   hybris_hooks.build_decorator(
-                      unit, package, di,
-                      {hybris_service.service_name(u.name) for u in services}))
+                      unit, package, di, emitted_service_names))
             hooks.append({"kind": kind, "name": target_name})
             emitted_as[getattr(unit, "file", "") or unit.name] = (
                 f"src/{package.replace('.', '/')}/decorators/{target_name}.java")
