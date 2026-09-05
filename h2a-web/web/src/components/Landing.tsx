@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
 import Logo from './Logo';
-import { identify, PLATFORM_LABEL, type Identification, type PipelineOption } from '../api';
+import { fetchKeys, identify, PLATFORM_LABEL, type Identification, type PipelineOption } from '../api';
 
 interface Props {
   hosted: boolean;
@@ -70,6 +70,22 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
   const [verify, setVerify] = useState(false);
   const [drag, setDrag] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Which providers this deployment can actually call — the server's own credential, or
+  // one this user stored. Picking `openrouter` with neither configured started a run that
+  // fell back to stub output, and the only way to find out was to read the result and
+  // notice it was not real. A dry run that silently is not one is worse than no dry
+  // run. [1.48]
+  const [providerReady, setProviderReady] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    fetchKeys()
+      .then((k) => {
+        const own: Record<string, boolean> = {};
+        for (const key of k.keys || []) own[key.provider] = true;
+        setProviderReady({ ...(k.server || {}), ...own, mock: true });
+      })
+      .catch(() => setProviderReady({ mock: true }));
+  }, []);
 
   const [ident, setIdent] = useState<Identification | null>(null);
   const [looking, setLooking] = useState(false);
@@ -276,13 +292,21 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
               <label>AI provider</label>
               <select value={provider} onChange={(e) => setProvider(e.target.value)}>
                 <option value="mock">Mock — free &amp; keyless</option>
-                <option value="anthropic">Anthropic (Claude)</option>
-                <option value="openrouter">OpenRouter</option>
+                <option value="anthropic">
+                  Anthropic (Claude){providerReady.anthropic === false ? ' — no key configured' : ''}
+                </option>
+                <option value="openrouter">
+                  OpenRouter{providerReady.openrouter === false ? ' — no key configured' : ''}
+                </option>
               </select>
               <span className="hint">
                 {provider === 'mock'
                   ? 'Walks the whole pipeline with stub responses. Nothing is charged.'
-                  : 'Real model calls. The Discovery gate shows the cost before any spend.'}
+                  : providerReady[provider] === false
+                    ? 'No key for this provider — add one under Keys, or ask whoever '
+                      + 'runs this deployment to set it. Starting now would produce stub '
+                      + 'output that reads like a real migration.'
+                    : 'Real model calls. The Discovery gate shows the cost before any spend.'}
               </span>
             </div>
             <div className="field">
