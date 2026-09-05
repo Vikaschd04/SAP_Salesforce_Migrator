@@ -172,14 +172,16 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                                              name=t['target_name'],
                                              source_names=source_names,
                                              models=generated_models))
-        merged = java_bodies.bodies((generated or {}).get(t['target_name']) or "")
+        written = (generated or {}).get(t['target_name']) or ""
+        merged = java_bodies.bodies(written)
         write(_pkg_dir(src, package, "service", "impl",
                        f"Default{t['target_name']}.java"),
               hybris_service.build_implementation(unit, package, resolutions, renames,
                                                   name=t['target_name'],
                                              source_names=source_names,
                                              models=generated_models,
-                                             bodies=merged))
+                                             bodies=merged,
+                                             generated_class=written))
         for m in getattr(unit, "methods", None) or []:
             if merged.get(getattr(m, "name", "")) is not None:
                 bodies_used.add(f"{t['target_name']}.{m.name}")

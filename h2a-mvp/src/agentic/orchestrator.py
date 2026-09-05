@@ -1065,12 +1065,20 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                 # going, so one problematic class never aborts the whole repo.
                 return domain, item, None, f"{type(be).__name__}: {be}", journal, []
 
-        results = iter(_map_parallel(_build_one, work, conc))
         # Phase 0 spent twenty minutes indistinguishable from a hang: the per-artifact
         # events go to `on_event`, which the CLI does not render, so a terminal saw
         # nothing between "building" and the end of the stage. A run that is working and
         # a run that is wedged must not look the same. [1.48]
+        #
+        # Reported from `on_done` rather than from the merge loop below, because
+        # `_map_parallel` finishes the whole level before that loop runs — printing there
+        # emits every line at once, at the end, which is no better than silence.
         _level_started = time.time()
+        results = iter(_map_parallel(
+            _build_one, work, conc,
+            on_done=lambda n, total: print(
+                f"    · built {n}/{total} in this wave"
+                f"  {time.time() - _level_started:.0f}s", flush=True)))
 
         # ── Merge on this thread, in level order: deterministic and identical to a
         #    sequential run, no matter what order the workers actually finished in.
@@ -1101,8 +1109,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
             bb.artifacts.append(art)
             print(f"    · [{len(bb.artifacts)}/{_total_targets}] {art.target_name}"
                   f" — {art.status}"
-                  + (" (reused)" if hit is not None else "")
-                  + f"  {time.time() - _level_started:.0f}s", flush=True)
+                  + (" (reused)" if hit is not None else ""), flush=True)
             # Remember this result keyed by its fingerprint so the next run can reuse it.
             _artifact_state[art.target_name] = {"h": fp, "a": artifact_to_cache(art)}
             try:

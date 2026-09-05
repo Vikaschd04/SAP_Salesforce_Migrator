@@ -126,3 +126,150 @@ def indent(body: str, spaces: int = 8) -> list:
     common = min((len(ln) - len(ln.lstrip()) for ln in lines if ln.strip()), default=0)
     pad = " " * spaces
     return [(pad + ln[common:]) if ln.strip() else "" for ln in lines]
+
+
+#: An import line in generated Java.
+_IMPORT = re.compile(r"^\s*import\s+(static\s+)?([\w.]+(?:\.\*)?)\s*;", re.M)
+
+#: A field declaration: a modifier, a type, a name, and either `=` or `;`. Deliberately
+#: anchored to `private`/`protected`/`static`/`final` — a *public* field on the model's
+#: class is part of a surface the emitter owns, and copying it would let generated code
+#: widen the contract the plan settled.
+_FIELD = re.compile(
+    r"^[ \t]*(?P<decl>(?:private|protected)\s+(?:static\s+)?(?:final\s+)?"
+    r"[\w<>\[\],.?\s]+?\s+\w+\s*(?:=[^;]*)?;)[ \t]*$", re.M)
+
+#: A method the model added for its own use.
+_PRIVATE_METHOD = re.compile(
+    r"(?:private|protected)\s+(?:static\s+|final\s+)*"
+    r"[\w<>\[\],.?\s]+?\s+(?P<name>\w+)\s*\([^)]*\)\s*(?:throws\s+[\w,.\s]+?)?\s*\{")
+
+
+def imports(java: str) -> list:
+    """Every type the generated code imports.
+
+    A merged body is only as portable as what it names. The model wrote
+    `BigDecimal.valueOf(...)` under an `import java.math.BigDecimal;` that lived on *its*
+    class; dropping the import and keeping the body produces a file that does not compile
+    — which the stub compiler catches, but catching is worse than not causing.
+    """
+    out, seen = [], set()
+    for m in _IMPORT.finditer(java or ""):
+        line = f"import {'static ' if m.group(1) else ''}{m.group(2)};"
+        if line not in seen:
+            seen.add(line)
+            out.append(line)
+    return out
+
+
+def fields(java: str) -> list:
+    """Private and protected field declarations the merged bodies rely on.
+
+    A constant like `private static final BigDecimal RATE = ...` is part of the logic, not
+    decoration: the body that uses it is meaningless without it.
+    """
+    return [m.group("decl").strip() for m in _FIELD.finditer(java or "")]
+
+
+def helpers(java: str, *, skip: set | None = None) -> dict:
+    """`name -> full source` for private methods the model wrote for its own use.
+
+    The emitter owns the public surface — those methods come from the plan and their
+    signatures are derived. A *private* helper has no such contract to violate, and a
+    merged body that calls one is broken without it.
+    """
+    skip = skip or set()
+    out: dict = {}
+    text = java or ""
+    for m in _PRIVATE_METHOD.finditer(text):
+        name = m.group("name")
+        if name in skip or name in out:
+            continue
+        body = _balanced_body(text, m.end() - 1)
+        if body is None:
+            continue
+        start = text.rfind("\n", 0, m.start()) + 1
+        end = m.end() + len(body) + 1          # past the closing brace
+        out[name] = _dedent(text[start:end])
+    return out
+
+
+def _dedent(src: str) -> str:
+    """Strip the common leading indentation, so a helper can be re-indented as a block.
+
+    Without this the signature line is dedented by `.strip()` and the body lines are not,
+    and the helper lands in the emitted class with its own braces two levels off.
+    """
+    lines = [ln.rstrip() for ln in (src or "").strip("\n").splitlines()]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        return ""
+    common = min((len(ln) - len(ln.lstrip()) for ln in lines[1:] if ln.strip()),
+                 default=0)
+    first, rest = lines[0].strip(), [ln[common:] if ln.strip() else "" for ln in lines[1:]]
+    return "\n".join([first, *rest])
+
+
+def support(java: str, *, public_names: set | None = None) -> dict:
+    """Everything a merged body needs besides itself: `{imports, fields, helpers}`.
+
+    Split from `bodies()` because the caller merges the two differently — bodies land
+    inside methods the emitter already declared; these land in the class around them.
+    """
+    return {"imports": imports(java),
+            "fields": fields(java),
+            "helpers": helpers(java, skip=public_names or set())}
+
+
+#: A method's parameter list, captured so the names inside it can be read.
+_PARAMS = re.compile(
+    r"(?:public|protected|private)\s+(?:static\s+|final\s+|synchronized\s+)*"
+    r"[\w<>\[\],.?\s]+?\s+(?P<name>\w+)\s*\((?P<params>[^)]*)\)\s*"
+    r"(?:throws\s+[\w,.\s]+?)?\s*\{")
+
+
+def param_names(java: str, method: str) -> list | None:
+    """The parameter names the generated method used, in order. `None` if not found.
+
+    Parameter names are local to an implementation — the interface fixes the types and
+    the order, and nothing else. So when a body is merged, the *derived* types stay and
+    the *model's* names come with it. Without this the body references `subtotal` while
+    the signature declares `amount`, and the file does not compile: a real condition, not
+    a hypothetical, since the emitter derives names from PHP and the model picks its own.
+    """
+    for m in _PARAMS.finditer(java or ""):
+        if m.group("name") != method:
+            continue
+        raw = (m.group("params") or "").strip()
+        if not raw:
+            return []
+        out = []
+        for part in raw.split(","):
+            tokens = part.replace("final ", " ").strip().split()
+            if not tokens:
+                return None
+            out.append(tokens[-1].strip("[]"))
+        return out
+    return None
+
+
+def rename_params(signature: str, names: list) -> str:
+    """Re-label a derived signature's parameters, keeping its types and order.
+
+    Only the labels change. If the arity does not match, the signature is returned
+    untouched — a mismatch means the two are not the same method, and quietly reshaping
+    one to look like the other is how a wrong body ends up under a right name.
+    """
+    head, _, rest = signature.partition("(")
+    inner, _, tail = rest.rpartition(")")
+    parts = [p.strip() for p in inner.split(",")] if inner.strip() else []
+    if len(parts) != len(names) or not parts:
+        return signature
+    relabelled = []
+    for part, new in zip(parts, names):
+        tokens = part.split()
+        if len(tokens) < 2:
+            return signature
+        relabelled.append(" ".join(tokens[:-1] + [new]))
+    return f"{head}({', '.join(relabelled)}){tail}"

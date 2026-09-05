@@ -117,8 +117,9 @@ def test_indenting_normalises_to_the_emitted_class():
 # ── the merge, in the emitter ─────────────────────────────────────────────────
 
 class _M:
-    def __init__(self, name, params=(), ret="Double"):
+    def __init__(self, name, params=({"name": "subtotal"},), ret="Double"):
         self.name, self.params, self.return_type = name, list(params), ret
+        self.parameters = list(params)      # what `_signature` actually reads
         self.docstring = ""
         self.body = ""
 
@@ -334,3 +335,226 @@ def test_an_event_listener_never_takes_a_generated_body():
     import inspect
 
     assert "bodies" not in inspect.signature(build_event_listener).parameters
+
+
+# ── a body is only as portable as what it names ───────────────────────────────
+#
+# The first realistic output merged here called `base.multiply(RATE)` — `RATE` a constant
+# on the model's own class, `BigDecimal` an import on it, `norm()` a private helper it
+# wrote. Taking the body alone produced a file that would not compile. The stub compiler
+# catches that, but causing it and catching it is worse than not causing it.
+
+REALISTIC = """```java
+package com.acme.loyalty.service.impl;
+
+import java.math.BigDecimal;
+import static java.util.Objects.requireNonNull;
+
+public class AcmePricingService implements PricingService
+{
+    private static final BigDecimal RATE = new BigDecimal("0.90");
+    public String publicSurface = "not yours to copy";
+
+    @Override
+    public Double applySpendDiscount(final Double subtotal)
+    {
+        // a brace in a comment: }
+        return norm(subtotal).multiply(RATE).doubleValue();
+    }
+
+    private BigDecimal norm(final Double v) {
+        return v == null ? BigDecimal.ZERO : BigDecimal.valueOf(v);
+    }
+}
+```"""
+
+
+def test_imports_come_across():
+    assert "import java.math.BigDecimal;" in java_bodies.imports(REALISTIC)
+
+
+def test_a_static_import_keeps_its_static():
+    assert "import static java.util.Objects.requireNonNull;" in java_bodies.imports(REALISTIC)
+
+
+def test_constants_the_body_relies_on_come_across():
+    got = java_bodies.fields(REALISTIC)
+    assert any("RATE" in f for f in got)
+
+
+def test_a_public_field_does_not():
+    """The emitter owns the public surface. Copying a public field across would let
+    generated code widen a contract the plan settled."""
+    assert not any("publicSurface" in f for f in java_bodies.fields(REALISTIC))
+
+
+def test_private_helpers_come_across():
+    got = java_bodies.helpers(REALISTIC, skip={"applySpendDiscount"})
+    assert "norm" in got and "BigDecimal.valueOf(v)" in got["norm"]
+
+
+def test_a_public_method_is_not_smuggled_in_as_a_helper():
+    """Its signature is derived from the source; the model's version of it is not."""
+    assert "applySpendDiscount" not in java_bodies.helpers(
+        REALISTIC, skip={"applySpendDiscount"})
+
+
+def test_a_helper_keeps_its_own_indentation():
+    """Dedenting the signature line and not the body puts the helper's braces two levels
+    off, which is invalid where the emitted class expects a block."""
+    got = java_bodies.helpers(REALISTIC, skip={"applySpendDiscount"})["norm"]
+    lines = got.splitlines()
+    assert lines[0].startswith("private BigDecimal norm")
+    assert lines[-1].strip() == "}"
+    assert len(lines[-1]) - len(lines[-1].lstrip()) == 0, "closing brace must be flush"
+
+
+#: What 2.12 resolves for this unit — without it every signature derives as `Object`,
+#: which is a property of the fixture rather than of the emitter.
+RESOLVED = [
+    {"where": "PricingService::applySpendDiscount()", "type": "float"},
+    {"where": "PricingService::applySpendDiscount($subtotal)", "type": "float"},
+    {"where": "PricingService::pointsFor()", "type": "float"},
+    {"where": "PricingService::pointsFor($subtotal)", "type": "float"},
+]
+
+
+def _merged():
+    from src.adapters import hybris_service
+    unit = _U([_M("applySpendDiscount"), _M("pointsFor")])
+    return hybris_service.build_implementation(
+        unit, "com.acme", RESOLVED, {}, name="PricingService", source_names=set(),
+        models=set(), bodies=java_bodies.bodies(REALISTIC),
+        generated_class=REALISTIC)
+
+
+def test_the_merged_class_carries_everything_its_body_names():
+    out = _merged()
+    assert "import java.math.BigDecimal;" in out
+    assert "private static final BigDecimal RATE" in out
+    assert "private BigDecimal norm(" in out
+
+
+def test_the_derived_import_is_not_duplicated():
+    out = _merged()
+    assert out.count("import com.acme.service.PricingService;") == 1
+
+
+def test_the_header_says_how_much_of_the_file_a_model_wrote():
+    """A reviewer's first question. Answering it in the file beats making them diff
+    against a skeleton to find out."""
+    out = _merged()
+    assert "1 of 2" in out
+
+
+def test_the_header_does_not_claim_bodies_are_underived_when_none_were_merged():
+    from src.adapters import hybris_service
+    out = hybris_service.build_implementation(
+        _U([_M("a")]), "com.acme", [], {}, name="S", source_names=set(), models=set())
+    assert "Method bodies are not translated here" in out
+
+
+def test_nothing_is_carried_when_nothing_was_merged():
+    """Imports and constants belonging to logic that was rejected have no business in a
+    file of honest stubs."""
+    from src.adapters import hybris_service
+    out = hybris_service.build_implementation(
+        _U([_M("other")]), "com.acme", [], {}, name="S", source_names=set(),
+        models=set(), bodies=java_bodies.bodies(REALISTIC), generated_class=REALISTIC)
+    assert "BigDecimal" not in out
+
+
+# ── the compiler, on merged output ────────────────────────────────────────────
+#
+# Every assertion above checks text. This one checks the thing that matters: that a class
+# built half from derivation and half from a model is valid Java. It is also the reason
+# carrying imports, fields and helpers was not optional — without them this fails.
+
+import shutil
+import subprocess
+
+needs_javac = pytest.mark.skipif(not shutil.which("javac"),
+                                 reason="no Java compiler on this machine")
+
+
+#: The same output, with the helper typed as the derivation types the method. A model
+#: that is given the signature — which the Builder is — produces this; `REALISTIC` above
+#: keeps the boxed `Double` a model reaches for when it is not, and the test below shows
+#: what happens then.
+AGREEING = REALISTIC.replace("private BigDecimal norm(final Double v) {",
+                             "private BigDecimal norm(final float v) {") \
+                    .replace("return v == null ? BigDecimal.ZERO : BigDecimal.valueOf(v);",
+                             "return BigDecimal.valueOf(v);") \
+                    .replace("return norm(subtotal).multiply(RATE).doubleValue();",
+                             "return norm(subtotal).multiply(RATE).floatValue();")
+
+
+def _compile(tmp_path, impl, iface):
+    for rel, body in (("com/acme/service/PricingService.java", iface),
+                      ("com/acme/service/impl/DefaultPricingService.java", impl)):
+        p = tmp_path / "src" / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(body, encoding="utf-8")
+    out = tmp_path / "out"
+    out.mkdir()
+    return subprocess.run(["javac", "-nowarn", "-proc:none", "-d", str(out),
+                           *[str(p) for p in (tmp_path / "src").rglob("*.java")]],
+                          capture_output=True, text=True, timeout=180)
+
+
+@needs_javac
+def test_a_type_the_model_assumed_and_the_source_did_not_is_caught(tmp_path):
+    """`REALISTIC` writes `norm(Double)`; the source resolves the method to `float`, and
+    Java does not widen a primitive to a boxed type. This is the merge's real residual
+    risk, and it is the compiler's to catch rather than something to paper over — which
+    is why generated bodies go through the stub compiler at all."""
+    from src.adapters import hybris_service
+
+    unit = _U([_M("applySpendDiscount")])
+    r = _compile(
+        tmp_path,
+        hybris_service.build_implementation(
+            unit, "com.acme", RESOLVED, {}, name="PricingService", source_names=set(),
+            models=set(), bodies=java_bodies.bodies(REALISTIC),
+            generated_class=REALISTIC),
+        hybris_service.build_interface(
+            unit, "com.acme", RESOLVED, {}, name="PricingService", source_names=set(),
+            models=set()))
+    assert r.returncode != 0
+    assert "incompatible types" in r.stderr
+
+
+@needs_javac
+def test_a_merged_class_compiles(tmp_path):
+    from src.adapters import hybris_service
+
+    unit = _U([_M("applySpendDiscount")])
+    r = _compile(
+        tmp_path,
+        hybris_service.build_implementation(
+            unit, "com.acme", RESOLVED, {}, name="PricingService", source_names=set(),
+            models=set(), bodies=java_bodies.bodies(AGREEING),
+            generated_class=AGREEING),
+        hybris_service.build_interface(
+            unit, "com.acme", RESOLVED, {}, name="PricingService", source_names=set(),
+            models=set()))
+    assert r.returncode == 0, r.stderr[-3000:]
+
+
+@needs_javac
+def test_dropping_the_support_breaks_that_same_class(tmp_path):
+    """The counter-test, so the one above is not passing for an unrelated reason. This is
+    what the merge produced before 1.48 carried imports, fields and helpers across."""
+    from src.adapters import hybris_service
+
+    unit = _U([_M("applySpendDiscount")])
+    r = _compile(
+        tmp_path,
+        hybris_service.build_implementation(
+            unit, "com.acme", RESOLVED, {}, name="PricingService", source_names=set(),
+            models=set(), bodies=java_bodies.bodies(AGREEING)),   # no generated_class
+        hybris_service.build_interface(
+            unit, "com.acme", RESOLVED, {}, name="PricingService", source_names=set(),
+            models=set()))
+    assert r.returncode != 0, "the body names RATE, BigDecimal and norm — none declared"
+    assert "cannot find symbol" in r.stderr
