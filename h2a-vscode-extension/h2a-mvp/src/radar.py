@@ -635,6 +635,7 @@ _RULE_TITLES = {
     "CLUSTER_CRON": "Cron that assumes a single runner",
     "N_PLUS_ONE": "Query inside a loop",
     "COLLECTION_NO_LIMIT": "Unbounded collection load",
+    "UNKNOWN_ENTITY_FIELD": "Field written to no declared column",
 }
 
 

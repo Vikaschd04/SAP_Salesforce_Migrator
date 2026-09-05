@@ -48,13 +48,16 @@ export default function Detail(p: Props) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [files, setFiles] = useState<string[]>([]);
   const [reports, setReports] = useState<string[]>([]);
+  // The platform names this run's output belongs to. Every label below was
+  // Salesforce's, whichever migration produced the run. [1.44]
+  const [words, setWords] = useState<Record<string, string>>({});
   const [sel, setSel] = useState<string>('');
   const [code, setCode] = useState<string>('');
   const [reportHtml, setReportHtml] = useState<string>('');
 
   useEffect(() => {
     if (p.status === 'complete' && p.runId) {
-      fetchFiles(p.runId).then((r) => { setFiles(r.files || []); setReports(r.reports || []); });
+      fetchFiles(p.runId).then((r) => { setFiles(r.files || []); setReports(r.reports || []); setWords(r.words || {}); });
     }
   }, [p.status, p.runId]);
 
@@ -160,7 +163,7 @@ export default function Detail(p: Props) {
       {tab === 'artifacts' && (
         <div className="tabpanel">
           {p.artifacts.length === 0
-            ? <p className="empty">Generated Apex + LWC appear here. Open any file to see the code, compare it with the SAP source, read the Critic findings — and regenerate it if it looks wrong.</p>
+            ? <p className="empty">Generated {words.target_language || 'code'} appears here. Open any file to see the code, compare it with the SAP source, read the Critic findings — and regenerate it if it looks wrong.</p>
             : p.artifacts.map((a) => (
               <ArtifactReview key={a.target_name} runId={p.runId!} art={a}
                 blast={(p.blast || {})[a.target_name]} sourceLabel={p.sourceLabel} />
@@ -243,7 +246,7 @@ export default function Detail(p: Props) {
           )}
           <div className="chips-row">
             {reports.map((r) => <button key={r} className={`btn-mini ${sel === r ? 'sel' : ''}`} onClick={() => openReport(r)}>{r.replace('.md', '').replace(/_/g, ' ')}</button>)}
-            {p.runId && <a className="btn-mini" href={packageUrl(p.runId)}>⬇ Download SFDX package</a>}
+            {p.runId && <a className="btn-mini" href={packageUrl(p.runId)}>⬇ Download {words.package || 'package'}</a>}
           </div>
           {reportHtml ? <div className="md" dangerouslySetInnerHTML={{ __html: reportHtml }} /> : <p className="empty">Reports appear when the run completes. Pick one above.</p>}
         </div>

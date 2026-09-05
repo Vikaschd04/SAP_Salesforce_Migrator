@@ -383,6 +383,55 @@ async def api_stream(run_id: str):
 
 # ── browsing the generated Salesforce project ─────────────────────────────────
 
+
+#: What each target's package looks like on disk, and what to call it. Read from the
+#: output rather than from run state: the output is the thing being browsed, and it
+#: cannot disagree with itself. [1.44]
+_PACKAGE_LAYOUTS = (
+    ("force-app", ["force-app", "data"], {
+        "package": "Salesforce DX package",
+        "target": "Salesforce", "target_language": "Apex",
+        "source": "SAP Hybris", "source_language": "Java",
+        "gate": "Review the generated Salesforce code",
+    }),
+    ("hybris", ["hybris"], {
+        "package": "SAP Hybris extension",
+        "target": "SAP Hybris", "target_language": "Java",
+        "source": "Adobe Commerce", "source_language": "PHP",
+        "gate": "Review the generated Hybris extension",
+    }),
+)
+
+_UNKNOWN_WORDS = {"package": "package", "target": "the target platform",
+                  "target_language": "code", "source": "the source platform",
+                  "source_language": "code", "gate": "Review the generated code"}
+
+
+def _package_roots(out: Path) -> list:
+    for marker, roots, _ in _PACKAGE_LAYOUTS:
+        if (out / marker).exists():
+            return roots
+    return ["force-app", "data"]
+
+
+def _target_words(out: Path) -> dict:
+    """The platform names this run's output belongs to.
+
+    Every label in the cockpit was Salesforce's — "Download SFDX package", "Review the
+    generated Salesforce code", "Generated Apex + LWC appear here" — whichever migration
+    produced the run. Read from the output layout, which is the thing being described and
+    therefore cannot disagree with it. [1.44]
+    """
+    for marker, _, words in _PACKAGE_LAYOUTS:
+        if (out / marker).exists():
+            return words
+    return dict(_UNKNOWN_WORDS)
+
+
+def _package_label(out: Path) -> str:
+    return _target_words(out)["package"]
+
+
 @app.get("/api/runs/{run_id}/files")
 async def api_files(run_id: str):
     run = get_run(run_id)
@@ -392,7 +441,7 @@ async def api_files(run_id: str):
     if not out.exists():
         return {"files": [], "reports": []}
     files = []
-    for base in ["force-app", "data"]:
+    for base in _package_roots(out):
         root = out / base
         if root.exists():
             for f in sorted(root.rglob("*")):
@@ -402,7 +451,11 @@ async def api_files(run_id: str):
         if (out / extra).exists():
             files.append(extra)
     reports = [r for r in _REPORT_FILES if (out / r).exists()]
-    return {"files": files, "reports": reports}
+    # The label names what was actually produced. It said "SFDX package" for every run,
+    # including ones that emit a Hybris extension — and the file list only looked in
+    # `force-app`, so an Adobe→Hybris run showed no generated files at all. [1.44]
+    return {"files": files, "reports": reports, "package": _package_label(out),
+            "words": _target_words(out)}
 
 
 @app.get("/api/runs/{run_id}/file")

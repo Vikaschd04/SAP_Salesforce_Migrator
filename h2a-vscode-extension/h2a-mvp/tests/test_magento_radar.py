@@ -144,3 +144,91 @@ def test_a_clean_project_reports_nothing(tmp_path):
 
 def test_the_headline_counts_by_severity():
     assert "critical" in headline(scan(MAGENTO)["summary"])
+
+
+# ── a field written to a column that does not exist [1.44] ───────────────────
+
+def _module(tmp_path, php: str, columns=("name", "email", "city")):
+    (tmp_path / "etc").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "etc" / "db_schema.xml").write_text(
+        '<schema><table name="t">'
+        + "".join(f'<column xsi:type="varchar" name="{c}"/>' for c in columns)
+        + "</table></schema>")
+    (tmp_path / "Model").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "Model" / "W.php").write_text(php)
+    return [f for f in scan(str(tmp_path))["findings"]
+            if f["rule"] == "UNKNOWN_ENTITY_FIELD"]
+
+
+def test_a_key_that_is_no_column_is_found():
+    """`setData` takes any key. A key that is not a column is carried through the model
+    and dropped at the insert — no exception, no warning, the value never arrives."""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as d:
+        got = _module(Path(d), """<?php
+        class W {
+            public function f($x) {
+                $data = ["name" => $x['a'], "email" => $x['b'], "region" => $x['c']];
+                $m->setData($data);
+            }
+        }""")
+    assert [f["snippet"] for f in got] == ["region"]
+
+
+def test_an_array_built_in_a_variable_is_still_seen():
+    """The array with the real bug was assigned to a variable and passed to `setData`
+    later, and its values were `$args['input']['x']` — so a pattern anchored on
+    `setData([...])`, or one forbidding nested brackets, sees nothing."""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as d:
+        got = _module(Path(d), """<?php
+        class W {
+            public function f($args) {
+                $d = ["name" => $args['input']['name'], "email" => $args['input']['email'],
+                      "country_id" => $args['input']['country_id']];
+                $m->setData($d);
+            }
+        }""")
+    assert [f["snippet"] for f in got] == ["country_id"]
+
+
+def test_an_array_that_is_not_entity_data_is_left_alone():
+    """A JSON response of `['success' => …, 'value' => …]` looked exactly like entity data
+    until the rule required two real columns before complaining about the rest."""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as d:
+        got = _module(Path(d), """<?php
+        class W {
+            public function f() {
+                $m->setData([]);
+                return ["success" => true, "value" => 1];
+            }
+        }""")
+    assert got == []
+
+
+def test_a_file_that_never_writes_an_entity_is_skipped():
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as d:
+        got = _module(Path(d), """<?php
+        class W { public function f() { return ["name" => 1, "email" => 2, "nope" => 3]; } }""")
+    assert got == []
+
+
+def test_the_rule_is_quiet_on_both_shipped_corpora():
+    """A rule that fires on the fixtures is a rule nobody reads."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2] / "Testing"
+    for corpus in ("acme-commerce-magento", "acme-commerce-magento-full"):
+        got = [f for f in scan(str(root / corpus))["findings"]
+               if f["rule"] == "UNKNOWN_ENTITY_FIELD"]
+        assert got == [], f"{corpus}: {got}"

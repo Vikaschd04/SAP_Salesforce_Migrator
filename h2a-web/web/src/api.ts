@@ -137,7 +137,9 @@ export async function regenerateArtifact(runId: string, target: string, instruct
   return (await res.json()).artifact;
 }
 
-export async function fetchFiles(runId: string): Promise<{ files: string[]; reports: string[] }> {
+export async function fetchFiles(runId: string): Promise<{ files: string[]; reports: string[];
+  /** Platform names derived from the output layout — see `_target_words`. [1.44] */
+  words?: Record<string, string> }> {
   return (await fetch(`/api/runs/${runId}/files`)).json();
 }
 export async function fetchFile(runId: string, path: string): Promise<string> {

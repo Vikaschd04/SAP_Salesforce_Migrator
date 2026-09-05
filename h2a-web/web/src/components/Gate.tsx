@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { GateState } from '../useRun';
-import { submitGate } from '../api';
+import { fetchFiles, submitGate } from '../api';
 import Discovery from './Discovery';
 import ArtifactReview from './ArtifactReview';
 
@@ -14,10 +14,17 @@ export default function Gate({ runId, gate, onClosed, onStop, sourceLabel }: {
   sourceLabel?: string;
 }) {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
+  // The platform names this run's output belongs to. Fetched here rather than passed
+  // down: the gate is reached from more than one place, and a label that depends on the
+  // route is a label that will be wrong on one of them. [1.44]
+  const [words, setWords] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   // Local copy so a per-file regenerate updates this screen immediately.
   const [arts, setArts] = useState<any[]>(gate.artifacts || []);
   useEffect(() => { setArts(gate.artifacts || []); }, [gate.artifacts]);
+  useEffect(() => {
+    if (runId) fetchFiles(runId).then((r) => setWords(r.words || {})).catch(() => {});
+  }, [runId]);
 
   const send = async (decision: unknown) => {
     setBusy(true);
@@ -37,7 +44,7 @@ export default function Gate({ runId, gate, onClosed, onStop, sourceLabel }: {
           <div>
             <span className="gate-pill">⏸ Review gate</span>
             <h2>{gate.gate === 'discovery' ? 'Review what the AI found in your codebase'
-              : gate.gate === 'plan' ? 'Approve the migration plan' : 'Review the generated Salesforce code'}</h2>
+              : gate.gate === 'plan' ? 'Approve the migration plan' : (words?.gate || 'Review the generated code')}</h2>
           </div>
           <span className="mono faint">run {runId}</span>
         </div>

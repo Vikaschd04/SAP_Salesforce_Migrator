@@ -225,10 +225,100 @@ def _eav_findings(path: Path, rel: str) -> list:
 
 # ── entry point ───────────────────────────────────────────────────────────────
 
+
+#: Any array literal with string keys. Which of them is *entity data* is decided below,
+#: from the keys themselves rather than from how the array reaches `setData` — the array
+#: is routinely built in a variable first, which is exactly the case a match on
+#: `setData([...])` misses.
+_ARRAY_KEY = re.compile(r"['\"](?P<key>\w+)['\"]\s*=>")
+
+
+def _array_literals(text: str):
+    """`(start, body)` for every bracketed block, brackets balanced.
+
+    A regex that forbids nested brackets cannot see the array that matters: its values
+    are `$args['input']['name']`, so the body contains brackets and the pattern never
+    matches. The one array in a published module with a real bug was invisible for
+    exactly that reason.
+    """
+    for i, ch in enumerate(text):
+        if ch != "[":
+            continue
+        depth = 0
+        for j in range(i, len(text)):
+            if text[j] == "[":
+                depth += 1
+            elif text[j] == "]":
+                depth -= 1
+                if depth == 0:
+                    body = text[i + 1:j]
+                    if "=>" in body:
+                        yield i + 1, body
+                    break
+
+#: How many keys must be real columns before the array is treated as entity data. Two is
+#: enough to tell `['name' => …, 'email' => …, 'region' => …]` from a JSON response that
+#: happens to share a word, and it is what keeps this rule quiet on everything else.
+_ENTITY_ARRAY_MIN = 2
+
+
+def _field_findings(path: Path, rel: str, declared: set) -> list:
+    """A write to a column the schema does not declare. [1.44]
+
+    `setData` takes any key at all. A key that is not a column is accepted, carried
+    around, and dropped at the insert — no exception, no warning, and the value never
+    arrives. Found in a published module on the first read: a GraphQL resolver writing
+    `country_id` and `region` into a table declaring `country` and `state`, so two fields
+    of every appointment booked through the API were silently lost.
+
+    An array is only examined once at least two of its keys are real columns. Without
+    that the rule fires on every associative array in the codebase — a JSON response of
+    `['success' => …, 'value' => …]` looked exactly like entity data on the first attempt,
+    while the array that actually had the bug was built in a variable and missed
+    entirely.
+    """
+    if not declared:
+        return []
+    text = _read(path)
+    if "setData" not in text:
+        return []
+
+    out, seen = [], set()
+    for offset, body in _array_literals(text):
+        keys = [(k.group("key"), _line(text, offset + k.start()))
+                for k in _ARRAY_KEY.finditer(body)]
+        known = [k for k, _ in keys if k in declared]
+        if len(known) < _ENTITY_ARRAY_MIN:
+            continue
+        for field, line in keys:
+            if field in declared or field in seen:
+                continue
+            seen.add(field)
+            out.append(_finding(
+                "UNKNOWN_ENTITY_FIELD", "high", rel, line,
+                f"`{field}` is written alongside {len(known)} real column(s), so this is "
+                "entity data — and no table in this module declares a column by that "
+                "name. Magento accepts any key: the value is carried through the model "
+                "and dropped at the insert, with no exception and no warning, so the "
+                "field is simply never stored. Either it is an EAV attribute, which lives "
+                "in the database and cannot be seen from the codebase, or it is a write "
+                "that goes nowhere and has been going nowhere.",
+                "Check it against `db_schema.xml` before migrating. Carried across as-is "
+                "the target inherits a field nothing populates; corrected, it may reveal "
+                "data that was never captured and has to be backfilled.",
+                snippet=field))
+    return out
+
+
 def scan(root: str) -> dict:
     """Every Magento hazard in a codebase, framed against a Hybris target."""
     base = Path(root)
     findings: list = []
+
+    # Every column the module declares, so a write to something else is visible. [1.44]
+    declared = set()
+    for f in _sources(base, "db_schema.xml"):
+        declared |= set(re.findall(r'<column[^>]*\sname="(\w+)"', _read(f)))
 
     for p in _sources(base, "*.php"):
         rel = str(p.relative_to(base))
@@ -236,6 +326,7 @@ def scan(root: str) -> dict:
         findings += _n_plus_one(p, rel)
         findings += _observer_findings(p, rel)
         findings += _eav_findings(p, rel)
+        findings += _field_findings(p, rel, declared)
 
     for p in _sources(base, "*.xml"):
         findings += _xml_findings(p, str(p.relative_to(base)))
