@@ -133,9 +133,18 @@ class BuilderAgent:
                       _data_model_notes(bb)):
             if block:
                 grounding = (grounding + "\n\n" + block) if grounding else block
+        # A Hybris service target is named for its *interface* — `PricingService` — and
+        # asking a model to write `PricingService` gets an interface, which is exactly
+        # what the first real run produced: a correct artifact of the wrong kind, with no
+        # method bodies for the emitter to merge. The interface is derived from the source
+        # anyway; what nobody can derive is the logic, so ask for the class that holds
+        # it. The artifact stays keyed by `target_name`. [1.48]
+        ask_for = ""
+        if getattr(plan_item, "kind", "") == "service":
+            ask_for = f"Default{plan_item.target_name}"
         gen = generate_apex(target, bb.comprehensions, scoped_sigs,
                             offline=bb.offline, schema=bb.schema, mappings=mappings,
-                            grounding=grounding)
+                            grounding=grounding, class_name=ask_for)
 
         rules = []
         for c in plan_item.source_classes:

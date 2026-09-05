@@ -683,3 +683,42 @@ def test_nothing_matching_carries_nothing():
         " public void other() { work(); } }",
         {"onEvent": ["onEvent"]})
     assert got == {"bodies": {}, "imports": [], "fields": [], "helpers": {}}
+
+
+# ── asking for the artifact the emitter actually needs [1.48] ─────────────────
+
+def test_a_hybris_service_target_is_asked_for_its_implementation():
+    """`PricingService` on that platform is the *interface*. Asking a model to write
+    `PricingService` gets an interface — correct, and useless here: the interface is
+    derived from the source anyway, and the emitter needs the bodies that only exist in
+    `DefaultPricingService`. The first real run returned an interface with no method
+    bodies at all, so nothing could merge no matter how the merge was keyed."""
+    import inspect
+
+    from src.agentic import builders
+
+    src = inspect.getsource(builders.BuilderAgent.build)
+    assert 'kind", "") == "service"' in src
+    assert 'f"Default{plan_item.target_name}"' in src
+    assert "class_name=ask_for" in src
+
+
+def test_the_artifact_is_still_keyed_by_the_planners_name():
+    """Only the prompt changes. The emitter, the ledger, provenance and triage all look
+    the target up by the name the planner gave it."""
+    import inspect
+
+    from src.agentic import builders
+
+    src = inspect.getsource(builders.BuilderAgent.build)
+    assert "target_name=plan_item.target_name" in src
+
+
+def test_a_target_with_no_platform_kind_is_asked_for_its_own_name():
+    """`kind` is empty on the Salesforce pipeline, which has no such notion — so that
+    path's prompt is untouched, which is what the golden baseline proves byte for byte."""
+    from src.generate import generate_apex
+    import inspect
+
+    assert "class_name" in inspect.signature(generate_apex).parameters
+    assert inspect.signature(generate_apex).parameters["class_name"].default == ""

@@ -388,6 +388,7 @@ def generate_apex(
     schema: dict | None = None,
     mappings: dict | None = None,
     grounding: str = "",
+    class_name: str = "",
 ) -> dict:
     """
     Generate the Apex class + test class for one target artifact.
@@ -399,6 +400,12 @@ def generate_apex(
             dict {target_name: [sigs]} (flattened for backward compatibility).
         schema: SObject schema (from schema.build_schema).
         mappings: pre-loaded mapping rules (avoids re-reading the yaml per call).
+        class_name: what to *ask* for, when that differs from the target's name. The
+            artifact is still keyed by `target_name`; only the prompt changes. On the
+            Hybris pipeline a service target is named `PricingService`, which on that
+            platform is the *interface* — so the Builder was asked for `PricingService`
+            and correctly returned an interface, while the emitter needed bodies for
+            `DefaultPricingService` and got none. [1.48]
     """
     config = _load_config()
     max_tokens = config.get("max_tokens", {}).get("generate", 4000)
@@ -425,7 +432,7 @@ def generate_apex(
         target_kind=apex_kind,
         layer_rules=layer_rules,
         dependency_signatures=_format_dependency_sigs(dependency_sigs),
-        target_class_name=target_name,
+        target_class_name=class_name or target_name,
     )
     if grounding:
         user_prompt += "\n\n" + grounding
