@@ -50,7 +50,8 @@ describe it: provenance traced 3 of 19 generated methods (16%), and alignment tr
 
 | Finding | Fix |
 |---|---|
-| Generated bodies discarded | `java_bodies` lifts method bodies from generated Java; the emitter merges them into the derived skeleton by name, marked as generated |
+| Generated bodies discarded | `java_bodies` lifts method bodies from generated Java; the emitter merges them into the derived skeleton by the name the emitted class declares, marked as generated |
+| No number counted the logic | `Generated logic: N/M method bodies` prints beside the completeness ledger on any target without a compile oracle, so the two cannot tell different stories |
 | Mock spoke Apex on a Java pipeline | The mock now emits the target's language, so wrong-language output reaches the stub compiler instead of the bin |
 | `429` at the default concurrency | Retries honour the server's `Retry-After` instead of guessing a backoff that expired inside the same quota window |
 | `524` from a Cloudflare-fronted gateway | `520`–`524` treated as transient; thinking models exceed the ~100s origin timeout on generate prompts |
@@ -71,6 +72,30 @@ invents no business logic produces no method names matching the source — corre
 means nothing merges on a golden run. That blind spot is named in
 `tests/test_java_bodies.py` and covered there by driving `hybris_target.emit()` directly,
 rather than left to be rediscovered.
+
+### What a second real run then found
+
+The fix above was verified against a live model, and merged **nothing**. Every test passed;
+the migration merged zero bodies. Three more defects, none of which any test could have
+predicted, because each was a wrong assumption rather than a wrong line:
+
+| Found | Why it was invisible |
+|---|---|
+| The merge keyed on the **source** method name | A model is told what it is building and writes the *platform's* names — `perform`, `onEvent`, `getGrandTotal`. The source methods were `execute` and `aroundGetGrandTotal`. Nothing lined up. Re-keyed on the emitted name: 0 → 4 of 8 targets. |
+| The Builder returned an **interface** for the service target | It was asked for `PricingService`, which on SAP Commerce *is* the interface. It returned exactly what was requested; the request was for the wrong artifact. It is now asked for `Default…`, the class that holds the logic. |
+| The Builder searched with **Apex** vocabulary on the Hybris pipeline | The retriever reads the pipeline's own pack, so the shelf was already Hybris — but the query was `apex fflib governor limits`, and the heading said "Salesforce reference · use these facts, don't invent APIs". A model writing Java was handed the worst matches on a Java shelf and told they were authoritative. |
+
+The merged output then behaved exactly as intended: a listener body referenced
+`CartAwareEvent`, a type the model invented, and the static checker named it and dropped
+the rung. That is the reason for merging into the derived skeleton rather than writing the
+model's class — generated logic is held to the same checks as everything else.
+
+**The lesson, stated plainly.** Every layer caught what the layer below was blind to.
+1198 unit tests could not see that the emitter never received the artifacts. The emitter
+fix could not see that the merge was keyed wrongly. The keying fix could not see that one
+target had no bodies to merge at all. Only running it found each one, and each was found
+by a *number* — `0/24 method bodies merged` — rather than by a failure. The completeness
+ledger said "9 converted" throughout.
 
 | # | Work item | Done when |
 |---|---|---|
