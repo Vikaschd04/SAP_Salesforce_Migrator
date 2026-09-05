@@ -725,6 +725,20 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                  else build_schema(bb.item_types, bb.relations, bb.enum_types))
     bb.source_corpus = "\n".join(c.get("source", "") for c in bb.all_classes)
 
+    # What the source says about its own data model beyond the column types. Decided here
+    # rather than at emission, because the Builder needs it before it writes anything and
+    # the reports need it afterwards. Sources with no such reader contribute nothing. [1.43]
+    try:
+        if _pl is not None and _pl.source_platform == "adobe-commerce":
+            from src.adapters import magento_modelling
+            bb.modelling = magento_modelling.decide(_model.data_model)
+            _open = [r for r in bb.modelling if r["action"] == "reported"]
+            if _open:
+                print(f"  Data model: {len(bb.modelling) - len(_open)} reference(s) "
+                      f"carried across, {len(_open)} decision(s) left to a person")
+    except Exception as e:                              # advisory, never a blocker
+        print(f"  ⚠ data-model review skipped: {e}")
+
     # Business processes. Read here, with the class list already in hand so each action
     # resolves to the Java that implements it — and reported at the Discovery gate,
     # because "the orchestration will not be migrated" is something to learn before

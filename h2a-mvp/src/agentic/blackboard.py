@@ -117,6 +117,11 @@ class Blackboard:
     #: precisely why they need counting somewhere a reviewer looks. [1.40]
     unmappable_types: dict = field(default_factory=dict)
 
+    #: Modelling calls the source supports and modelling calls it only hints at — see
+    #: `adapters/magento_modelling`. Held on the blackboard because the Builder needs them
+    #: *before* it generates and the reports need them after. [1.43]
+    modelling: list = field(default_factory=list)
+
     # Repository analysis (filled by the orchestrator's ingest step)
     domains: dict = field(default_factory=dict)
     adjacency: dict = field(default_factory=dict)

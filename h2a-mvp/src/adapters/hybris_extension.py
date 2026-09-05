@@ -67,10 +67,17 @@ def java_type(ir_type: str) -> str:
     return _IR_TO_JAVA.get(ir_type or "", "java.lang.String")
 
 
-def _attribute(a: dict) -> list:
+def _attribute(a: dict, references: str = "") -> list:
+    """One `<attribute>`.
+
+    `references` is the target type a *declared* foreign key points at. Emitted as the
+    attribute's type, it turns an integer column back into the relationship the source
+    declared — which the platform can then join, validate and cascade. Without it a
+    `customer_id` arrives as `java.lang.Integer` and the relationship is gone. [1.43]
+    """
     q = a.get("name", "")
     lines = [f'                <attribute qualifier="{escape(q)}" '
-             f'type="{java_type(a.get("type"))}">',
+             f'type="{escape(references) if references else java_type(a.get("type"))}">',
              '                    <persistence type="property"/>']
     mods = []
     if a.get("required"):
@@ -99,7 +106,13 @@ def _is_extension(dt) -> bool:
         (getattr(dt, "code", "") or "").lower() in _PLATFORM_TYPES)
 
 
-def build_items_xml(data_model, *, extension: str) -> str:
+
+def _code_of(dt) -> str:
+    d = dt.to_dict() if hasattr(dt, "to_dict") else dict(dt or {})
+    return d.get("code") or d.get("name") or ""
+
+
+def build_items_xml(data_model, *, extension: str, references: dict | None = None) -> str:
     """`<extension>-items.xml` for a whole data model. [3.4]"""
     types = list(getattr(data_model, "types", None) or [])
     out = ['<?xml version="1.0" encoding="ISO-8859-1"?>',
@@ -126,7 +139,8 @@ def build_items_xml(data_model, *, extension: str) -> str:
             out += [f'        <itemtype code="{owner}" autocreate="false" generate="false">',
                     "            <attributes>"]
             for a in attrs:
-                out += _attribute(a)
+                out += _attribute(
+                    a, (references or {}).get((_code_of(dt), a.get('name', '')), ''))
             out += ["            </attributes>", "        </itemtype>"]
             continue
 
@@ -138,7 +152,8 @@ def build_items_xml(data_model, *, extension: str) -> str:
                 "            <attributes>"]
         typecode += 1
         for a in attrs:
-            out += _attribute(a)
+            out += _attribute(
+                a, (references or {}).get((_code_of(dt), a.get('name', '')), ''))
         out += ["            </attributes>", "        </itemtype>"]
 
     out += ["", "    </itemtypes>", "</items>", ""]
@@ -172,7 +187,8 @@ BUILD_XML = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def build_extension(output_dir: str, *, name: str, package: str, data_model) -> list:
+def build_extension(output_dir: str, *, name: str, package: str, data_model,
+                    references: dict | None = None) -> list:
     """Write the extension skeleton and its data model. [3.1, 3.4]
 
     The layout is the one a Hybris developer expects, because an extension that is
@@ -193,7 +209,7 @@ def build_extension(output_dir: str, *, name: str, package: str, data_model) -> 
           EXTENSION_INFO.format(name=name, prefix=prefix, package=package))
     write("build.xml", BUILD_XML.format(name=name))
     write(f"resources/{name}-items.xml",
-          build_items_xml(data_model, extension=name))
+          build_items_xml(data_model, extension=name, references=references))
     write(f"resources/{name}-spring.xml",
           '<?xml version="1.0" encoding="UTF-8"?>\n'
           '<beans xmlns="http://www.springframework.org/schema/beans"\n'

@@ -240,14 +240,36 @@ def read_db_schema(root: str) -> list:
                     "unique": False,
                     "default": col.get("default", ""),
                     "comment": col.get("comment", ""),
+                    # The table's own key. Without it, `entity_id` looks exactly like a
+                    # foreign key by name and gets reported as a suspected reference to
+                    # an `entity` table that does not exist. [1.43]
+                    "identity": str(col.get("identity", "")).lower() == "true",
+                    "primary": str(col.get("primary", "")).lower() == "true",
                 })
             by_name = {a["name"]: a for a in attrs}
             for c in table.findall("constraint"):
                 kind = c.get("{http://www.w3.org/2001/XMLSchema-instance}type", "")
-                if kind == "unique":
+                if kind == "primary":
+                    for col in c.findall("column"):
+                        if col.get("name") in by_name:
+                            by_name[col.get("name")]["primary"] = True
+                elif kind == "unique":
                     for col in c.findall("column"):
                         if col.get("name") in by_name:
                             by_name[col.get("name")]["unique"] = True
+                elif kind == "foreign":
+                    # What this column *points at*. Read past until now, so a
+                    # `customer_id` integer arrived downstream as an integer and the
+                    # target got a number where the source had a relationship. The
+                    # declaration is right here in the file — the same oversight as
+                    # `partof` in 1.32, one platform over. [1.43]
+                    col = c.get("column", "")
+                    if col in by_name:
+                        by_name[col]["references"] = {
+                            "table": c.get("referenceTable", ""),
+                            "column": c.get("referenceColumn", ""),
+                            "on_delete": c.get("onDelete", ""),
+                        }
 
             types.append(ir.DataType(
                 code=table.get("name", ""),

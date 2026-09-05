@@ -49,8 +49,14 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
     `static` is the checker's verdict on what was actually written, which is the closest
     thing to a compiler available without a licensed platform.
     """
+    # What the source declares about its own data model, beyond the column types. A
+    # declared foreign key is a relationship; emitting it as an integer loses it. [1.43]
+    from src.adapters import magento_modelling
+
+    modelling = magento_modelling.decide(source_model.data_model)
     created = list(hybris_extension.build_extension(
-        output_dir, name=name, package=package, data_model=source_model.data_model))
+        output_dir, name=name, package=package, data_model=source_model.data_model,
+        references=magento_modelling.converted(modelling)))
 
     root = Path(output_dir) / "hybris" / "bin" / "custom" / name
     src = root / "src"
@@ -292,7 +298,7 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                       "issues": list(compiled["issues"]),
                       "message": compiled["message"], "compiler": True}
     return {"created": sorted(set(created)), "manual": manual, "static": static,
-            "emitted_as": emitted_as}
+            "emitted_as": emitted_as, "modelling": modelling}
 
 
 def _spring(units: list, arguments: list, package: str, extension: str,

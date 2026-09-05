@@ -58,6 +58,20 @@ def _transaction_shapes(source_classes: list) -> str:
         return ""
 
 
+def _data_model_notes(bb) -> str:
+    """Modelling decisions the source does not settle, for the Builder's prompt. [1.43]
+
+    Generated code that quietly picks a value for an unknown enum, or treats a suspected
+    foreign key as a number, is a guess wearing the same clothes as a fact. Telling the
+    model which calls are open is cheaper than reviewing what it invented.
+    """
+    try:
+        from src.adapters.magento_modelling import grounding_for
+        return grounding_for(getattr(bb, "modelling", None) or [])
+    except Exception:
+        return ""
+
+
 def _rest_shapes(source_classes: list) -> str:
     """How many endpoints share a verb, and whether the path can be declared. [1.25]
 
@@ -115,7 +129,8 @@ class BuilderAgent:
         # generated — and a query that can be derived should never be generated. [1.23b]
         for block in (_derived_queries(plan_item.source_classes),
                       _transaction_shapes(plan_item.source_classes),
-                      _rest_shapes(plan_item.source_classes)):
+                      _rest_shapes(plan_item.source_classes),
+                      _data_model_notes(bb)):
             if block:
                 grounding = (grounding + "\n\n" + block) if grounding else block
         gen = generate_apex(target, bb.comprehensions, scoped_sigs,

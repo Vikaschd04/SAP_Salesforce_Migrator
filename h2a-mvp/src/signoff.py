@@ -100,7 +100,9 @@ def build_signoff(bb, *, accounting: dict | None = None, cost: dict | None = Non
             relation_notes.append(n)
     caveats = _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
                        getattr(bb, "cycle_cuts", None) or [], shape_notes, relation_notes,
-                       getattr(bb, "upsert_blockers", None) or [])
+                       getattr(bb, "upsert_blockers", None) or [],
+                       [r for r in (getattr(bb, "modelling", None) or [])
+                        if r.get("action") == "reported"])
 
     contract = {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
@@ -186,7 +188,7 @@ def _languages() -> tuple:
 
 def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
              cycle_cuts=(), shape_notes=(), relation_notes=(),
-             upsert_blockers=()) -> list[str]:
+             upsert_blockers=(), modelling=()) -> list[str]:
     """Everything this document does not certify. Assembled from the same data as the
     claims, so it cannot drift out of step with them."""
     src, tgt = _languages()
@@ -268,6 +270,13 @@ def _caveats(counts, rules, chars, prov, radar, approvals, assurance_claim,
         elif note.get("demoted"):
             out.append(f"**`{note['code']}` no longer deletes its children with their "
                        f"parent.** {note['lost']}")
+
+    for row in modelling or ():
+        # Decisions about the *shape of the data*, which nothing downstream can make and
+        # which get more expensive the later they are made — a key added after a load is
+        # a second load. [1.43]
+        where = f"`{row['table']}`" + (f".`{row['column']}`" if row.get("column") else "")
+        out.append(f"**A data-model decision is open on {where}.** {row['why']}")
 
     for blocked in upsert_blockers or ():
         # The runbook prints a confident load command for each of these. Whichever way

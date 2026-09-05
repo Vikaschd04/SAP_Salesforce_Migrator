@@ -253,3 +253,109 @@ def test_a_dropped_relation_reaches_the_sign_off(code):
     text = "\n".join(_caveats({}, {}, {}, {}, {}, [], claim, relation_notes=notes))
     assert code in text
     assert "not in the output" in text
+
+
+
+def _model(one_type: dict):
+    """A `DataModel`-shaped stand-in: `.types` holding dicts, which is what
+    `DataType.to_dict()` produces and what every reader downstream sees."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(types=[one_type])
+
+
+# ── the data model beyond its column types [1.43] ─────────────────────────────
+
+def test_a_declared_foreign_key_becomes_a_reference():
+    """`<constraint xsi:type="foreign">` naming `customer_entity` says this integer *is* a
+    customer. Emitted as an integer the relationship is gone — the platform can no longer
+    join it, validate it or cascade from it."""
+    from src import pipeline
+    from src.adapters.magento_modelling import converted, decide
+
+    pipeline.ensure_registered()
+    model = pipeline.get("adobe->hybris").source.read(
+        "../Testing/acme-commerce-magento-full")
+    got = converted(decide(model.data_model))
+    assert got[("acme_loyalty_account", "customer_id")] == "Customer"
+    assert got[("acme_loyalty_points_ledger", "account_id")] == "AcmeLoyaltyAccount"
+
+
+def test_a_suspected_reference_is_reported_and_never_converted():
+    """A column called `customer_id` with no constraint is a hint, and a hint is not a
+    declaration. Migrating on it would guess at a data model, which is found out late."""
+    from src.adapters.magento_modelling import converted, decide
+
+    dm = _model({
+        "code": "appt", "deployment": "default",
+        "attributes": [{"name": "customer_id", "type": "Integer", "raw_type": "int"}],
+    })
+    rows = decide(dm)
+    assert converted(rows) == {}
+    assert [r["kind"] for r in rows] == ["reference_suspected"]
+    assert rows[0]["confidence"] == "inferred"
+
+
+def test_a_tables_own_key_is_not_a_reference():
+    """`entity_id` matches the `*_id` shape exactly, and saying so in every row is noise."""
+    from src.adapters.magento_modelling import decide
+
+    dm = _model({
+        "code": "appt", "deployment": "default",
+        "attributes": [{"name": "entity_id", "type": "Integer", "raw_type": "int",
+                        "identity": True, "primary": True}],
+    })
+    assert not [r for r in decide(dm) if r["kind"] == "reference_suspected"]
+
+
+def test_free_text_holding_a_closed_set_is_flagged():
+    """Magento enforces the set in PHP, so the database takes a typo and the row is then
+    invisible to every filter on that column."""
+    from src.adapters.magento_modelling import decide
+
+    dm = _model({
+        "code": "appt", "deployment": "default",
+        "attributes": [{"name": "status", "type": "String", "raw_type": "varchar"}],
+    })
+    rows = [r for r in decide(dm) if r["kind"] == "enum_candidate"]
+    assert rows and "not in the codebase" in rows[0]["why"]
+
+
+def test_a_scattered_address_is_proposed_not_applied():
+    """Merging columns changes the shape of every row — a migration decision, not a
+    translation."""
+    from src.adapters.magento_modelling import decide
+
+    dm = _model({
+        "code": "appt", "deployment": "default",
+        "attributes": [{"name": n, "type": "String", "raw_type": "varchar"}
+                       for n in ("address", "city", "country", "state")],
+    })
+    rows = [r for r in decide(dm) if r["kind"] == "address_cluster"]
+    assert rows and rows[0]["action"] == "reported" and rows[0]["becomes"] == "Address"
+
+
+def test_a_table_with_only_a_surrogate_key_is_called_out():
+    """No value a customer can quote, no key an integration can use, and no way to make a
+    load idempotent — a re-run inserts everything again."""
+    from src.adapters.magento_modelling import decide
+
+    dm = _model({
+        "code": "appt", "deployment": "default",
+        "attributes": [{"name": "entity_id", "type": "Integer", "raw_type": "int",
+                        "identity": True},
+                       {"name": "note", "type": "String", "raw_type": "varchar"}],
+    })
+    assert [r for r in decide(dm) if r["kind"] == "no_business_key"]
+
+
+def test_the_builder_is_told_which_calls_are_open():
+    from src.adapters.magento_modelling import decide, grounding_for
+
+    dm = _model({
+        "code": "appt", "deployment": "default",
+        "attributes": [{"name": "status", "type": "String", "raw_type": "varchar"}],
+    })
+    block = grounding_for(decide(dm))
+    assert "decisions the source does not settle" in block
+    assert "rather than inventing one" in block
