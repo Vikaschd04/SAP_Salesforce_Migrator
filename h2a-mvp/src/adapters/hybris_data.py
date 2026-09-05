@@ -121,7 +121,8 @@ def build_seed_impex(extension: str, data_types: list) -> str:
 
 # ── 3.6 · scheduled jobs ──────────────────────────────────────────────────────
 
-def build_job_performable(job, package: str, class_name: str = "") -> str:
+def build_job_performable(job, package: str, class_name: str = "",
+                          generated_class: str = "") -> str:
     """`AbstractJobPerformable` for one scheduled job. [3.6]
 
     `class_name` comes from the planner when there is one. A job has two names in the
@@ -130,6 +131,30 @@ def build_job_performable(job, package: str, class_name: str = "") -> str:
     defines.
     """
     name = class_name or f"{pascal(job.name)}JobPerformable"
+
+    # The model is told it is writing a job performable, and it writes `perform` — the
+    # platform's name, which is also the one emitted here. [1.48]
+    from src.adapters import java_bodies
+    merge = java_bodies.plan_merge(generated_class, {"perform": ["perform"]})
+    if merge["bodies"]:
+        body = "\n".join([
+            f"        // Generated from {job.implemented_by}. Reviewed as generated"
+            " logic, not derived — see PROVENANCE.md.",
+            *java_bodies.indent(merge["bodies"]["perform"])])
+    else:
+        body = (f"        // TODO migrate: {job.implemented_by}\n"
+                "        throw new UnsupportedOperationException(\n"
+                f'                "Not migrated yet: {job.name}");')
+    extra_imports = "\n".join(merge["imports"])
+    if extra_imports:
+        extra_imports += "\n"
+    extra_members = ""
+    if merge["fields"]:
+        extra_members += "\n" + "\n".join(f"    {f}" for f in merge["fields"]) + "\n"
+    for _hn, hs in sorted(merge["helpers"].items()):
+        extra_members += "\n" + "\n".join(("    " + ln) if ln.strip() else ""
+                                           for ln in hs.splitlines()) + "\n"
+
     return f"""package {package}.jobs;
 
 import de.hybris.platform.cronjob.enums.CronJobResult;
@@ -137,7 +162,7 @@ import de.hybris.platform.cronjob.enums.CronJobStatus;
 import de.hybris.platform.cronjob.model.CronJobModel;
 import de.hybris.platform.servicelayer.cronjob.AbstractJobPerformable;
 import de.hybris.platform.servicelayer.cronjob.PerformResult;
-
+{extra_imports}
 /**
  * Migrated from the Adobe Commerce cron job `{job.name}`
  * ({job.implemented_by}).
@@ -152,13 +177,11 @@ import de.hybris.platform.servicelayer.cronjob.PerformResult;
  */
 public class {name} extends AbstractJobPerformable<CronJobModel>
 {{
-
+{extra_members}
     @Override
     public PerformResult perform(final CronJobModel cronJob)
     {{
-        // TODO migrate: {job.implemented_by}
-        throw new UnsupportedOperationException(
-                "Not migrated yet: {job.name}");
+{body}
     }}
 
     @Override

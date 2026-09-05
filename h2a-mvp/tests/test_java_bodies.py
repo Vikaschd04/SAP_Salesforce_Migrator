@@ -558,3 +558,128 @@ def test_dropping_the_support_breaks_that_same_class(tmp_path):
             models=set()))
     assert r.returncode != 0, "the body names RATE, BigDecimal and norm — none declared"
     assert "cannot find symbol" in r.stderr
+
+
+# ── keyed the way the emitted class names its methods [1.48] ──────────────────
+#
+# The first version of this merged almost nothing against a real model, and the reason was
+# a wrong assumption rather than a bug: it keyed on the *source* method name. A model is
+# told what it is building and writes the *platform's* names. On that run the jobs came
+# back with `perform`, the listeners with `onEvent`, the decorator with `getGrandTotal` —
+# the names the emitters emit — while the source methods were `execute`,
+# `aroundGetGrandTotal` and so on. Nothing lined up.
+#
+# The shapes below are taken from that run's checkpoint, not invented.
+
+JOB_AS_GENERATED = """public class ExpirePointsJobPerformable extends AbstractJobPerformable<CronJobModel>
+{
+    private ModelService modelService;
+
+    @Override
+    public PerformResult perform(final CronJobModel cronJob)
+    {
+        expire();
+        return new PerformResult(CronJobResult.SUCCESS, CronJobStatus.FINISHED);
+    }
+
+    private void expire() { modelService.saveAll(); }
+}"""
+
+
+def test_a_job_takes_the_platform_named_body():
+    from src.adapters.hybris_data import build_job_performable
+
+    job = type("J", (), {"name": "expire_points",
+                         "implemented_by": "Acme\\Cron\\ExpirePoints",
+                         "cron": "0 2 * * *"})()
+    out = build_job_performable(job, "com.x", "ExpirePointsJobPerformable",
+                                generated_class=JOB_AS_GENERATED)
+    assert "expire();" in out
+    assert "Generated from Acme\\Cron\\ExpirePoints" in out
+    assert "Not migrated yet" not in out
+
+
+def test_a_job_carries_its_field_and_helper():
+    from src.adapters.hybris_data import build_job_performable
+
+    job = type("J", (), {"name": "expire_points", "implemented_by": "X", "cron": "* * * * *"})()
+    out = build_job_performable(job, "com.x", "ExpirePointsJobPerformable",
+                                generated_class=JOB_AS_GENERATED)
+    assert "private ModelService modelService;" in out
+    assert "private void expire()" in out
+
+
+def test_a_job_with_nothing_generated_still_refuses():
+    from src.adapters.hybris_data import build_job_performable
+
+    job = type("J", (), {"name": "n", "implemented_by": "X", "cron": "* * * * *"})()
+    out = build_job_performable(job, "com.x", "NJobPerformable")
+    assert "UnsupportedOperationException" in out
+
+
+LISTENER_AS_GENERATED = """public class TierCheckObserverListener extends AbstractEventListener<E>
+{
+    private AcmeLoyaltyAccountDao dao;
+
+    @Override
+    protected void onEvent(final E event)
+    {
+        dao.find("x");
+    }
+}"""
+
+
+def test_a_listener_takes_the_platform_named_body():
+    from src.adapters.hybris_hooks import build_event_listener
+
+    unit = type("U", (), {"name": "TierCheckObserver", "file": "a.php", "methods": [],
+                          "extra": {}})()
+    out = build_event_listener(unit, "com.x", "checkout_cart_add",
+                               generated_class=LISTENER_AS_GENERATED)
+    assert 'dao.find("x");' in out
+    assert "private AcmeLoyaltyAccountDao dao;" in out
+
+
+def test_an_interceptor_merges_only_into_the_hook_it_declares():
+    """The hook is derived from the DI configuration. On the real run the emitter chose
+    `onPrepare` and the model wrote `onValidate` — different hooks, different semantics.
+    Moving a body between them would put a wrong body under a right name."""
+    from src.adapters.hybris_hooks import build_interceptor, interceptor_hook
+
+    unit = type("U", (), {"name": "SubtotalPlugin", "file": "a.php",
+                          "methods": [type("M", (), {"name": "beforeSave", "params": [],
+                                                     "doc": ""})()],
+                          "extra": {}})()
+    assert interceptor_hook(unit) == "onPrepare"
+
+    wrong = build_interceptor(unit, "com.x", {},
+                              generated_class="public class X { public void onValidate("
+                                              "Object m, InterceptorContext c) "
+                                              "{ reject(); } }")
+    assert "reject();" not in wrong and "Not migrated yet" in wrong
+
+    right = build_interceptor(unit, "com.x", {},
+                              generated_class="public class X { public void onPrepare("
+                                              "Object m, InterceptorContext c) "
+                                              "{ adjust(); } }")
+    assert "adjust();" in right
+
+
+def test_the_merge_planner_prefers_the_emitted_name():
+    """Both names present: the one the class will actually declare wins."""
+    got = java_bodies.plan_merge(
+        "public class X {"
+        " public Object getGrandTotal(Object... a) { return 1; }"
+        " public Object aroundGetGrandTotal(Object... a) { return 2; } }",
+        {"getGrandTotal": ["getGrandTotal", "aroundGetGrandTotal"]})
+    assert "return 1;" in got["bodies"]["getGrandTotal"]
+
+
+def test_nothing_matching_carries_nothing():
+    """Imports and constants belonging to logic that was not used have no business in a
+    file of honest stubs."""
+    got = java_bodies.plan_merge(
+        "import java.math.BigDecimal;\npublic class X { private int A = 1;"
+        " public void other() { work(); } }",
+        {"onEvent": ["onEvent"]})
+    assert got == {"bodies": {}, "imports": [], "fields": [], "helpers": {}}

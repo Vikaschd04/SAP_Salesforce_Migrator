@@ -212,8 +212,12 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
     # springId nothing defined.
     jobs = _jobs_by_target(source_model, targets)
     for performable, job in sorted(jobs.items()):
-        write(_pkg_dir(src, package, "jobs", f"{performable}.java"),
-              hybris_data.build_job_performable(job, package, class_name=performable))
+        job_src = (generated or {}).get(performable) or ""
+        written_job = hybris_data.build_job_performable(
+            job, package, class_name=performable, generated_class=job_src)
+        write(_pkg_dir(src, package, "jobs", f"{performable}.java"), written_job)
+        if "Reviewed as generated logic" in written_job:
+            bodies_used.add(f"{performable}.perform")
         for t_row in targets or []:
             if t_row.get("target_name") != performable:
                 continue
@@ -301,19 +305,30 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
             # Concatenating separately-written bodies into one would rarely compile and
             # would always *look* migrated, which is the trade this project never
             # makes — they keep their TODO. [1.48]
-            hook_bodies = java_bodies.bodies((generated or {}).get(target_name) or "")
+            hook_src = (generated or {}).get(target_name) or ""
+            hook_bodies = java_bodies.bodies(hook_src)
             write(_pkg_dir(src, package, "decorators", f"{target_name}.java"),
                   hybris_hooks.build_decorator(
-                      unit, package, di, emitted_service_names, bodies=hook_bodies))
+                      unit, package, di, emitted_service_names, bodies=hook_bodies,
+                      generated_class=hook_src))
             for m in getattr(unit, "methods", None) or []:
-                if hook_bodies.get(getattr(m, "name", "")) is not None:
-                    bodies_used.add(f"{target_name}.{m.name}")
+                mn = getattr(m, "name", "")
+                for key in (hybris_hooks.wrapped_method(mn), mn):
+                    if hook_bodies.get(key) is not None \
+                            and not java_bodies.is_stub(hook_bodies[key]):
+                        bodies_used.add(f"{target_name}.{key}")
+                        break
             hooks.append({"kind": kind, "name": target_name})
             emitted_as[getattr(unit, "file", "") or unit.name] = (
                 f"src/{package.replace('.', '/')}/decorators/{target_name}.java")
         elif kind == INTERCEPTOR:
+            interceptor_src = (generated or {}).get(target_name) or ""
+            written_interceptor = hybris_hooks.build_interceptor(
+                unit, package, di, generated_class=interceptor_src)
             write(_pkg_dir(src, package, "interceptors", f"{target_name}.java"),
-                  hybris_hooks.build_interceptor(unit, package, di))
+                  written_interceptor)
+            if "Reviewed as generated logic" in written_interceptor:
+                bodies_used.add(f"{target_name}.{hybris_hooks.interceptor_hook(unit)}")
             hooks.append({"kind": kind, "name": target_name,
                           "type_code": hybris_hooks._short(
                               hybris_hooks._target_type(unit, di))})
@@ -326,8 +341,13 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                 write(_pkg_dir(src, package, "events",
                                f"{hybris_hooks.event_class_for(event)}.java"),
                       hybris_hooks.build_event(event, package))
+            listener_src = (generated or {}).get(target_name) or ""
+            written_listener = hybris_hooks.build_event_listener(
+                unit, package, event, generated_class=listener_src)
             write(_pkg_dir(src, package, "listeners", f"{target_name}.java"),
-                  hybris_hooks.build_event_listener(unit, package, event))
+                  written_listener)
+            if "Reviewed as generated logic" in written_listener:
+                bodies_used.add(f"{target_name}.onEvent")
             hooks.append({"kind": kind, "name": target_name, "event": event})
             emitted_as[getattr(unit, "file", "") or unit.name] = (
                 f"src/{package.replace('.', '/')}/listeners/{target_name}.java")

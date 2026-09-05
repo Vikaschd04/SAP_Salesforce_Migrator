@@ -273,3 +273,50 @@ def rename_params(signature: str, names: list) -> str:
             return signature
         relabelled.append(" ".join(tokens[:-1] + [new]))
     return f"{head}({', '.join(relabelled)}){tail}"
+
+
+def plan_merge(generated_class: str, wanted: dict) -> dict:
+    """What to merge into one emitted class, keyed the way that class names its methods.
+
+    `wanted` maps *the name the emitter is about to write* to the candidate names it may
+    appear under in the generated class, best first. The distinction matters, and getting
+    it backwards is why the first version of this merged almost nothing:
+
+    A model is told what it is building, and it writes the *platform's* method names. On
+    the first real run the jobs came back with `perform`, the listeners with `onEvent`,
+    the decorators with `getGrandTotal` — exactly the names the emitters emit. Keying on
+    the *source* method name (`aroundGetGrandTotal`, `execute`) matched none of them.
+
+    Where the two genuinely disagree the merge must not happen: the interceptor on that
+    run emitted `onPrepare` — derived from the DI configuration — while the model wrote
+    `onValidate`. Those are different hooks with different semantics, and moving a body
+    from one to the other would be a wrong body under a right name.
+
+    Returns `{bodies, imports, fields, helpers}`, where `bodies` is keyed by the emitted
+    name so a caller can look up exactly what it is about to write.
+    """
+    text = generated_class or ""
+    if not text.strip():
+        return {"bodies": {}, "imports": [], "fields": [], "helpers": {}}
+
+    found = bodies(text)
+    out: dict = {}
+    claimed = set()
+    for emitted, candidates in (wanted or {}).items():
+        for cand in candidates:
+            body = found.get(cand)
+            if body is not None and not is_stub(body):
+                out[emitted] = body
+                claimed.add(cand)
+                break
+
+    if not out:
+        # Nothing merged: the imports and constants belong to logic that is not being
+        # used, and carrying them would leave a file of honest stubs importing types
+        # nothing in it names.
+        return {"bodies": {}, "imports": [], "fields": [], "helpers": {}}
+
+    return {"bodies": out,
+            "imports": imports(text),
+            "fields": fields(text),
+            "helpers": helpers(text, skip=claimed)}

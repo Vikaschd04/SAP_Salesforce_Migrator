@@ -75,7 +75,8 @@ def _short(fqn: str) -> str:
 
 def build_decorator(unit, package: str, wiring: dict | None = None,
                     emitted_services: set | None = None,
-                    bodies: dict | None = None) -> str:
+                    bodies: dict | None = None,
+                    generated_class: str = "") -> str:
     """A decorator: holds the original and decides whether to call it. [1.34]
 
     Only where there *is* an original to hold. Magento lets a plugin wrap a method on any
@@ -167,11 +168,12 @@ def build_decorator(unit, package: str, wiring: dict | None = None,
         # No `@Override`: there is no `implements` clause for it to refer to, and there
         # cannot be until the wrapped interface is implemented in full. [1.45]
         out += [f"    public Object {wrapped}(final Object... args)", "    {"]
-        generated = (bodies or {}).get(mname)
+        generated = (bodies or {}).get(wrapped) or (bodies or {}).get(mname)
         if generated is not None and not java_bodies.is_stub(generated):
-            # Keyed on the *source* method name: the emitter renames `getTotal` to
-            # `beforeGetTotal` to match the platform's hook convention, and the model was
-            # asked about `getTotal`. [1.48]
+            # Keyed on the name being *emitted* first. The model writes the platform's
+            # method names — on the first real run it produced `getGrandTotal`, which is
+            # what `wrapped_method` emits, while the source method was
+            # `aroundGetGrandTotal`. Keying on the source name matched nothing. [1.48]
             out.append(f"        // Generated from {unit.name}::{mname}. Reviewed as"
                        " generated logic, not derived — see PROVENANCE.md.")
             if wrappable:
@@ -192,7 +194,24 @@ def build_decorator(unit, package: str, wiring: dict | None = None,
     if wrappable:
         out += [f"    public void setDelegate(final {iface} delegate)", "    {",
                 "        this.delegate = delegate;", "    }"]
+
+    # Whatever the merged bodies name, alongside them. Same rule as the other emitters:
+    # a body that calls a helper or names a constant is meaningless without it. [1.48]
+    merged_any = any(not java_bodies.is_stub(b) for b in (bodies or {}).values())
+    if merged_any and generated_class:
+        claimed = {k for k, b in (bodies or {}).items() if not java_bodies.is_stub(b)}
+        for _hn, hs in sorted(java_bodies.helpers(generated_class,
+                                                  skip=claimed).items()):
+            out += ["", "    // Generated helper, called by the logic above."]
+            out += [("    " + ln) if ln.strip() else "" for ln in hs.splitlines()]
     out += ["}", ""]
+    if merged_any and generated_class:
+        extra_fields = java_bodies.fields(generated_class)
+        if extra_fields:
+            out = _with_fields(out, extra_fields)
+        extra_imports = java_bodies.imports(generated_class)
+        if extra_imports:
+            out = _with_imports(out, extra_imports)
     return "\n".join(out)
 
 
@@ -213,16 +232,53 @@ _INTERCEPTOR_FOR = {
 }
 
 
-def build_interceptor(unit, package: str, wiring: dict | None = None) -> str:
+def _interceptor_shape(unit) -> tuple:
+    """`(interceptor kind, hook method, when it fires)` for this plugin.
+
+    Named rather than inlined because the emitter needs the hook too: it records which
+    method a generated body was merged into, and re-deriving that in two places is how
+    the two drift apart. [1.48]
+    """
+    kinds = {_prefix_of(getattr(m, "name", "")) for m in _public_methods(unit)}
+    return _INTERCEPTOR_FOR.get(
+        next((k for k in ("around", "before", "after") if k in kinds), "before"),
+        _INTERCEPTOR_FOR["before"])
+
+
+def interceptor_hook(unit) -> str:
+    """The method an interceptor for this plugin declares."""
+    return _interceptor_shape(unit)[1]
+
+
+def _with_imports(lines: list, extra: list) -> list:
+    """Add imports after the last one already present, or after the package line."""
+    at = max([i for i, l in enumerate(lines) if l.startswith("import ")], default=-1)
+    if at < 0:
+        at = max([i for i, l in enumerate(lines) if l.startswith("package ")], default=-1)
+    have = {l for l in lines if l.startswith("import ")}
+    return lines[:at + 1] + [e for e in extra if e not in have] + lines[at + 1:]
+
+
+def _with_fields(lines: list, extra: list) -> list:
+    """Add field declarations just inside the class body."""
+    at = next((i for i, l in enumerate(lines)
+               if l == "{" and i and lines[i - 1].startswith("public class ")), -1)
+    if at < 0:
+        return lines
+    block = ["", "    // Declared by the generated logic below, and carried across with"
+             " it — a body",
+             "    // that names a constant is meaningless without it."]
+    return lines[:at + 1] + block + [f"    {f}" for f in extra] + lines[at + 1:]
+
+
+def build_interceptor(unit, package: str, wiring: dict | None = None,
+                      generated_class: str = "") -> str:
     """An interceptor: runs alongside a model operation, and cannot replace it. [1.34]"""
     name = f"{pascal(unit.name)}Interceptor"
     target = _short(_target_type(unit, wiring or {})) or "TODO_ItemType"
 
     methods = _public_methods(unit)
-    kinds = {_prefix_of(getattr(m, "name", "")) for m in methods}
-    kind, hook, when = _INTERCEPTOR_FOR.get(
-        next((k for k in ("around", "before", "after") if k in kinds), "before"),
-        _INTERCEPTOR_FOR["before"])
+    kind, hook, when = _interceptor_shape(unit)
 
     out = [f"package {package}.interceptors;", "",
            "import de.hybris.platform.servicelayer.interceptor.InterceptorContext;",
@@ -249,13 +305,32 @@ def build_interceptor(unit, package: str, wiring: dict | None = None) -> str:
         out += _javadoc(getattr(m, "doc", ""))
         out.append(f"    // from {unit.name}::{getattr(m, 'name', '')}")
 
+    # Keyed on the hook this class actually declares, and on nothing else. The hook is
+    # derived from the DI configuration; on the first real run the emitter chose
+    # `onPrepare` and the model wrote `onValidate`. Those are different hooks with
+    # different semantics, and moving a body between them would put a wrong body under a
+    # right name — so a mismatch merges nothing and keeps the TODO. [1.48]
+    merge = java_bodies.plan_merge(generated_class, {hook: [hook]})
     out += ["    @Override",
             f"    public void {hook}(final Object model, final InterceptorContext ctx)",
-            "            throws InterceptorException", "    {",
-            f"        // TODO migrate: {unit.name}",
-            "        throw new UnsupportedOperationException("
-            f'"Not migrated yet: {unit.name}");',
-            "    }", "}", ""]
+            "            throws InterceptorException", "    {"]
+    if merge["bodies"]:
+        out.append(f"        // Generated from {unit.name}. Reviewed as generated logic,"
+                   " not derived — see PROVENANCE.md.")
+        out += java_bodies.indent(merge["bodies"][hook])
+    else:
+        out += [f"        // TODO migrate: {unit.name}",
+                "        throw new UnsupportedOperationException("
+                f'"Not migrated yet: {unit.name}");']
+    out.append("    }")
+    for _hn, hs in sorted(merge["helpers"].items()):
+        out += ["", "    // Generated helper, called by the logic above."]
+        out += [("    " + ln) if ln.strip() else "" for ln in hs.splitlines()]
+    out += ["}", ""]
+    if merge["imports"]:
+        out = _with_imports(out, merge["imports"])
+    if merge["fields"]:
+        out = _with_fields(out, merge["fields"])
     return "\n".join(out)
 
 
@@ -297,7 +372,8 @@ def build_event(event_name: str, package: str) -> str:
         "        return payload;", "    }", "}", ""])
 
 
-def build_event_listener(unit, package: str, event_name: str = "") -> str:
+def build_event_listener(unit, package: str, event_name: str = "",
+                         generated_class: str = "") -> str:
     """`AbstractEventListener<T>` for a Magento observer. [1.34]"""
     name = f"{pascal(unit.name)}Listener"
     # An unmatched observer used to extend `TODO_Event`, a type that does not exist —
@@ -342,11 +418,26 @@ def build_event_listener(unit, package: str, event_name: str = "") -> str:
             f"public class {name} extends AbstractEventListener<{cls}>", "{", "",
             "    @Override",
             f"    protected void onEvent(final {cls} event)", "    {"]
-    for m in _public_methods(unit):
-        out.append(f"        // TODO migrate: {unit.name}::{getattr(m, 'name', '')}")
-    out += ["        throw new UnsupportedOperationException("
-            f'"Not migrated yet: {unit.name}");',
-            "    }", "}", ""]
+    merge = java_bodies.plan_merge(generated_class, {"onEvent": ["onEvent"]})
+    if merge["bodies"]:
+        out.append(f"        // Generated from {unit.name}. Reviewed as generated logic,"
+                   " not derived — see PROVENANCE.md.")
+        out += java_bodies.indent(merge["bodies"]["onEvent"])
+        out.append("    }")
+    else:
+        for m in _public_methods(unit):
+            out.append(f"        // TODO migrate: {unit.name}::{getattr(m, 'name', '')}")
+        out += ["        throw new UnsupportedOperationException("
+                f'"Not migrated yet: {unit.name}");',
+                "    }"]
+    for _hn, hs in sorted(merge["helpers"].items()):
+        out += ["", "    // Generated helper, called by the logic above."]
+        out += [("    " + ln) if ln.strip() else "" for ln in hs.splitlines()]
+    out += ["}", ""]
+    if merge["imports"]:
+        out = _with_imports(out, merge["imports"])
+    if merge["fields"]:
+        out = _with_fields(out, merge["fields"])
     return "\n".join(out)
 
 
