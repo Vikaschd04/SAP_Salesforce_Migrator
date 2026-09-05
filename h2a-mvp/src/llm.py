@@ -720,10 +720,17 @@ def call_llm(
                 "OPENROUTER_API_KEY not found. Set it in the environment or .env, "
                 "get a key at https://openrouter.ai/keys, or use provider=anthropic / mock."
             )
+        # Any OpenAI-compatible endpoint, not only OpenRouter: the provider is the *wire
+        # format*, and the host is configuration. Overridable by environment so a base URL
+        # and a key never have to be written into a file to try one. Mirrors
+        # `ANTHROPIC_BASE_URL` on the other backend. [1.46]
+        base_url = (_get_api_key("OPENROUTER_BASE_URL")
+                    or orcfg.get("base_url")
+                    or "https://openrouter.ai/api/v1")
         result = _with_retry(lambda: _call_openrouter(
             model=model, system_prompt=system_prompt, prompt=prompt,
             max_tokens=max_tokens, json_schema=json_schema,
-            base_url=orcfg.get("base_url", "https://openrouter.ai/api/v1"),
+            base_url=base_url,
             api_key=api_key,
         ), stage=stage, config=config)
     else:

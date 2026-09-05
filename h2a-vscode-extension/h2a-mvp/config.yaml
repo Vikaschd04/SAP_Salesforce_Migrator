@@ -10,9 +10,17 @@
 provider: anthropic
 model: claude-opus-4-8        # used when provider=anthropic
 
-# Used when provider=openrouter. Pick any model from https://openrouter.ai/models
-# (":free" suffix = free tier). Override per-run with H2A_CUSTOM_MODEL / the
-# extension's "customModel" setting.
+# Used when provider=openrouter — which is really "any OpenAI-compatible endpoint":
+# the provider names the *wire format*, and the host is configuration. OpenRouter is
+# only the default. Point it anywhere that speaks /v1/chat/completions:
+#
+#   OPENROUTER_BASE_URL=https://api.unorouter.com/v1 \
+#   OPENROUTER_API_KEY=...  H2A_PROVIDER=openrouter \
+#   H2A_CUSTOM_MODEL=glm-5.3-flash-think-search:free
+#
+# All three are environment overrides, so a key never has to be written to a file.
+# Structured output is requested by a prompt directive rather than the OpenAI
+# structured-output API, so any chat model works — no schema support required.
 openrouter:
   base_url: https://openrouter.ai/api/v1
   # Free tiers change often & rate-limit; if one 404s/429s, pick another from
