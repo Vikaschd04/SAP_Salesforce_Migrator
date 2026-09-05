@@ -103,6 +103,12 @@ class Blackboard:
     #: went into items.xml was reported under an invented `.java` filename that a reader
     #: would look for and not find. [1.35]
     emitted_as: dict = field(default_factory=dict)
+    #: `Target.method` for every body a model wrote that reached the emitted file, as
+    #: opposed to being derived or left as a TODO. The counter-metric to the defect that
+    #: motivated it: when the Hybris emitter silently discarded everything the Builder
+    #: produced, this is the number that would have been zero while the ledger reported a
+    #: complete migration. It is asserted at the end of a run for that reason. [1.48]
+    generated_bodies: list = field(default_factory=list)
 
     #: `target name -> the checker's findings against the file emitted for it`. The
     #: static check and the compiler both run *after* the Builder is done, so neither

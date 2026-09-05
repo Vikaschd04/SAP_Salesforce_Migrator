@@ -1263,6 +1263,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
 
         bb.emitted_as.update(
             (getattr(_target, "last_emit", None) or {}).get("emitted_as") or {})
+        bb.generated_bodies = list(
+            (getattr(_target, "last_emit", None) or {}).get("generated_bodies") or [])
 
         # Attribute each finding to the artifact whose file it is in, so triage can see
         # it. A file the checker rejected belongs to a target that does not build, and
@@ -1515,6 +1517,20 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     print(f"  Report: {report_file}")
     print(f"  Plan + decisions: {Path(output_dir) / 'MIGRATION_PLAN.md'}")
     print(f"  Completeness: {ledger_line}")
+    # How much of the emitted logic a model actually wrote. On a target that assembles a
+    # package this is the difference between a migration and a scaffold, and it went
+    # unreported for as long as the answer was "none of it". [1.48]
+    if bb.pipeline_id and getattr(_pl, "target", None) is not None \
+            and not getattr(_pl.target, "has_oracle", True):
+        _bodies = len(bb.generated_bodies)
+        _methods = sum(len(getattr(c, "methods", None) or [])
+                       for c in (bb.source_model.units if getattr(bb, "source_model", None)
+                                 else []))
+        if _methods:
+            print(f"  Generated logic: {_bodies}/{_methods} method bodies written by a "
+                  f"model and merged into the emitted classes"
+                  + ("  ⚠ nothing was merged — the emitted classes are scaffolding"
+                     if not _bodies else ""))
     if rule_ledger["summary"]["total"]:
         print(f"  Business rules: {headline(rule_ledger['summary'])}")
         if rule_ledger["summary"]["dropped"]:

@@ -141,3 +141,38 @@ def test_nothing_is_reported_as_converted_that_was_not_written(tmp_path):
     assert named, "no converted row named a Java file — has the ledger's format changed?"
     missing = [t for t in named if t not in emitted]
     assert not missing, f"reported converted, never written: {missing}"
+
+
+# ── the metric that would have caught the discard [1.48] ──────────────────────
+
+@pytest.mark.slow
+def test_a_run_says_how_much_of_the_logic_a_model_wrote(tmp_path):
+    """The counter-metric to the Phase 0 defect, asserted rather than trusted.
+
+    For nine months the Hybris emitter threw away everything the Builder generated and
+    every report still read as a complete migration: *9 converted, 91% of business rules
+    preserved*, over an extension whose every method threw. Nothing in the output was
+    false — the files existed and the rules were extracted — and nothing said the logic
+    was missing, because no number counted it.
+
+    This is that number. On a mock run it is zero and the run says so, in the same breath
+    as the completeness ledger, so the two can never again tell different stories.
+    """
+    import subprocess
+    import sys
+    from tests.golden import ADOBE_CORPUS, ROOT
+
+    r = subprocess.run(
+        [sys.executable, "-u", "-m", "src.main", "agent-migrate",
+         "--input", str(ADOBE_CORPUS), "--output", str(tmp_path / "out")],
+        cwd=str(ROOT), capture_output=True, text=True, timeout=900,
+        env={**os.environ, "H2A_PROVIDER": "mock", "H2A_INCREMENTAL": "false",
+             "PYTHONPATH": str(ROOT)})
+    assert r.returncode == 0, r.stdout[-3000:]
+
+    line = next((l for l in r.stdout.splitlines() if "Generated logic:" in l), "")
+    assert line, "a run on a target with no oracle must report how much was generated"
+    # A mock invents no business logic, so its method names match nothing in the source
+    # and nothing merges. That is the correct outcome — and the run has to *say* it,
+    # rather than let the completeness ledger imply otherwise.
+    assert "0/" in line and "scaffolding" in line
