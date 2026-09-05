@@ -16,6 +16,7 @@ Planner and Critic degrade to deterministic behavior and the whole run is keyles
 from __future__ import annotations
 
 import os
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -251,18 +252,44 @@ def _concurrency(config: dict) -> int:
     return max(1, min(n, 32))
 
 
-def _map_parallel(fn, items: list, workers: int) -> list:
+def _map_parallel(fn, items: list, workers: int, *, on_done=None) -> list:
     """Run fn over items, returning results in the SAME order as `items` regardless of
     completion order — so downstream merging stays deterministic and a parallel run
     produces byte-identical output to a sequential one. Falls back to a plain loop at
-    workers<=1 or a single item."""
-    if workers <= 1 or len(items) <= 1:
-        return [fn(x) for x in items]
+    workers<=1 or a single item.
+
+    `on_done(finished, total)` fires as each item lands, for stages that would otherwise
+    print nothing between their heading and their end. Progress only — it must not affect
+    what is returned, and the ordering guarantee above is unchanged. [1.48]
+    """
+    total = len(items)
+    done = [0]
+    lock = threading.Lock()
+
+    def _tick():
+        if on_done is None:
+            return
+        with lock:                      # workers call this concurrently
+            done[0] += 1
+            n = done[0]
+        try:
+            on_done(n, total)
+        except Exception:
+            pass                        # progress reporting must never fail a run
+
+    def _wrapped(x):
+        try:
+            return fn(x)
+        finally:
+            _tick()
+
+    if workers <= 1 or total <= 1:
+        return [_wrapped(x) for x in items]
     # Pool workers do not inherit the caller's context, so per-run overrides
     # (provider/model) would be invisible to every parallel LLM call without this.
     from src.runctx import propagate
-    with ThreadPoolExecutor(max_workers=min(workers, len(items))) as pool:
-        return list(pool.map(propagate(fn), items))
+    with ThreadPoolExecutor(max_workers=min(workers, total)) as pool:
+        return list(pool.map(propagate(_wrapped), items))
 
 
 def _domain_levels(schedule: list, adjacency: dict) -> tuple:
@@ -878,7 +905,12 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         return comprehend_class(cls, offline=offline,
                                 model=route_model(config, f"comprehend_{cls['class_name']}"))
 
-    _results = _map_parallel(_comprehend_one, _fresh, conc)
+    _comprehend_started = time.time()
+    _results = _map_parallel(
+        _comprehend_one, _fresh, conc,
+        on_done=lambda n, total: print(
+            f"    · [{n}/{total}] comprehended"
+            f"  {time.time() - _comprehend_started:.0f}s", flush=True))
     for cls, u in zip(_fresh, _results):
         bb.comprehensions[cls["class_name"]] = u
 
@@ -963,6 +995,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                   f"dependency cycle between {cut['domain']} and {cut['depends_on']}; "
                   f"built {cut['domain']} first, without the other's signatures")
 
+    _total_targets = len(bb.code_plan())
     for level in levels:
         _ck()
         # Snapshot each domain's signature scope BEFORE the level runs. Every dependency
@@ -1033,6 +1066,11 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                 return domain, item, None, f"{type(be).__name__}: {be}", journal, []
 
         results = iter(_map_parallel(_build_one, work, conc))
+        # Phase 0 spent twenty minutes indistinguishable from a hang: the per-artifact
+        # events go to `on_event`, which the CLI does not render, so a terminal saw
+        # nothing between "building" and the end of the stage. A run that is working and
+        # a run that is wedged must not look the same. [1.48]
+        _level_started = time.time()
 
         # ── Merge on this thread, in level order: deterministic and identical to a
         #    sequential run, no matter what order the workers actually finished in.
@@ -1061,6 +1099,10 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                 print(f"    ⚠ {art.target_name}: {len(remaining)} unresolved critic finding(s) → needs_review")
 
             bb.artifacts.append(art)
+            print(f"    · [{len(bb.artifacts)}/{_total_targets}] {art.target_name}"
+                  f" — {art.status}"
+                  + (" (reused)" if hit is not None else "")
+                  + f"  {time.time() - _level_started:.0f}s", flush=True)
             # Remember this result keyed by its fingerprint so the next run can reuse it.
             _artifact_state[art.target_name] = {"h": fp, "a": artifact_to_cache(art)}
             try:

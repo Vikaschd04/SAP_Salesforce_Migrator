@@ -22,7 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.adapters import (hybris_backoffice, hybris_data, hybris_extension,
-                          hybris_hooks, hybris_service)
+                          hybris_hooks, hybris_service, java_bodies)
 from src.adapters.hybris_plan import (BACKOFFICE, DAO, DATA, DECORATOR,
                                       EVENT_LISTENER, INTERCEPTOR, JOB, SERVICE)
 
@@ -43,8 +43,15 @@ def _pkg_dir(root: Path, package: str, *parts: str) -> Path:
 
 
 def emit_extension(output_dir: str, *, name: str, package: str, source_model,
-                   targets: list) -> dict:
+                   targets: list, generated: dict | None = None) -> dict:
     """Write the whole extension. Returns `{created, manual, static}`.
+
+    `generated` is `target name -> the Java a model wrote for it`. The skeleton here
+    is derived and correct about structure; the bodies are merged into it by method
+    name. Before 1.48 this parameter did not exist, the Builder's output was dropped
+    on the floor, and every method on disk threw `UnsupportedOperationException` —
+    which no mock run could show, because a mock and a real model produced the same
+    bytes.
 
     `static` is the checker's verdict on what was actually written, which is the closest
     thing to a compiler available without a licensed platform.
@@ -119,6 +126,10 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
     #: items.xml — the right outcome under an invented filename. The emitter is the only
     #: thing that knows. [1.35]
     emitted_as: dict = {}
+    #: `Target.method` for every body taken from the Builder rather than
+    #: derived. The ledger reports the split; a reader should never have to
+    #: guess which half of the file a model wrote. [1.48]
+    bodies_used: set = set()
 
     for t in targets or []:
         kind = t.get("kind")
@@ -161,12 +172,17 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                                              name=t['target_name'],
                                              source_names=source_names,
                                              models=generated_models))
+        merged = java_bodies.bodies((generated or {}).get(t['target_name']) or "")
         write(_pkg_dir(src, package, "service", "impl",
                        f"Default{t['target_name']}.java"),
               hybris_service.build_implementation(unit, package, resolutions, renames,
                                                   name=t['target_name'],
                                              source_names=source_names,
-                                             models=generated_models))
+                                             models=generated_models,
+                                             bodies=merged))
+        for m in getattr(unit, "methods", None) or []:
+            if merged.get(getattr(m, "name", "")) is not None:
+                bodies_used.add(f"{t['target_name']}.{m.name}")
         services.append(unit)
         for c in t.get("source_classes", []):
             # Keyed by the source *file*. Three controllers in one Magento module are all
@@ -276,9 +292,20 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
         unit = sources[0]
         target_name = t_row.get("target_name", "")
         if kind == DECORATOR:
+            # A decorator emits one method per source method, so the Builder's bodies map
+            # onto it by name exactly as they do for a service. The two kinds below do
+            # not: each collapses *every* source method into a single platform hook
+            # (`onValidate`, `onEvent`), so there is no method for a body to belong to.
+            # Concatenating separately-written bodies into one would rarely compile and
+            # would always *look* migrated, which is the trade this project never
+            # makes — they keep their TODO. [1.48]
+            hook_bodies = java_bodies.bodies((generated or {}).get(target_name) or "")
             write(_pkg_dir(src, package, "decorators", f"{target_name}.java"),
                   hybris_hooks.build_decorator(
-                      unit, package, di, emitted_service_names))
+                      unit, package, di, emitted_service_names, bodies=hook_bodies))
+            for m in getattr(unit, "methods", None) or []:
+                if hook_bodies.get(getattr(m, "name", "")) is not None:
+                    bodies_used.add(f"{target_name}.{m.name}")
             hooks.append({"kind": kind, "name": target_name})
             emitted_as[getattr(unit, "file", "") or unit.name] = (
                 f"src/{package.replace('.', '/')}/decorators/{target_name}.java")
@@ -344,7 +371,8 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                       "issues": list(compiled["issues"]),
                       "message": compiled["message"], "compiler": True}
     return {"created": sorted(set(created)), "manual": manual, "static": static,
-            "emitted_as": emitted_as, "modelling": modelling}
+            "emitted_as": emitted_as, "modelling": modelling,
+            "generated_bodies": sorted(bodies_used)}
 
 
 def _spring(units: list, arguments: list, package: str, extension: str,

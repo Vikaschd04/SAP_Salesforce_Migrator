@@ -24,11 +24,53 @@ contradicted the ledger about business processes.
 
 ---
 
-## Phase 0 — Real-provider validation
+## Phase 0 — Real-provider validation · **run, and it found the big one**
 
-**Blocked on a key, not on engineering.** Everything below is built on a proof stack that
-has only ever run against the `mock` provider. The first real attempt found a defect that
-339 unit tests had not.
+A complete Adobe→Hybris migration has now run end to end against a live model. It found
+five defects. Four were operational. The fifth was the one this phase existed to catch,
+and no amount of mock running could ever have surfaced it:
+
+**The Hybris emitter discarded everything the Builder generated.** `emit_extension` had no
+parameter to receive the artifacts; `hybris_target.emit()` accepted them and passed none
+on. Every method on disk was `throw new UnsupportedOperationException(...)` while the
+model's real Java sat in run state, unused. The run reported *9 converted, 91% of business
+rules preserved* over an extension containing no logic at all — the exact success-shaped
+failure the whole assurance stack is built to prevent, produced by the stack itself.
+
+Two things hid it. A mock run and a real run emitted **byte-identical** output, because
+neither was used — so the golden baseline was green and stayed green. And the mock emitted
+*Apex* on the Adobe→Hybris path, whose target is Java, which nobody noticed because that
+output was discarded too. Each defect concealed the other.
+
+The two signals that did point at it were the ones that measure the output rather than
+describe it: provenance traced 3 of 19 generated methods (16%), and alignment traced 0 of
+11 rules. Both were read as weaknesses in the tracing. They were reporting correctly.
+
+### What was fixed [1.48]
+
+| Finding | Fix |
+|---|---|
+| Generated bodies discarded | `java_bodies` lifts method bodies from generated Java; the emitter merges them into the derived skeleton by name, marked as generated |
+| Mock spoke Apex on a Java pipeline | The mock now emits the target's language, so wrong-language output reaches the stub compiler instead of the bin |
+| `429` at the default concurrency | Retries honour the server's `Retry-After` instead of guessing a backoff that expired inside the same quota window |
+| `524` from a Cloudflare-fronted gateway | `520`–`524` treated as transient; thinking models exceed the ~100s origin timeout on generate prompts |
+| A 20-minute run indistinguishable from a hang | Per-artifact progress on stdout as each target lands |
+
+**The merge, not a substitution.** The emitter is right about structure — package, the
+class name the planner chose, imports, signatures resolved from PHP declarations. The
+model is right about logic, and on the run that found this it chose `BigDecimal` for money
+where the derived signature said `Double`. It also named the class `AcmePricingService`
+where the plan said `PricingService`, and omitted the package line. Taking its class
+wholesale would have traded one defect for two, so bodies are merged into the derived
+skeleton and each carries a comment saying it was generated. What the migration *knew* and
+what a model *decided* stay separable, which is the property every assurance claim rests
+on.
+
+**What still cannot be covered by the golden harness.** It runs on `mock`, and a mock that
+invents no business logic produces no method names matching the source — correctly, but it
+means nothing merges on a golden run. That blind spot is named in
+`tests/test_java_bodies.py` and covered there by driving `hybris_target.emit()` directly,
+rather than left to be rediscovered.
 
 | # | Work item | Done when |
 |---|---|---|
@@ -39,7 +81,9 @@ has only ever run against the `mock` provider. The first real attempt found a de
 | 0.5 | Confirm the repair loop converges | Bounded rounds, no runaway |
 | 0.6 | Fix whatever 0.2–0.5 surface | Findings closed or explicitly deferred |
 
-**Exit:** a real migration walked end to end, with findings fixed.
+**Exit:** a real migration walked end to end, with findings fixed. **Met for
+Adobe→Hybris**; the equivalent supervised run for Hybris→Salesforce (0.1–0.5) is still
+outstanding, and that pipeline has a compile oracle the other lacks.
 **Cost:** ~$2–4 on the reference corpus. One session.
 
 ---

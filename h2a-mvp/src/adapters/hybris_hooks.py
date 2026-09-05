@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import re
 
+from src.adapters import java_bodies
 from src.adapters.hybris_extension import pascal
 from src.adapters.hybris_service import _javadoc, _public_methods, service_name
 
@@ -73,7 +74,8 @@ def _short(fqn: str) -> str:
 # ── decorator ─────────────────────────────────────────────────────────────────
 
 def build_decorator(unit, package: str, wiring: dict | None = None,
-                    emitted_services: set | None = None) -> str:
+                    emitted_services: set | None = None,
+                    bodies: dict | None = None) -> str:
     """A decorator: holds the original and decides whether to call it. [1.34]
 
     Only where there *is* an original to hold. Magento lets a plugin wrap a method on any
@@ -164,17 +166,28 @@ def build_decorator(unit, package: str, wiring: dict | None = None,
                        "making it.")
         # No `@Override`: there is no `implements` clause for it to refer to, and there
         # cannot be until the wrapped interface is implemented in full. [1.45]
-        out += [f"    public Object {wrapped}(final Object... args)",
-                "    {",
-                f"        // TODO migrate: {unit.name}::{mname}",
-                ("        // Decide explicitly whether this path delegates:"
-                 if wrappable else
-                 "        // There is no delegate — see the class comment."),
-                (f"        //     return delegate.{wrapped}(args);" if wrappable else
-                 "        // This logic needs a home on the target; it has none yet."),
-                "        throw new UnsupportedOperationException("
-                f'"Not migrated yet: {mname}");',
-                "    }", ""]
+        out += [f"    public Object {wrapped}(final Object... args)", "    {"]
+        generated = (bodies or {}).get(mname)
+        if generated is not None and not java_bodies.is_stub(generated):
+            # Keyed on the *source* method name: the emitter renames `getTotal` to
+            # `beforeGetTotal` to match the platform's hook convention, and the model was
+            # asked about `getTotal`. [1.48]
+            out.append(f"        // Generated from {unit.name}::{mname}. Reviewed as"
+                       " generated logic, not derived — see PROVENANCE.md.")
+            if wrappable:
+                out.append(f"        // Delegation is still yours to decide:"
+                           f" delegate.{wrapped}(args)")
+            out += java_bodies.indent(generated)
+        else:
+            out += [f"        // TODO migrate: {unit.name}::{mname}",
+                    ("        // Decide explicitly whether this path delegates:"
+                     if wrappable else
+                     "        // There is no delegate — see the class comment."),
+                    (f"        //     return delegate.{wrapped}(args);" if wrappable else
+                     "        // This logic needs a home on the target; it has none yet."),
+                    "        throw new UnsupportedOperationException("
+                    f'"Not migrated yet: {mname}");']
+        out += ["    }", ""]
 
     if wrappable:
         out += [f"    public void setDelegate(final {iface} delegate)", "    {",

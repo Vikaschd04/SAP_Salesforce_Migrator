@@ -42,6 +42,44 @@ in the Render dashboard **Environment** tab add a key and switch the provider:
 > ⚠️ **Anyone with the public URL would then spend your credits.** For a shared demo, prefer
 > keeping it on **mock**, or put the service behind access control before enabling a real key.
 
+### A gateway that is not OpenRouter
+
+`openrouter` is the *wire format* (OpenAI-compatible), not the host. Any compatible gateway
+works by pointing `OPENROUTER_BASE_URL` at it — the key never has to be written into a file:
+
+| Variable | Value |
+|---|---|
+| `H2A_PROVIDER` | `openrouter` |
+| `OPENROUTER_BASE_URL` | the gateway's `/v1` root |
+| `OPENROUTER_API_KEY` | the key — add it in the dashboard with **sync: false** |
+| `H2A_CUSTOM_MODEL` | the model id the gateway serves |
+| `H2A_CONCURRENCY` | `1` on a free tier — see below |
+
+All five go in the Render **Environment** tab. None belongs in the repo: a key committed to
+git is public the moment the repo is, and rotating it afterwards is the only fix.
+
+### What a real run taught us about free tiers [1.48]
+
+The first complete migration against a live model failed twice before it succeeded, and
+neither cause was the migration:
+
+- **Concurrency.** At the default of 8 the gateway returned `429` and the run exhausted its
+  retry budget. `H2A_CONCURRENCY=1` completes. The retry now reads the server's
+  `Retry-After` header instead of guessing a backoff, which is the real fix, but a free
+  tier still wants concurrency 1.
+- **Thinking models time out.** A gateway in front of Cloudflare cuts the origin off at
+  ~100s with a `524`. Reasoning models exceed that on generate prompts; a non-thinking
+  model of the same family completed the whole run. `520`–`524` are now treated as
+  transient and retried, but the model choice is what actually fixes it.
+
+### Trying it without a project of your own
+
+`GET /api/samples` lists the bundled corpora, one per migration this build can run, each
+identified by the same detector a real run uses. Both `hybris->salesforce` and
+`adobe->hybris` are covered, and each row says whether that migration is *shipped* — only
+one of the two has a golden baseline and an org to deploy into, and the endpoint says so
+rather than presenting them as equals.
+
 ## Notes & limits
 
 - **Free tier sleeps** after ~15 min idle; the next request cold-starts in ~30–60 s. Upgrade to a

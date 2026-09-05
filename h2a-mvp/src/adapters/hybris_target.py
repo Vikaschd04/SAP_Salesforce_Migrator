@@ -152,12 +152,21 @@ class HybrisTarget:
                 "source_classes": list(getattr(item, "source_classes", []) or []),
             })
 
+        # The Builder's Java, keyed the way the plan names targets. `emit()` has always
+        # received these and, until 1.48, passed none of them on. [1.48]
+        generated = {}
+        for a in artifacts or []:
+            row = a if isinstance(a, dict) else getattr(a, "to_generated_dict", dict)()
+            if row.get("target_name") and row.get("main_class"):
+                generated[row["target_name"]] = row["main_class"]
+
         result = emit_extension(
             output_dir,
             name=cfg.get("extension_name", "migrated"),
             package=cfg.get("package", "com.migrated"),
             source_model=source_model,
             targets=plan_rows,
+            generated=generated,
         )
         # Kept for the caller: what was written, what was planned and deliberately not
         # written, and how strongly the result was checked.

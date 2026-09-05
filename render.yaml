@@ -40,3 +40,14 @@ services:
       #   sync: false
       # - key: OPENROUTER_API_KEY
       #   sync: false
+      # `openrouter` is the wire format, not the host — any OpenAI-compatible gateway
+      # works by pointing OPENROUTER_BASE_URL at it, with the model in H2A_CUSTOM_MODEL.
+      # - key: OPENROUTER_BASE_URL
+      #   sync: false
+      # - key: H2A_CUSTOM_MODEL
+      #   sync: false
+      # Free tiers rate-limit hard. The first real run failed at the default of 8 and
+      # completed at 1; the retry now honours Retry-After, but 1 is still the safe
+      # setting on a free gateway. See docs/DEPLOY_RENDER.md. [1.48]
+      # - key: H2A_CONCURRENCY
+      #   value: "1"

@@ -774,6 +774,55 @@ async def api_package(run_id: str):
         headers={"Content-Disposition": f'attachment; filename="{Path(out).name}.zip"'})
 
 
+@app.get("/api/samples")
+async def api_samples():
+    """The bundled corpora, one per migration this build can run. [1.48]
+
+    A dry run needs a project, and asking someone to find a Magento module before they can
+    see what the tool does is a poor first five minutes. These are already in the repo,
+    already allowed by `_resolve_input_path` on a hosted deploy, and each is *identified*
+    here by the same detector a real run uses rather than labelled by hand — so a sample
+    that stops matching its pipeline shows up as a wrong label instead of a failed run.
+    """
+    from src import pipeline as _pipeline
+    _pipeline.ensure_registered()
+
+    out = []
+    for d in sorted((REPO_ROOT / "Testing").glob("*/")):
+        if not d.is_dir():
+            continue
+        try:
+            ident = _pipeline.identify(str(d))
+        except Exception:
+            continue                      # a directory that is not a project is not a sample
+        pipelines = ident.get("pipelines") or []
+        if ident.get("status") != "runnable" or not pipelines:
+            continue
+        first = pipelines[0]
+        report = ident.get("report") or {}
+        project = report.get("project") or {}
+        out.append({
+            "path": str(d.relative_to(REPO_ROOT)).rstrip("/"),
+            "pipeline": first.get("id"),
+            "label": first.get("label"),
+            # Stated, not implied. One of these two migrations has a golden baseline and a
+            # real org to deploy into; the other does not, and a demo that presents them as
+            # equals is the kind of overclaim this product exists to avoid.
+            "shipped": bool(first.get("shipped")),
+            "summary": ident.get("summary", ""),
+            "size": {k: v for k, v in project.items()
+                     if k in ("php_files", "java_files", "total_files", "modules",
+                              "extensions")},
+        })
+    # The shipped migration first: it is the one whose output can be verified.
+    out.sort(key=lambda s: (not s["shipped"], s["path"]))
+    return {"samples": out,
+            # Whether a dry run can actually call a model, so the UI can say so up front
+            # instead of letting someone start a run that will fall back to the mock.
+            "providers": keyvault.server_fallbacks(),
+            "default_provider": os.environ.get("H2A_PROVIDER", "mock")}
+
+
 @app.get("/api/health")
 async def health():
     return {"ok": True, "engine_root": str(ENGINE_ROOT)}

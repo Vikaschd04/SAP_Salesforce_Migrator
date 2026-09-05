@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import re
 
+from src.adapters import java_bodies
 from src.adapters.hybris_extension import pascal
 
 #: Resolved IR types → Java. Deliberately the same table the items.xml emitter uses, so a
@@ -226,8 +227,13 @@ def build_interface(unit, package: str, resolutions: list,
 def build_implementation(unit, package: str, resolutions: list,
                          renames: dict | None = None, name: str | None = None,
                     source_names: set | None = None,
-                    models: set | None = None) -> str:
-    """The Spring service. Signatures derived; bodies left for the Builder. [3.2]
+                    models: set | None = None,
+                    bodies: dict | None = None) -> str:
+    """The Spring service: signatures derived, bodies from the Builder. [3.2, 1.48]
+
+    `bodies` is `method name -> the Java a model wrote for it`. Until 1.48 there was no
+    such parameter and the second half of that sentence was not true: every method threw
+    `UnsupportedOperationException` no matter what the Builder produced.
 
     See `build_interface` on `name`: the planner owns it, and re-deriving it here is what
     put `class DefaultIndexService` inside `DefaultAdminhtmlIndexService.java`. [1.40]
@@ -267,11 +273,21 @@ def build_implementation(unit, package: str, resolutions: list,
         out += ["", "    @Override"]
         if unresolved:
             out.append(f"    // TYPE-UNRESOLVED: {', '.join(unresolved)}")
-        out += [f"    public {sig}", "    {",
-                f"        // TODO migrate: {unit.name}::{m.name}"]
-        if ret != "void":
-            out.append("        throw new UnsupportedOperationException("
-                       f'"Not migrated yet: {m.name}");')
+        out += [f"    public {sig}", "    {"]
+        generated = (bodies or {}).get(m.name)
+        if generated is not None and not java_bodies.is_stub(generated):
+            # The model's logic, inside the derived signature. Marked, because a reader
+            # must be able to tell what was *known* from what was *decided* — that
+            # distinction is what the provenance and alignment reports are built on.
+            # [1.48]
+            out.append(f"        // Generated from {unit.name}::{m.name}. Reviewed as"
+                       " generated logic, not derived — see PROVENANCE.md.")
+            out += java_bodies.indent(generated)
+        else:
+            out.append(f"        // TODO migrate: {unit.name}::{m.name}")
+            if ret != "void":
+                out.append("        throw new UnsupportedOperationException("
+                           f'"Not migrated yet: {m.name}");')
         out.append("    }")
 
     out += ["}", ""]

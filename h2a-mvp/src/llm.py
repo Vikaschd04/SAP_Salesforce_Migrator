@@ -86,7 +86,12 @@ _TRANSIENT_EXC = {
     "RateLimitError", "APIConnectionError", "APITimeoutError", "APIConnectionTimeoutError",
     "InternalServerError", "OverloadedError", "ServiceUnavailableError", "Timeout",
 }
-_TRANSIENT_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 529}
+# 520-524 are Cloudflare's origin errors, and a hosted endpoint behind it returns
+# them instead of the 5xx the origin meant. 524 in particular is a gateway timeout
+# — the same thing as 504, which was already here — and a run that met one simply
+# stalled: unclassified, so the SDK's own retries ran to a 600s timeout each. [1.47]
+_TRANSIENT_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523,
+                     524, 529}
 
 
 class ProviderAuthError(RuntimeError):
@@ -131,6 +136,79 @@ def _retry_cfg(config: dict) -> dict:
     }
 
 
+def _retry_after(exc) -> float | None:
+    """How long the server said to wait, if it said. [1.48]
+
+    A 429 usually carries `Retry-After`, and guessing instead of reading it is what turned
+    a rate limit into a failed Phase 0 run: `base_delay * 2**attempt` caps at 60s, so four
+    attempts against a per-minute quota all landed inside the same closed window and the
+    run exhausted its budget without ever waiting for the reset.
+
+    Capped at five minutes. A server asking for longer than that is not rate-limiting a
+    run, it is refusing it, and a migration silently asleep for an hour is worse than one
+    that stops and says why.
+    """
+    resp = getattr(exc, "response", None)
+    headers = getattr(resp, "headers", None) or getattr(exc, "headers", None) or {}
+    try:
+        raw = headers.get("retry-after") or headers.get("Retry-After")
+    except Exception:
+        return None
+    if raw is None:
+        return None
+    try:
+        return max(0.0, min(300.0, float(str(raw).strip())))
+    except (TypeError, ValueError):
+        # The header also permits an HTTP date. Rare from JSON APIs, and worth reading
+        # rather than discarding as unparseable.
+        try:
+            from email.utils import parsedate_to_datetime
+            import datetime as _dt
+            when = parsedate_to_datetime(str(raw))
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=_dt.timezone.utc)
+            secs = (when - _dt.datetime.now(_dt.timezone.utc)).total_seconds()
+            return max(0.0, min(300.0, secs))
+        except Exception:
+            return None
+
+
+#: How long a single provider call may run before the run says so. A request timeout of
+#: 600s across four attempts means one wedged call can hold a stage for forty minutes
+#: while stdout shows nothing at all — which is how Phase 0 spent twenty minutes
+#: indistinguishable from a hang. This does not cancel anything; it just refuses to let
+#: the run look idle while it is waiting. [1.48]
+_SLOW_CALL_SECONDS = 45.0
+
+
+def _cancelling(fn, stop):
+    """Run `fn`, stopping the watchdog on every path out — success or failure."""
+    try:
+        return fn()
+    finally:
+        stop()
+
+
+def _watchdog(stage: str, seconds: float = _SLOW_CALL_SECONDS):
+    """A timer that reports a call still in flight, then keeps reporting."""
+    state = {"timer": None, "waited": 0.0}
+
+    def _fire():
+        state["waited"] += seconds
+        print(f"    … {stage}: still waiting on the provider "
+              f"({state['waited']:.0f}s)", flush=True)
+        _arm()
+
+    def _arm():
+        tm = threading.Timer(seconds, _fire)
+        tm.daemon = True                # must never hold the process open
+        state["timer"] = tm
+        tm.start()
+
+    _arm()
+    return lambda: state["timer"] and state["timer"].cancel()
+
+
 def _with_retry(fn, *, stage: str, config: dict):
     """Run fn(), retrying transient failures with jittered exponential backoff.
 
@@ -142,8 +220,9 @@ def _with_retry(fn, *, stage: str, config: dict):
     for attempt in range(cfg["max_attempts"]):
         check_fatal()          # a sibling worker already proved this cannot succeed
         check_budget(config, stage)
+        stop_watchdog = _watchdog(stage)
         try:
-            return fn()
+            return _cancelling(fn, stop_watchdog)
         except Exception as exc:                       # noqa: BLE001 — re-raised below
             last = exc
             # Re-typed before anything else, so the per-stage `except` blocks downstream
@@ -158,13 +237,22 @@ def _with_retry(fn, *, stage: str, config: dict):
                 raise fatal
             if attempt == cfg["max_attempts"] - 1 or not _is_transient(exc):
                 raise
-            # Full jitter: spreads concurrent workers instead of retrying in lockstep.
-            delay = min(cfg["max_delay"], cfg["base_delay"] * (2 ** attempt))
-            delay *= 0.5 + random.random()
+            # What the server asked for beats what we would have guessed — see
+            # `_retry_after`. Jitter is still applied on top, because a dozen workers all
+            # waking at the identical instant the window reopens re-creates the burst.
+            stated = _retry_after(exc)
+            if stated is not None:
+                delay = stated + random.random()
+            else:
+                # Full jitter: spreads concurrent workers instead of retrying in lockstep.
+                delay = min(cfg["max_delay"], cfg["base_delay"] * (2 ** attempt))
+                delay *= 0.5 + random.random()
             with _STATE_LOCK:
                 _accounting["retries"] = _accounting.get("retries", 0) + 1
-            print(f"    ⟳ {stage}: {type(exc).__name__} — retry "
-                  f"{attempt + 1}/{cfg['max_attempts'] - 1} in {delay:.1f}s")
+            print(f"    ⟳ {stage}: {type(exc).__name__}"
+                  + (f" (HTTP {_status_of(exc)})" if _status_of(exc) else "")
+                  + f" — retry {attempt + 1}/{cfg['max_attempts'] - 1} in {delay:.1f}s"
+                  + (" (server-stated)" if stated is not None else ""), flush=True)
             time.sleep(delay)
     raise last                                          # pragma: no cover
 
@@ -587,6 +675,73 @@ def _mock_target_name(stage: str, prompt: str) -> str:
     return "GeneratedClass"
 
 
+def _mock_language() -> str:
+    """The language the *target* of this run is written in. [1.48]
+
+    The mock emitted Apex on every pipeline, including Adobe→Hybris, whose target is Java.
+    That was invisible for as long as it lasted because the Hybris emitter discarded the
+    Builder's output entirely — two defects, each hiding the other. With the bodies now
+    merged, a mock that speaks the wrong language would put Apex inside a `.java` file, so
+    the golden baseline becomes a real net over the merge instead of a net over a skeleton.
+    """
+    try:
+        from src import runctx
+        from src.pipeline import ensure_registered, get as get_pipeline
+        pid = runctx.pipeline_id()
+        if not pid:
+            return "Apex"
+        ensure_registered()
+        return getattr(get_pipeline(pid).target, "code_language", "Apex")
+    except Exception:
+        # A mock must never be the reason a run fails. Falling back to the historical
+        # behaviour is wrong-language at worst, which the emitter's compile step reports.
+        return "Apex"
+
+
+def _mock_java(name: str, json_schema: dict | None) -> dict:
+    """Structurally valid Java, in the shape the Hybris emitter merges from.
+
+    The method is deliberately named `execute` and not any real source method: nothing
+    should silently match, because a mock inventing business logic is exactly the
+    success-shaped failure this project exists to prevent. What it proves is that the
+    *path* works — that generated Java reaches disk — not that the logic is right.
+    """
+    main_class = (
+        f"public class {name}\n"
+        f"{{\n"
+        f"    // [mock] deterministic stub — replace by running with a real provider.\n"
+        f"    public java.util.List<Object> execute(final java.util.List<Object> records)\n"
+        f"    {{\n"
+        f"        if (records == null) {{ return java.util.Collections.emptyList(); }}\n"
+        f"        return records;\n"
+        f"    }}\n"
+        f"}}"
+    )
+    test_class = (
+        f"public class {name}Test\n"
+        f"{{\n"
+        f"    @org.junit.Test\n"
+        f"    public void testExecute()\n"
+        f"    {{\n"
+        f"        org.junit.Assert.assertTrue(new {name}().execute("
+        f"java.util.Collections.emptyList()).isEmpty());\n"
+        f"    }}\n"
+        f"}}"
+    )
+    if json_schema is not None:
+        content = json.dumps({
+            "main_class": main_class, "test_class": test_class, "sobject_refs": [],
+            "mapping_notes": "[mock] Deterministic stub output (provider=mock).",
+        })
+    else:
+        content = ("===MAIN_CLASS===\n" + main_class + "\n===END_MAIN_CLASS===\n\n"
+                   "===TEST_CLASS===\n" + test_class + "\n===END_TEST_CLASS===\n\n"
+                   "===MAPPING_NOTES===\n[mock] Deterministic stub output."
+                   "\n===END_MAPPING_NOTES===")
+    return {"content": content, "prompt_tokens": 0, "completion_tokens": 0,
+            "cache_read_tokens": 0, "cache_write_tokens": 0}
+
+
 def _call_mock(*, stage: str, prompt: str, json_schema: dict | None) -> dict:
     """
     Deterministic stub used for keyless dry-runs and CI. Produces *structurally
@@ -613,6 +768,8 @@ def _call_mock(*, stage: str, prompt: str, json_schema: dict | None) -> dict:
 
     # generate / repair stages
     name = _mock_target_name(stage, prompt)
+    if _mock_language() == "Java":
+        return _mock_java(name, json_schema)
     main_class = (
         f"public with sharing class {name} {{\n"
         f"    // [mock] deterministic stub — replace by running with a real provider.\n"
