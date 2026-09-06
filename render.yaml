@@ -40,6 +40,12 @@ services:
       #   sync: false
       # - key: UNOROUTER_API_KEY
       #   sync: false
+      # A shared key is only *spendable* when this says so. Off by default since 1.50:
+      # without it, each user brings their own credential and the cockpit asks for one
+      # at the point of use. Turn it on for a demo everyone is meant to try — and note
+      # that every visitor then spends the credit on the key above.
+      # - key: H2A_ALLOW_SERVER_KEY
+      #   value: "1"
       # `unorouter` is the wire format, not the host — any OpenAI-compatible gateway
       # works by pointing UNOROUTER_BASE_URL at it, with the model in H2A_CUSTOM_MODEL.
       # The base URL defaults to https://api.unorouter.com/v1, so only the key is

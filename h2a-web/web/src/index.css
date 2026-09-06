@@ -1334,3 +1334,30 @@ textarea:focus { outline: none; border-color: var(--accent); }
 /* an aside inside a section — the way out for someone with nothing to upload */
 .link-btn.inline { display: inline; padding: 0; font-size: inherit; vertical-align: baseline; }
 
+
+
+/* ── the key a run needs, asked for when it is needed [1.50] ──────────────────
+   Reuses the button and hint systems; only the pieces with no existing home are
+   declared here. `modal-sm` because this dialog asks one question and a 720px
+   shell around a single field reads as a form with something missing. */
+.modal.modal-sm { max-width: 460px; }
+
+.field-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-dim);
+  margin-bottom: 7px; }
+
+/* Distinct from `.key-set input`, which is the read-only masked display in My Account:
+   this one is live and must look editable. */
+.key-input { width: 100%; padding: 10px 12px; border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong); background: var(--panel-3); color: var(--text);
+  font-family: var(--mono); font-size: 13px; transition: border-color .15s; }
+.key-input:focus { outline: none; border-color: var(--accent); }
+.key-input::placeholder { color: var(--text-faint); font-family: inherit; letter-spacing: 0; }
+
+.hint.key-warn { color: var(--warn); }
+
+.check-row { display: flex; align-items: flex-start; gap: 10px; margin-top: 16px;
+  font-size: 12.5px; color: var(--text); cursor: pointer; }
+.check-row input { margin-top: 2px; accent-color: var(--accent); flex: none; }
+.check-row .hint { margin-top: 3px; }
+
+.foot-actions { display: flex; align-items: center; gap: 10px; }

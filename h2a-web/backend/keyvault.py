@@ -128,6 +128,18 @@ def get_key(user_id: str | None, provider: str) -> str | None:
 _SERVER_ENV = {"anthropic": "ANTHROPIC_API_KEY", "unorouter": "UNOROUTER_API_KEY"}
 
 
+def server_key_allowed() -> bool:
+    """May a run spend the *server's* credential when the user has none of their own?
+
+    Off unless a deployment says otherwise. A shared key is the right thing for a demo
+    everyone is meant to try, and the wrong thing everywhere else: it means one person's
+    migration bills another's account, and — worse — that a user who believes they are
+    running on their own key is not. Silence was the real defect; either answer is fine
+    as long as the run says which credential it used. [1.50]
+    """
+    return os.environ.get("H2A_ALLOW_SERVER_KEY", "").strip().lower() in ("1", "true", "yes")
+
+
 def server_fallbacks() -> dict:
     """So the UI can say 'runs will work without your own key' rather than leaving the
     user guessing whether a migration is about to fail for want of a credential.

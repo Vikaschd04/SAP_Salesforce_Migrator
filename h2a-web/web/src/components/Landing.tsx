@@ -71,18 +71,19 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
   const [drag, setDrag] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Which providers this deployment can actually call — the server's own credential, or
-  // one this user stored. Picking `unorouter` with neither configured started a run that
-  // fell back to stub output, and the only way to find out was to read the result and
-  // notice it was not real. A dry run that silently is not one is worse than no dry
-  // run. [1.48]
+  // Which providers this user can actually run right now. Two separate facts go into
+  // that: a key of their own, and — only where an operator has allowed it — the
+  // deployment's shared one. Merging `server` in unconditionally was right when a run
+  // silently fell back to it; since 1.50 it does not, so a provider the server has a key
+  // for is still "no key" to a user who may not spend it. [1.48, 1.50]
   const [providerReady, setProviderReady] = useState<Record<string, boolean>>({});
   useEffect(() => {
     fetchKeys()
       .then((k) => {
-        const own: Record<string, boolean> = {};
-        for (const key of k.keys || []) own[key.provider] = true;
-        setProviderReady({ ...(k.server || {}), ...own, mock: true });
+        const ready: Record<string, boolean> = { mock: true };
+        if (k.server_allowed) Object.assign(ready, k.server || {});
+        for (const key of k.keys || []) ready[key.provider] = true;
+        setProviderReady(ready);
       })
       .catch(() => setProviderReady({ mock: true }));
   }, []);
@@ -293,20 +294,20 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
               <select value={provider} onChange={(e) => setProvider(e.target.value)}>
                 <option value="mock">Mock — free &amp; keyless</option>
                 <option value="anthropic">
-                  Anthropic (Claude){providerReady.anthropic === false ? ' — no key configured' : ''}
+                  Anthropic (Claude){providerReady.anthropic === false ? ' — key needed' : ''}
                 </option>
                 <option value="unorouter">
-                  Unorouter{providerReady.unorouter === false ? ' — no key configured' : ''}
+                  Unorouter{providerReady.unorouter === false ? ' — key needed' : ''}
                 </option>
               </select>
               <span className="hint">
                 {provider === 'mock'
                   ? 'Walks the whole pipeline with stub responses. Nothing is charged.'
                   : providerReady[provider] === false
-                    ? 'No key for this provider — add one under Keys, or ask whoever '
-                      + 'runs this deployment to set it. Starting now would produce stub '
-                      + 'output that reads like a real migration.'
-                    : 'Real model calls. The Discovery gate shows the cost before any spend.'}
+                    ? 'No key stored for this provider — you will be asked for one when '
+                      + 'you start, and can save it to your account to reuse it.'
+                    : 'Real model calls on your own key. The Discovery gate shows the '
+                      + 'cost before any spend.'}
               </span>
             </div>
             <div className="field">

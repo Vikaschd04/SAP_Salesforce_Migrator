@@ -39,8 +39,30 @@ in the Render dashboard **Environment** tab add a key and switch the provider:
 - `UNOROUTER_API_KEY = …`  (then set `H2A_PROVIDER = unorouter`; pick the model in
   `h2a-mvp/config.yaml`, which defaults to `codestral-latest:free`).
 
-> ⚠️ **Anyone with the public URL would then spend your credits.** For a shared demo, prefer
-> keeping it on **mock**, or put the service behind access control before enabling a real key.
+> ⚠️ **Anyone with the public URL would then spend your credits** — but only if you let
+> them. Since 1.50 a server key is not spendable unless `H2A_ALLOW_SERVER_KEY=1`; without
+> it each user brings their own.
+
+### Who pays for a run [1.50]
+
+A run resolves exactly one credential, in this order, and the response says which it used:
+
+| Order | Source | When |
+|---|---|---|
+| 1 | Typed in the dialog | Someone supplied a key for that run. Never stored, never logged — it rides one request and lives as a closure variable in the worker. |
+| 2 | The user's saved key | Encrypted in the vault under their account. Needs `H2A_SECRET_KEY`. |
+| 3 | The server's shared key | **Only** with `H2A_ALLOW_SERVER_KEY=1`. The run names it, so nobody is on the operator's credit without knowing. |
+
+With none of the three, the run is refused with `402 needs_key` **before any work is
+done**, and the cockpit opens its key dialog. Refusing is the point: a run that quietly
+borrows a credential misleads the user about whose money it is and the operator about
+where it went.
+
+`mock` never needs a key — requiring one for the offline dry run would make the safest
+mode the hardest to start, on exactly the locked-down laptop it exists for.
+
+**Set `H2A_SECRET_KEY`** if you want users to be able to *save* keys. Without it they can
+still supply one per run; there is simply nowhere to keep it.
 
 ### A gateway that is not Unorouter
 

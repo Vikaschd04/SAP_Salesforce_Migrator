@@ -122,6 +122,9 @@ async def api_keys(request: Request):
     user = getattr(request.state, "user", None)
     return {"available": keyvault.available(), "reason": keyvault.why_unavailable(),
             "server": keyvault.server_fallbacks(),
+            # Whether a run may *use* the server's key, which is a different question
+            # from whether one exists. The cockpit needs both to say anything true. [1.50]
+            "server_allowed": keyvault.server_key_allowed(),
             "keys": keyvault.list_keys(user["id"]) if user else []}
 
 
@@ -185,6 +188,10 @@ async def create_run(
     # Empty means "use what detection found", which is right for almost every
     # codebase. Sent only when the cockpit had more than one valid answer.
     pipeline: str = Form(""),
+    # A key for this run alone. Never written to disk, never echoed back, never attached
+    # to the Run record — it lives as a closure variable in the worker and dies with it.
+    # Sent when someone supplies a credential in the dialog without saving it. [1.50]
+    api_key: str = Form(""),
     upload: UploadFile | None = File(None),
 ):
     """Start a migration from either a server-side path or an uploaded .zip."""
@@ -228,17 +235,77 @@ async def create_run(
 
     user = getattr(request.state, "user", None)
     uid = (user or {}).get("id")
+    resolved, source = _credential_for(provider, uid, api_key)
     run = start_run(input_dir, str(OUTPUT_ROOT / _new_out_name(input_dir)),
                     provider=provider, engine=engine, verify=verify, supervised=supervised,
                     state_dir=_state_dir_for(input_dir), owner=uid,
-                    # The tenant's own credential when they have stored one; otherwise
-                    # None, which falls back to the server's shared key.
-                    api_key=keyvault.get_key(uid, provider),
+                    api_key=resolved,
                     # None leaves the configured default in force; an explicit 0 means
                     # the operator asked for no ceiling and gets one.
                     cost_cap=cost_cap,
                     pipeline=chosen)
-    return {"run_id": run.id, "status": run.status, "preflight": report}
+    # Which credential paid for this run, so the cockpit never has to guess and a
+    # reviewer reading the record later can tell.
+    return {"run_id": run.id, "status": run.status, "preflight": report,
+            "credential": source}
+
+
+#: Providers that reach a real API and therefore need a real credential. `mock` is
+#: keyless by design — it is the offline dry run, and requiring a key for it would make
+#: the safest mode the hardest to start.
+_NEEDS_KEY = ("anthropic", "unorouter")
+
+
+class NeedsKey(HTTPException):
+    """No usable credential for this provider — the cockpit opens its key dialog on this.
+
+    A distinct status and a machine-readable `code` because the UI has to tell this apart
+    from every other 400: one means "fix your request", this one means "we need something
+    from you before we can start", and they call for different screens.
+    """
+
+    def __init__(self, provider: str, detail: str):
+        super().__init__(402, {"code": "needs_key", "provider": provider,
+                               "message": detail})
+
+
+def _credential_for(provider: str, uid: str | None, per_run: str) -> tuple:
+    """The one credential this run will use, and where it came from. [1.50]
+
+    Resolution is ordered by how deliberate the choice was: a key typed for this run
+    beats a key stored on the account, which beats the server's shared one — and the
+    shared one is only reachable when a deployment has explicitly allowed it.
+
+    Before 1.50 a run with no user key quietly used the server's, so someone who believed
+    they were spending their own credit was spending the operator's, and a cockpit that
+    said "no key configured" started the run anyway. Refusing is the honest answer.
+    """
+    if provider not in _NEEDS_KEY:
+        return None, "none"                       # mock: keyless by design
+
+    if (per_run or "").strip():
+        return per_run.strip(), "this run only"
+
+    stored = keyvault.get_key(uid, provider)
+    if stored:
+        return stored, "your saved key"
+
+    if keyvault.server_key_allowed():
+        # `None` lets the engine read its own environment, which is where a deployment's
+        # shared key lives. Named in the response so the run is never silently on it.
+        if keyvault.server_fallbacks().get(provider):
+            return None, "the server's shared key"
+        raise NeedsKey(provider, f"This deployment allows its shared key, but has none "
+                                 f"configured for {provider}. Add your own to continue.")
+
+    if not uid:
+        raise NeedsKey(provider, f"Sign in and add a {provider} key to run with it.")
+    if not keyvault.available():
+        raise NeedsKey(provider, f"A {provider} key is needed for this run. Key storage "
+                                 f"is off on this server ({keyvault.why_unavailable()}), "
+                                 f"so supply one for this run only.")
+    raise NeedsKey(provider, f"A {provider} key is needed. Add one for this run, or save "
+                             f"it to your account to reuse it.")
 
 
 def _state_dir_for(input_dir: str) -> str:

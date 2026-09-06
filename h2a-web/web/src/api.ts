@@ -48,12 +48,29 @@ export async function identify(inputPath: string): Promise<Identification> {
   return await res.json();
 }
 
+/**
+ * The server has no usable credential for the chosen provider.
+ *
+ * Its own class because the cockpit answers it with a dialog rather than an error
+ * message: nothing is wrong with the request, something is simply needed before the run
+ * can start, and those call for different screens. [1.50]
+ */
+export class NeedsKeyError extends Error {
+  constructor(public provider: string, message: string) {
+    super(message);
+    this.name = 'NeedsKeyError';
+  }
+}
+
 export async function startRun(form: FormData): Promise<string> {
   const res = await fetch('/api/runs', { method: 'POST', body: form });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     const d = body?.detail;
     if (res.status === 422 && d?.preflight) throw new PreflightError(d.message, d.preflight);
+    if (res.status === 402 && d?.code === 'needs_key') {
+      throw new NeedsKeyError(d.provider, d.message);
+    }
     throw new Error(typeof d === 'string' ? d : JSON.stringify(d ?? 'Could not start the migration.'));
   }
   return (await res.json()).run_id as string;
@@ -219,13 +236,14 @@ export const demoLogin = () => post('/api/auth/demo', {}).then((d) => d.user);
 export interface StoredKey { provider: string; hint: string; updated: number; }
 export interface KeyState {
   available: boolean; reason: string;
-  server: Record<string, boolean>;   // providers the server itself can fall back to
+  server: Record<string, boolean>;   // providers the server itself has a key for
+  server_allowed: boolean;           // …and whether a run is permitted to spend it
   keys: StoredKey[];
 }
 
 export async function fetchKeys(): Promise<KeyState> {
   const r = await fetch('/api/keys');
-  if (!r.ok) return { available: false, reason: '', server: {}, keys: [] };
+  if (!r.ok) return { available: false, reason: '', server: {}, server_allowed: false, keys: [] };
   return r.json();
 }
 

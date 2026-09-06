@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { PLATFORM_LABEL } from './api';
 import { useRun, STAGES } from './useRun';
-import { health, startRun, cancelRun, getConfig, me as fetchMe, logout, PreflightError } from './api';
+import { health, startRun, cancelRun, getConfig, me as fetchMe, logout, fetchKeys,
+         PreflightError, NeedsKeyError } from './api';
 import type { Me } from './api';
 import Detail from './components/Detail';
 import Gate from './components/Gate';
@@ -12,6 +13,7 @@ import History from './components/History';
 import Logo from './components/Logo';
 import SignIn from './components/SignIn';
 import Keys from './components/Keys';
+import ProviderKey from './components/ProviderKey';
 import AccountMenu from './components/AccountMenu';
 
 export default function App() {
@@ -51,6 +53,18 @@ export default function App() {
   // what actually changed is re-billed.
   const [lastForm, setLastForm] = useState<FormData | null>(null);
   const [stoppedAt, setStoppedAt] = useState<string | null>(null);
+  // A run the server refused for want of a credential, held with the form that was about
+  // to be sent so it can be sent again the moment a key exists. Losing the upload and the
+  // options because a key was missing would make supplying one feel like a punishment.
+  // [1.50]
+  const [needKey, setNeedKey] = useState<{ provider: string; message: string;
+                                           form: FormData } | null>(null);
+  const [vault, setVault] = useState({ available: false, reason: '' });
+  useEffect(() => {
+    fetchKeys()
+      .then((k) => setVault({ available: k.available, reason: k.reason }))
+      .catch(() => setVault({ available: false, reason: '' }));
+  }, []);
 
   const start = async (fd: FormData) => {
     setStarting(true); setError(''); setRejected(null); setErrDismissed(false);
@@ -60,6 +74,12 @@ export default function App() {
       // A refused upload is not an error to apologise for — it is a finding, and the
       // report explains it far better than a message can.
       if (e instanceof PreflightError) { setRejected(e.report); setError(''); }
+      // Nor is a missing key. Nothing is wrong with the request; something is needed
+      // before it can run, and that is a dialog rather than a red box. [1.50]
+      else if (e instanceof NeedsKeyError) {
+        setNeedKey({ provider: e.provider, message: e.message, form: fd });
+        setError('');
+      }
       else setError(e.message || 'failed to start');
     }
     finally { setStarting(false); }
@@ -176,6 +196,25 @@ export default function App() {
 
       <PreflightModal report={rejected} onClose={() => setRejected(null)} />
       <Keys open={keysOpen} onClose={() => setKeysOpen(false)} />
+      {needKey && (
+        <ProviderKey
+          provider={needKey.provider}
+          message={needKey.message}
+          storageAvailable={vault.available}
+          storageReason={vault.reason}
+          onCancel={() => setNeedKey(null)}
+          onOpenAccount={() => { setNeedKey(null); setKeysOpen(true); }}
+          onContinue={(key, saved) => {
+            const fd = needKey.form;
+            // A saved key is already on the account, so the run reads it from there and
+            // the plaintext never rides along a second time. An unsaved one travels once,
+            // with this request, and is never written down.
+            if (!saved) fd.set('api_key', key);
+            setNeedKey(null);
+            start(fd);
+          }}
+        />
+      )}
       <History open={histOpen} onClose={() => setHistOpen(false)} onOpen={begin} />
       {state.gate && state.runId && <Gate runId={state.runId} gate={state.gate} onClosed={closeGate}
         onStop={stopFromGate} sourceLabel={state.pipeline ? PLATFORM_LABEL[state.pipeline.source] : ''} />}
