@@ -76,6 +76,7 @@ def test_a_runs_provider_never_leaks_into_another(fresh, tmp_path):
     """Selecting a provider used to write os.environ, so a mock run could inherit a
     real provider and start making live API calls — the exact thing a locked-down
     corporate laptop must never do."""
+    import src.llm as L
     from src.llm import _get_provider, _load_config
     import src.agentic.orchestrator as O
 
@@ -88,6 +89,19 @@ def test_a_runs_provider_never_leaks_into_another(fresh, tmp_path):
                 _get_provider(_load_config()))
         return real(cls, **kw)
 
+    # The transports for every *real* provider are cut for the duration. This test used
+    # to make live API calls — to prove that live API calls must not leak, which is a
+    # peculiar way to prove it: it took a quarter of an hour, spent free-tier quota, and
+    # failed whenever the gateway was busy. What it actually asserts is which provider
+    # each *thread resolved*, and the spy above records that before any transport is
+    # reached. So run `b` now resolves its provider and then fails fast, and the mock
+    # branch of `call_llm` is untouched — which is the branch run `a` must stay on. [1.49]
+    def _blocked(*a, **kw):
+        raise RuntimeError("no live call in this test")
+
+    real_uno, real_ant = L._call_unorouter, L._call_anthropic
+    L._call_unorouter = L._call_anthropic = _blocked
+
     O.comprehend_class = spy
     try:
         a = fresh.start_run(DEMO, str(tmp_path / "a"), provider="mock")
@@ -95,9 +109,13 @@ def test_a_runs_provider_never_leaks_into_another(fresh, tmp_path):
         _await(a), _await(b)
     finally:
         O.comprehend_class = real
+        L._call_unorouter, L._call_anthropic = real_uno, real_ant
 
     resolved = {p for s in seen.values() for p in s}
     assert resolved == {"mock", "unorouter"}, f"provider leaked between runs: {resolved}"
+    # And the mock run still finished, so blocking the real transports did not simply
+    # stop both runs and make the assertion above vacuous.
+    assert _await(a) == "complete"
 
 
 # ── durability ────────────────────────────────────────────────────────────────
