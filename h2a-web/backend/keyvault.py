@@ -130,8 +130,26 @@ _SERVER_ENV = {"anthropic": "ANTHROPIC_API_KEY", "unorouter": "UNOROUTER_API_KEY
 
 def server_fallbacks() -> dict:
     """So the UI can say 'runs will work without your own key' rather than leaving the
-    user guessing whether a migration is about to fail for want of a credential."""
-    return {p: bool(os.environ.get(v)) for p, v in _SERVER_ENV.items()}
+    user guessing whether a migration is about to fail for want of a credential.
+
+    Asked the way the *engine* will answer it, not the way this process happens to see
+    the environment. The engine falls back to reading `h2a-mvp/.env`; this checked only
+    `os.environ`, so a developer with a key in `.env` was told "no key configured" by a
+    cockpit whose runs would then have worked perfectly. A readiness indicator that is
+    wrong is worse than none — it was added in 1.48 precisely so nobody would start a
+    run that silently produced stub output. [1.49]
+    """
+    try:
+        from src.llm import _get_api_key            # same deployment, one source of truth
+    except Exception:
+        return {p: bool(os.environ.get(v)) for p, v in _SERVER_ENV.items()}
+    out = {}
+    for provider, var in _SERVER_ENV.items():
+        try:
+            out[provider] = bool(_get_api_key(var))
+        except Exception:
+            out[provider] = bool(os.environ.get(var))
+    return out
 
 
 def list_keys(user_id: str) -> list[dict]:

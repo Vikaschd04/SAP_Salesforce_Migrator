@@ -92,3 +92,35 @@ def test_no_credential_is_ever_returned(samples):
     would leak it to every unauthenticated caller of this endpoint."""
     body = str(samples)
     assert "sk-" not in body
+
+
+# ── readiness has to be true, not merely present [1.49] ──────────────────────
+
+def test_readiness_is_asked_the_way_the_engine_answers_it(monkeypatch):
+    """The engine falls back to `h2a-mvp/.env`; this checked only `os.environ`. A
+    developer with a key in `.env` was told "no key configured" by a cockpit whose runs
+    would then have worked. The 1.48 readiness indicator exists so nobody starts a run
+    that silently produces stub output — one that is wrong is worse than none."""
+    import keyvault
+
+    monkeypatch.delenv("UNOROUTER_API_KEY", raising=False)
+    monkeypatch.setattr("src.llm._get_api_key",
+                        lambda var: "found-in-dotenv" if var == "UNOROUTER_API_KEY" else None)
+    assert keyvault.server_fallbacks()["unorouter"] is True
+
+
+def test_a_provider_with_no_key_anywhere_reports_false(monkeypatch):
+    import keyvault
+
+    monkeypatch.setattr("src.llm._get_api_key", lambda var: None)
+    assert keyvault.server_fallbacks() == {"anthropic": False, "unorouter": False}
+
+
+def test_the_answer_is_still_a_boolean_never_the_key(monkeypatch):
+    """`server_fallbacks` is reachable unauthenticated through /api/samples."""
+    import keyvault
+
+    monkeypatch.setattr("src.llm._get_api_key", lambda var: "sk-super-secret-value")
+    got = keyvault.server_fallbacks()
+    assert all(v is True for v in got.values())
+    assert "sk-" not in str(got)
