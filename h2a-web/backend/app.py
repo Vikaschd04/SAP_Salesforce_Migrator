@@ -130,7 +130,7 @@ async def api_set_key(provider: str, body: dict, request: Request):
     user = getattr(request.state, "user", None)
     if not user:
         raise HTTPException(401, "Sign in to store a key.")
-    if provider not in ("anthropic", "openrouter"):
+    if provider not in ("anthropic", "unorouter"):
         raise HTTPException(400, "Unknown provider.")
     try:
         return keyvault.set_key(user["id"], provider, body.get("key", ""))
@@ -576,7 +576,7 @@ def _copilot_mock_answer(q: str, run) -> str:
         risks = [f"• {n}: {r}" for n, u in bb.comprehensions.items()
                  if isinstance(u, dict) for r in (u.get("migration_risks") or [])]
         return "Migration risks I flagged:\n" + ("\n".join(risks[:15]) if risks
-                else "None recorded — mock comprehension is sparse; run with Anthropic/OpenRouter for detailed risks.")
+                else "None recorded — mock comprehension is sparse; run with Anthropic/Unorouter for detailed risks.")
     if "skip" in ql:
         sk = [f"• {p.target_name}: {p.rationale}" for p in bb.plan if p.target_kind == "Skip"]
         sk += [f"• {s.get('class_name', '?')}: {s.get('reason', 'framework/type-only file — no business logic')}"
@@ -606,7 +606,7 @@ def _copilot_mock_answer(q: str, run) -> str:
             return f"{a.target_name} ({a.apex_pattern or a.layer}) — status {a.status}. {notes} Review flags: {flags}."
     return (f"Migration at a glance: {ledger_line}; {len(bb.artifacts)} artifacts built. "
             "Ask me about risks, skipped or flagged targets, Critic findings, LWC bundles, or a specific class. "
-            "(Keyless mock Copilot — switch Provider to Anthropic/OpenRouter for full conversational answers.)")
+            "(Keyless mock Copilot — switch Provider to Anthropic/Unorouter for full conversational answers.)")
 
 
 _REWORK_KEYWORDS = ("redo", "rework", "regenerate", "rebuild", "re-do", "re-generate",

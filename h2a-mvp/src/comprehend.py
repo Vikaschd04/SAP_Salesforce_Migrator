@@ -49,6 +49,58 @@ def _format_methods(methods: list) -> str:
     return "\n".join(lines) if lines else "  (none)"
 
 
+#: Fields a model uses when it answers a "list of strings" schema with objects instead.
+#: Ordered by how likely each is to be the *rule* rather than a label for it.
+_RULE_FIELDS = ("rule", "description", "text", "statement", "detail", "summary",
+                "condition", "name", "title")
+
+
+def _as_strings(value) -> list:
+    """Coerce a schema-declared list-of-strings into one, whatever the model returned.
+
+    The schema asks for strings and one model answered `business_rules` with a list of
+    objects. Nothing validated it, so the dicts travelled as far as the Planner's
+    `", ".join(rules)` and took the whole migration down with a `TypeError` — after ten
+    minutes of comprehension work, on a corpus that had just cost eight API calls.
+
+    Swappable providers is a promise this project makes on its front page, and it is only
+    as true as the narrowest assumption between here and the report. A model that answers
+    a little differently should cost accuracy at worst, never the run. So the content is
+    kept — the most rule-shaped field of an object, or a compact rendering of the whole
+    thing — rather than dropped for not being the expected shape. [1.49]
+    """
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes)):
+        return [value.decode() if isinstance(value, bytes) else value]
+    if isinstance(value, dict):
+        value = [value]
+    if not isinstance(value, (list, tuple, set)):
+        return [str(value)]
+
+    out = []
+    for item in value:
+        if item is None:
+            continue                    # `str(None)` is the word "None", not a rule
+        if isinstance(item, str):
+            text = item
+        elif isinstance(item, dict):
+            text = next((str(item[f]) for f in _RULE_FIELDS
+                         if isinstance(item.get(f), (str, int, float)) and str(item[f]).strip()),
+                        "")
+            if not text:
+                # No field we recognise: keep the whole object rather than lose the rule.
+                text = "; ".join(f"{k}: {v}" for k, v in item.items() if v not in (None, "", []))
+        elif isinstance(item, (list, tuple)):
+            text = " ".join(str(x) for x in item)
+        else:
+            text = str(item)
+        text = text.strip()
+        if text:
+            out.append(text)
+    return out
+
+
 def comprehend_class(class_info: dict, *, offline: bool = False,
                      model: str | None = None) -> dict:
     """Produce a structured JSON understanding of one Java class.
@@ -113,7 +165,7 @@ def comprehend_class(class_info: dict, *, offline: bool = False,
         understanding = _fallback_understanding(class_info)
     for key in ["inputs", "outputs", "side_effects", "queries", "business_rules",
                 "dependencies", "migration_risks"]:
-        understanding.setdefault(key, [])
+        understanding[key] = _as_strings(understanding.get(key))
     understanding.setdefault("purpose", f"{layer} class" if layer else str(name))
     understanding.setdefault("complexity", "Medium")
     return understanding

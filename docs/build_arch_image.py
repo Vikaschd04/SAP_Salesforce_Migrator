@@ -205,7 +205,7 @@ y += conn(y, "every model call funnels through one gateway")
 
 y += band(y, "LAYER 5 · LLM GATEWAY", "llm.py — the single choke point for cost, retries, caching",
           PURPLE, [
-              ("Providers", "anthropic · openrouter · mock — identical prompts", PURPLE),
+              ("Providers", "anthropic · unorouter · mock — identical prompts", PURPLE),
               ("Resilience", "SDK retries + jittered app-level attempts on 429 / 5xx", PURPLE),
               ("Disk cache", "Atomic writes so a killed process leaves no torn entry", PURPLE),
               ("Accounting", "Per-model tokens, requests, retries, cache reads", PURPLE),
@@ -263,7 +263,7 @@ fy = STACK_BOTTOM + 34
 d.line([M, fy, W - M, fy], fill=LINE, width=2)
 text(M, fy + 22, "H2A · HYBRIS TO APEX", MONOB(19), FAINT)
 text(W - M, fy + 22,
-     "Python 3.12 · FastAPI · React 18 + Vite · TypeScript · Anthropic / OpenRouter · Docker → Render",
+     "Python 3.12 · FastAPI · React 18 + Vite · TypeScript · Anthropic / Unorouter · Docker → Render",
      MONO(19), FAINT, anchor="ra")
 
 out = str(pathlib.Path(__file__).resolve().parent / "architecture-diagram.png")

@@ -80,7 +80,7 @@ export function activate(context: vscode.ExtensionContext) {
         let h2aMvpPath: string = extConfig.get<string>('pipelinePath') || '';
         let pythonPath: string = extConfig.get<string>('pythonPath') || '';
         let anthropicApiKey: string = extConfig.get<string>('anthropicApiKey') || '';
-        let openrouterApiKey: string = extConfig.get<string>('openrouterApiKey') || '';
+        let unorouterApiKey: string = extConfig.get<string>('unorouterApiKey') || '';
         let provider: string = extConfig.get<string>('provider') || 'anthropic';
         let incrementalMode: boolean = extConfig.get<boolean>('incrementalMode') ?? true;
         let customModel: string = extConfig.get<string>('customModel') || '';
@@ -165,8 +165,8 @@ export function activate(context: vscode.ExtensionContext) {
                 if (anthropicApiKey) {
                     envObj['ANTHROPIC_API_KEY'] = anthropicApiKey;
                 }
-                if (openrouterApiKey) {
-                    envObj['OPENROUTER_API_KEY'] = openrouterApiKey;
+                if (unorouterApiKey) {
+                    envObj['UNOROUTER_API_KEY'] = unorouterApiKey;
                 }
                 if (provider) {
                     envObj['H2A_PROVIDER'] = provider;

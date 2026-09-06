@@ -89,12 +89,12 @@ Mock is deterministic and free. For real Apex/LWC quality and full Copilot answe
 ```bash
 # h2a-mvp/.env
 ANTHROPIC_API_KEY=sk-ant-...
-# or, for OpenRouter:
-OPENROUTER_API_KEY=sk-or-v1-...
+# or, for Unorouter:
+UNOROUTER_API_KEY=your-key-here
 ```
 
-Then pick **Provider = Anthropic** (uses `claude-opus-4-8` by default) or **OpenRouter** in the UI.
-For OpenRouter's model, set `openrouter.model` in `h2a-mvp/config.yaml` (e.g. `anthropic/claude-sonnet-5`).
+Then pick **Provider = Anthropic** (uses `claude-opus-4-8` by default) or **Unorouter** in the UI.
+For Unorouter's model, set `unorouter.model` in `h2a-mvp/config.yaml` (defaults to `codestral-latest:free`).
 
 ## Server settings (environment variables)
 

@@ -57,9 +57,9 @@ Open **Settings → H2A Migrator** and set:
 
 | Setting | What to set it to |
 |---|---|
-| `h2aMigrator.provider` | `anthropic` (best quality) · `openrouter` (free/cheap, for dev) · `mock` (free, keyless, for testing the pipeline) |
+| `h2aMigrator.provider` | `anthropic` (best quality) · `unorouter` (free/cheap, for dev) · `mock` (free, keyless, for testing the pipeline) |
 | `h2aMigrator.anthropicApiKey` | Your key from [console.anthropic.com](https://console.anthropic.com/) — only if provider = `anthropic` |
-| `h2aMigrator.openrouterApiKey` | Your key from [openrouter.ai](https://openrouter.ai/keys) — only if provider = `openrouter` |
+| `h2aMigrator.unorouterApiKey` | Your key from [api.unorouter.com](https://api.unorouter.com) — only if provider = `unorouter` |
 | `h2aMigrator.engine` | `agentic` (recommended — Planner + Critic + RAG) or `linear` (fewer LLM calls, lower cost) |
 | `h2aMigrator.incrementalMode` | `true` (default) — skip re-translating domains that haven't changed |
 
@@ -179,7 +179,7 @@ python -m pytest tests/ -q
 | Provider | When to use it | Cost |
 |---|---|---|
 | `mock` | Testing the pipeline itself, CI, sanity-checking your source parses correctly | Free, no key |
-| `openrouter` | Development/iteration, cheap experimentation | Free–cheap (rate-limited free tier) |
+| `unorouter` | Development/iteration, cheap experimentation | Free–cheap (rate-limited free tier) |
 | `anthropic` | Final/production-quality migrations | Paid, best quality |
 
 All three run the **identical pipeline and prompts** — only the model changes. Switch anytime without touching your code or settings beyond the provider dropdown.
@@ -192,6 +192,6 @@ All three run the **identical pipeline and prompts** — only the model changes.
 |---|---|---|
 | `ANTHROPIC_API_KEY not found` | No key set for the chosen provider | Add it to `.env` or the extension's Settings |
 | `401 invalid x-api-key` | Key is wrong, revoked, or the workspace has no credit | Generate a fresh key at console.anthropic.com and confirm billing is active |
-| `429` rate limit (OpenRouter free models) | Free-tier throttling upstream | Try a different free model, or add your own OpenRouter key to raise limits |
+| `429` rate limit (Unorouter free models) | Free-tier throttling upstream | Try a different free model, or add your own Unorouter key to raise limits |
 | Deploy verification says "not run" | No `sf` CLI or no authorized org | `sf org login web`, or skip `--verify` — the rest of the pipeline works without it |
 | A class shows Low confidence | Offline validation errors, or a failed org deploy | Open the class and the report's confidence basis column — it names the specific issue |

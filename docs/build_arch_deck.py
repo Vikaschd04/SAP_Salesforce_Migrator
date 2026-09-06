@@ -233,7 +233,7 @@ layers=[("SURFACES",TEAL,"CLI · VS Code extension · Web cockpit",
          "Agents never call each other — they read and write one shared workspace."),
         ("CAPABILITIES",BLACK,"ingest · schema · generate · validate · verify · rule_ledger · report",
          "Stateless functions. Independently testable. Shared by both pipelines."),
-        ("LLM GATEWAY",PURPLE,"llm.py → anthropic · openrouter · mock",
+        ("LLM GATEWAY",PURPLE,"llm.py → anthropic · unorouter · mock",
          "Routing, retries, caching and cost accounting — one choke point, no bypass.")]
 ly=BODY+0.12; lh=0.93
 for i,(name,lc,nodes,why) in enumerate(layers):
@@ -398,7 +398,7 @@ groups=[("ENGINE",GDEEP,[("Python 3.12","host language for the pipeline"),
                          ("pydantic · pyyaml","structured-output validation; config + mappings"),
                          ("rich","CLI rendering")]),
         ("AI",PURPLE,[("anthropic SDK","primary provider; per-stage thinking effort"),
-                      ("openai SDK → OpenRouter","alternate provider, OpenAI-compatible"),
+                      ("openai SDK → Unorouter","alternate provider, OpenAI-compatible"),
                       ("bundled lexical RAG","8 Salesforce docs, top-3 per prompt — no vector DB"),
                       ("mock provider","keyless, deterministic; CI and safe demos")]),
         ("WEB",TEAL,[("FastAPI + uvicorn","15 JSON routes + SPA catch-all"),

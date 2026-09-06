@@ -239,7 +239,7 @@ Every agent's intelligence ultimately funnels through one file: [llm.py](../h2a-
 
 **The public doors** are `call_llm(...)` and `call_structured(...)`. An agent calls one of these with a `stage` name, a `prompt`, and (optionally) a JSON `schema`. Inside, `call_llm`:
 
-1. **Reads config** to find the provider (`anthropic` / `openrouter` / `mock`).
+1. **Reads config** to find the provider (`anthropic` / `unorouter` / `mock`).
 2. **Builds a cache key** from `(stage, provider:model, full prompt)` and checks a **disk cache** first — so re-runs and `--offline` replay are free and deterministic.
 3. **Dispatches to the provider**:
    - `anthropic` → `_call_anthropic` → the real Claude SDK (`client.messages.create`). *This is the exact line that threw your `401` earlier — it's where the key is actually used.*

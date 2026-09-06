@@ -16,7 +16,7 @@ import type { KeyState } from '../api';
 
 const PROVIDERS: { id: string; label: string; help: string }[] = [
   { id: 'anthropic', label: 'Anthropic', help: 'sk-ant-…  ·  console.anthropic.com' },
-  { id: 'openrouter', label: 'OpenRouter', help: 'sk-or-…  ·  openrouter.ai/keys' },
+  { id: 'unorouter', label: 'Unorouter', help: 'sk-…  ·  api.unorouter.com' },
 ];
 
 const DOTS = '••••••••••••••••••••';

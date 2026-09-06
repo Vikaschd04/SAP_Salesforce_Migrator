@@ -90,7 +90,7 @@ toward **output you can verify**. That axis is the moat.
   thin `@RestResource` controllers).
 - SObject-schema grounding from `items.xml` (SOQL validated against real fields).
 - Structured outputs + prompt caching (Claude path); scoped dependency signatures.
-- Three interchangeable providers: `anthropic`, `openrouter`, `mock`.
+- Three interchangeable providers: `anthropic`, `unorouter`, `mock`.
 - Eval harness, incremental delta tracking, call-graph dashboard.
 
 **Known gaps at that time → became this roadmap**

@@ -38,7 +38,7 @@ It ships two ways:
 | **AI does the translation, not a rigid rule-engine** | Business logic in Hybris is expressed in arbitrary Java — a fixed rule-based translator breaks the moment the code doesn't match its assumptions. An LLM (Claude) reads and *understands* the code the way a senior engineer would. |
 | **Every output is verified, not just generated** | An AI can hallucinate. So we don't stop at "the AI wrote some Apex" — we deploy it to a real Salesforce org, read the real compiler errors, and have the AI fix them automatically. See [TDD.md](TDD.md) §4 for the self-healing loop. |
 | **An agent *team*, not one AI call** | A Planner decides *what* to build (and — importantly — what **not** to build as custom code); Builders write it; a Critic reviews it adversarially before it's accepted. This mirrors how a real engineering team works, and it catches bugs a single-pass AI call would miss. |
-| **Three swappable AI providers** | Anthropic Claude for production quality, OpenRouter free models for cheap iteration, and a keyless "mock" mode for testing the pipeline itself with zero cost. |
+| **Three swappable AI providers** | Anthropic Claude for production quality, Unorouter free models for cheap iteration, and a keyless "mock" mode for testing the pipeline itself with zero cost. |
 | **Grounded in your actual data model** | The AI is shown the real Salesforce object/field catalog derived from your `items.xml` before it writes a single line of SOQL — so it can't invent fields that don't exist. |
 
 ## 4. Who it's for

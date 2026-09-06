@@ -19,7 +19,7 @@ Design goals (production rework):
     `--offline` replay are free and deterministic.
   - Honest token + cache accounting.
 
-The previous OpenRouter multi-model fallback and the giant hardcoded `_PREBAKED`
+The previous multi-model fallback and the giant hardcoded `_PREBAKED`
 dictionary have been removed. Retries/backoff are handled by the Anthropic SDK.
 """
 
@@ -231,7 +231,7 @@ def _with_retry(fn, *, stage: str, config: dict):
                 fatal = ProviderAuthError(
                     f"{stage}: the provider rejected the credentials "
                     f"({type(exc).__name__}). Check ANTHROPIC_API_KEY / "
-                    "OPENROUTER_API_KEY, or set provider to mock.")
+                    "UNOROUTER_API_KEY, or set provider to mock.")
                 fatal.__cause__ = exc
                 _latch_fatal(fatal)
                 raise fatal
@@ -292,7 +292,11 @@ def _load_config() -> dict:
         return yaml.safe_load(f) or {}
 
 
-_DEFAULT_OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+#: Fallback when config names none. Free tier, code-capable, and — unlike the "think"
+#: and "search" variants — it stays inside the gateway's ~100s origin timeout on a
+#: generate prompt instead of drawing a 524. See `config.yaml` for why availability
+#: rather than quality decides this. [1.49]
+_DEFAULT_UNOROUTER_MODEL = "codestral-latest:free"
 _KEY_PLACEHOLDERS = {
     "your-key-here", "sk-ant-your-key-here", "sk-or-v1-your-key-here",
 }
@@ -315,8 +319,8 @@ def _get_model(config: dict, provider: str = "anthropic") -> str:
     custom = model_override() or os.environ.get("H2A_CUSTOM_MODEL")
     if custom:
         return custom
-    if provider == "openrouter":
-        return (config.get("openrouter") or {}).get("model") or _DEFAULT_OPENROUTER_MODEL
+    if provider == "unorouter":
+        return (config.get("unorouter") or {}).get("model") or _DEFAULT_UNOROUTER_MODEL
     return config.get("model") or "claude-opus-4-8"
 
 
@@ -591,18 +595,18 @@ def _call_anthropic(
     }
 
 
-# ── OpenRouter backend (OpenAI-compatible; free models for dev/testing) ───────
+# ── Unorouter backend (OpenAI-compatible; free models for dev/testing) ────────
 
 _or_client = None
 
 
-def _openrouter_client(api_key: str, base_url: str):
+def _unorouter_client(api_key: str, base_url: str):
     global _or_client
     if _or_client is not None:
         return _or_client
     with _STATE_LOCK:                        # double-checked, as above
         if _or_client is None:
-            from openai import OpenAI  # lazy — only needed for provider=openrouter
+            from openai import OpenAI  # lazy — only needed for provider=unorouter
             r = (_load_config().get("resilience") or {})
             _or_client = OpenAI(base_url=base_url, api_key=api_key,
                                 max_retries=int(r.get("sdk_max_retries", 3) or 3),
@@ -613,7 +617,7 @@ def _openrouter_client(api_key: str, base_url: str):
 def _schema_directive(json_schema: dict) -> str:
     """
     Translate a JSON schema into a plain-text instruction, so providers without
-    native structured-output support (OpenRouter free models) still return the
+    native structured-output support (free models on a gateway) still return the
     same JSON shape. The core prompt templates are unchanged — this is a
     provider-adapter concern appended only for such providers.
     """
@@ -627,7 +631,7 @@ def _schema_directive(json_schema: dict) -> str:
     )
 
 
-def _call_openrouter(
+def _call_unorouter(
     *,
     model: str,
     system_prompt: str,
@@ -637,7 +641,7 @@ def _call_openrouter(
     base_url: str,
     api_key: str,
 ) -> dict:
-    client = _openrouter_client(api_key, base_url)
+    client = _unorouter_client(api_key, base_url)
 
     user_content = prompt + (_schema_directive(json_schema) if json_schema is not None else "")
     messages = []
@@ -834,7 +838,7 @@ def call_llm(
     provider = _get_provider(config)
     # Model routing: an explicit override (from the agentic router) wins, but only
     # for the anthropic provider — routed model ids are Claude ids and would be
-    # meaningless slugs for openrouter/mock.
+    # meaningless slugs for unorouter/mock.
     model = model if (model and provider == "anthropic") else _get_model(config, provider)
     cache_dir = _cache_dir(config)
 
@@ -869,29 +873,29 @@ def call_llm(
             max_tokens=max_tokens, json_schema=json_schema, effort=effort,
             cache_system=cache_system,
         ), stage=stage, config=config)
-    elif provider == "openrouter":
-        orcfg = config.get("openrouter") or {}
-        api_key = _get_api_key("OPENROUTER_API_KEY")
+    elif provider == "unorouter":
+        orcfg = config.get("unorouter") or {}
+        api_key = _get_api_key("UNOROUTER_API_KEY")
         if not api_key:
             raise EnvironmentError(
-                "OPENROUTER_API_KEY not found. Set it in the environment or .env, "
-                "get a key at https://openrouter.ai/keys, or use provider=anthropic / mock."
+                "UNOROUTER_API_KEY not found. Set it in the environment or .env, "
+                "or use provider=anthropic / mock."
             )
-        # Any OpenAI-compatible endpoint, not only OpenRouter: the provider is the *wire
+        # Any OpenAI-compatible endpoint, not only Unorouter: the provider is the *wire
         # format*, and the host is configuration. Overridable by environment so a base URL
         # and a key never have to be written into a file to try one. Mirrors
-        # `ANTHROPIC_BASE_URL` on the other backend. [1.46]
-        base_url = (_get_api_key("OPENROUTER_BASE_URL")
+        # `ANTHROPIC_BASE_URL` on the other backend. [1.46, 1.49]
+        base_url = (_get_api_key("UNOROUTER_BASE_URL")
                     or orcfg.get("base_url")
-                    or "https://openrouter.ai/api/v1")
-        result = _with_retry(lambda: _call_openrouter(
+                    or "https://api.unorouter.com/v1")
+        result = _with_retry(lambda: _call_unorouter(
             model=model, system_prompt=system_prompt, prompt=prompt,
             max_tokens=max_tokens, json_schema=json_schema,
             base_url=base_url,
             api_key=api_key,
         ), stage=stage, config=config)
     else:
-        raise ValueError(f"Unknown provider '{provider}'. Use 'anthropic', 'openrouter', or 'mock'.")
+        raise ValueError(f"Unknown provider '{provider}'. Use 'anthropic', 'unorouter', or 'mock'.")
 
     _record(
         provider,

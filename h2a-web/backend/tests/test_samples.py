@@ -83,7 +83,7 @@ def test_each_sample_carries_enough_to_choose_between_them(samples):
 def test_whether_a_real_model_is_reachable_is_stated(samples):
     """So the UI can say "this will run on the mock" up front, instead of letting someone
     start a dry run and read stub output as a result."""
-    assert set(samples["providers"]) >= {"anthropic", "openrouter"}
+    assert set(samples["providers"]) >= {"anthropic", "unorouter"}
     assert all(isinstance(v, bool) for v in samples["providers"].values())
 
 

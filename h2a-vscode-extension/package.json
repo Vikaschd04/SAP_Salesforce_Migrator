@@ -66,12 +66,12 @@
           "default": "anthropic",
           "enum": [
             "anthropic",
-            "openrouter",
+            "unorouter",
             "mock"
           ],
           "enumDescriptions": [
             "Anthropic Claude \u2014 best quality (needs Anthropic API key)",
-            "OpenRouter \u2014 free/cheap models for dev/testing (needs OpenRouter API key)",
+            "Unorouter \u2014 free/cheap models for dev/testing (needs Unorouter API key)",
             "Mock \u2014 keyless deterministic stub (no key; for testing the pipeline)"
           ],
           "description": "LLM provider. Same pipeline and prompts for all \u2014 only the model changes."
@@ -81,10 +81,10 @@
           "default": "",
           "description": "Anthropic API key (sk-ant-...). Used when provider = anthropic. If empty, ANTHROPIC_API_KEY from the environment / h2a-mvp/.env is used."
         },
-        "h2aMigrator.openrouterApiKey": {
+        "h2aMigrator.unorouterApiKey": {
           "type": "string",
           "default": "",
-          "description": "OpenRouter API key (sk-or-...). Used when provider = openrouter. If empty, OPENROUTER_API_KEY from the environment / h2a-mvp/.env is used."
+          "description": "Unorouter API key. Used when provider = unorouter. If empty, UNOROUTER_API_KEY from the environment / h2a-mvp/.env is used."
         },
         "h2aMigrator.incrementalMode": {
           "type": "boolean",
@@ -94,7 +94,7 @@
         "h2aMigrator.customModel": {
           "type": "string",
           "default": "",
-          "description": "Override the model for the active provider (e.g. claude-sonnet-5 for Anthropic, or meta-llama/llama-3.3-70b-instruct:free for OpenRouter)."
+          "description": "Override the model for the active provider (e.g. claude-sonnet-5 for Anthropic, or codestral-latest:free for Unorouter)."
         },
         "h2aMigrator.verifyDeploy": {
           "type": "boolean",

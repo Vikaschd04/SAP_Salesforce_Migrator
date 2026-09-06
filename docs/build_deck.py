@@ -181,7 +181,7 @@ layers=[("SURFACES",BLACK,["Web cockpit — review as it runs","VS Code — righ
 ("ORCHESTRATION",GDEEP,["Agentic — Planner · Builder · Critic · Verifier","Three human review gates","Linear mode — fixed 10-stage pipeline"]),
 ("SHARED STAGE FUNCTIONS",BLACK,["parse Java","derive schema","generate Apex · LWC","validate & repair","data · jobs","verify · report"]),
 ("ASSURANCE",GDEEP,["rule ledger","replay your JUnit","provenance","triage","sign-off"]),
-("AI PROVIDERS",BLACK,["Anthropic Claude — best quality","OpenRouter — cheap iteration","Mock — free, offline, zero exposure"])]
+("AI PROVIDERS",BLACK,["Anthropic Claude — best quality","Unorouter — cheap iteration","Mock — free, offline, zero exposure"])]
 ly=BODY+0.05; lh=0.70
 for i,(name,lc,nodes) in enumerate(layers):
     rect(s,MX,ly,CW,lh,fill=WHITE,ln=LINE,lw=0.75)

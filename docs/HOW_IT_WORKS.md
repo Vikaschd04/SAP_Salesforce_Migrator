@@ -37,7 +37,7 @@ Think of it less like a translator and more like a small team of AI engineers: o
 
 All three run **exactly the same engine**. There is no "lite" version — the dashboard and the command line produce identical output from identical code. They only differ in how much they show you along the way.
 
-You'll need an AI key (we use Anthropic's Claude, or OpenRouter as an alternative) — or you can run in **`mock` mode** with no key at all. Mock mode makes no internet calls whatsoever, so it works on locked-down corporate laptops, costs nothing, and is perfect for seeing the whole pipeline work end to end with clearly-labelled placeholder code.
+You'll need an AI key (we use Anthropic's Claude, or Unorouter as an alternative) — or you can run in **`mock` mode** with no key at all. Mock mode makes no internet calls whatsoever, so it works on locked-down corporate laptops, costs nothing, and is perfect for seeing the whole pipeline work end to end with clearly-labelled placeholder code.
 
 ## What it can migrate
 
@@ -407,7 +407,7 @@ Every single request to the AI — from any agent, any stage — goes through **
 
 | At the door | What it does |
 |---|---|
-| **The switch** | Which AI you're using: Claude, OpenRouter, or mock (no AI at all). Everything above this floor is written once and works with all three. |
+| **The switch** | Which AI you're using: Claude, Unorouter, or mock (no AI at all). Everything above this floor is written once and works with all three. |
 | **The retry** | AI services occasionally get busy and refuse. Across hundreds of calls that stops being bad luck and becomes a certainty, so it waits and tries again, backing off politely rather than hammering. |
 | **The notebook** | Remembers answers it already got. Ask the same question twice and it doesn't pay twice. |
 | **The meter** | Counts every request and what it cost, which is where your cost report comes from. |

@@ -52,7 +52,7 @@ This document explains the **architecture** — how the pieces fit together and 
                                         ▼
                          ┌─────────────────────────────┐
                          │   LLM Provider Layer            │
-                         │   anthropic | openrouter | mock  │
+                         │   anthropic | unorouter | mock  │
                          └─────────────────────────────┘
 ```
 
@@ -141,7 +141,7 @@ Three related mechanisms keep the AI honest about what actually exists:
 | **Prompt caching for the system prompt** | The stable, large prefix (rules + type table + constraints + schema) is identical for every class in a repo, so it's cached and reused at roughly 10% of the token cost on repeat classes. |
 | **Scoped dependency signatures, not global** | A class only needs the public signatures of what it actually calls, not every class generated so far. This keeps prompts small and cost-bounded as a repository grows. |
 | **Determinism-first for anything that doesn't need judgment** | Parsing Java/XML/ImpEx, deriving the schema, emitting metadata, and cron-expression validation are 100% deterministic Python — no LLM call, no cost, no nondeterminism, fully unit-testable. The LLM is reserved for genuinely judgment-requiring work: understanding code, writing Apex, reviewing quality. |
-| **Every provider is swappable, same prompts** | `mock` (free, keyless, deterministic), `openrouter` (cheap/free models for iteration), `anthropic` (production quality) all run the identical pipeline — only `llm.py`'s provider adapter changes. This makes the whole system CI-testable at zero cost. |
+| **Every provider is swappable, same prompts** | `mock` (free, keyless, deterministic), `unorouter` (cheap/free models for iteration), `anthropic` (production quality) all run the identical pipeline — only `llm.py`'s provider adapter changes. This makes the whole system CI-testable at zero cost. |
 | **Graceful degradation everywhere** | No external dependency (an LLM key, the `sf` CLI, a live org) is load-bearing for the core pipeline to run. Each is checked and, if absent, skipped with a clear message — never a crash. |
 
 ## 7. Technology stack
@@ -150,7 +150,7 @@ Three related mechanisms keep the AI honest about what actually exists:
 |---|---|
 | Engine | Python 3.10+ |
 | Java parsing | `javalang` (AST) |
-| LLM SDKs | `anthropic` (native), `openai` SDK (OpenRouter, OpenAI-compatible) |
+| LLM SDKs | `anthropic` (native), `openai` SDK (Unorouter, OpenAI-compatible) |
 | Config | YAML (`config.yaml`) + `.env` + per-run `ContextVar` overrides |
 | Web backend | FastAPI + uvicorn; SSE for live run events |
 | Web frontend | React + TypeScript + Vite |

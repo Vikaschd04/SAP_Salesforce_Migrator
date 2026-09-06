@@ -72,7 +72,7 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Which providers this deployment can actually call — the server's own credential, or
-  // one this user stored. Picking `openrouter` with neither configured started a run that
+  // one this user stored. Picking `unorouter` with neither configured started a run that
   // fell back to stub output, and the only way to find out was to read the result and
   // notice it was not real. A dry run that silently is not one is worse than no dry
   // run. [1.48]
@@ -295,8 +295,8 @@ export default function Landing({ hosted, defaultProvider, starting, error, onSt
                 <option value="anthropic">
                   Anthropic (Claude){providerReady.anthropic === false ? ' — no key configured' : ''}
                 </option>
-                <option value="openrouter">
-                  OpenRouter{providerReady.openrouter === false ? ' — no key configured' : ''}
+                <option value="unorouter">
+                  Unorouter{providerReady.unorouter === false ? ' — no key configured' : ''}
                 </option>
               </select>
               <span className="hint">

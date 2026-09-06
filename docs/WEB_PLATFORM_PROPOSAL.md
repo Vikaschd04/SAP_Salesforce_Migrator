@@ -147,7 +147,7 @@ A 2-week spike at the very start (M0 kickoff) to prove the **checkpoint/resume**
 ## 8. Key decisions & risks to settle up front
 
 1. **Hosting & code sensitivity (biggest one).** Clients' Hybris source is sensitive IP. Offer **both** a hosted SaaS *and* a **customer-VPC / on-prem** deployment (Docker Compose / Helm). This also lets a customer keep AI calls inside their own boundary. Decide the default before M4.
-2. **Where the AI runs.** Same providers as today (Anthropic / OpenRouter / free offline mock). For a hosted product, decide whether the platform holds the AI key (metered billing) or the customer brings their own.
+2. **Where the AI runs.** Same providers as today (Anthropic / Unorouter / free offline mock). For a hosted product, decide whether the platform holds the AI key (metered billing) or the customer brings their own.
 3. **Salesforce connection.** Move from local `sf` CLI to a proper **OAuth web flow** (JWT/connected app) so deploys work from the browser. Non-trivial but standard.
 4. **Long-running jobs.** A repo can take many minutes. Needs a **job queue + workers + resumability**, not a request thread. (M0/M4.)
 5. **Concurrency & AI cost at scale.** Rate limits, per-run cost caps, the existing model-routing (cheap vs frontier) becomes a real cost lever.

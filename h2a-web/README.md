@@ -52,13 +52,13 @@ For UI development with hot-reload: `cd web && npm run dev` (Vite on :5173, prox
 - **Diff tab** — Monaco **source-Java ↔ generated-Apex** (and Angular ↔ LWC) side-by-side, per target.
 - **✦ Migration Copilot** — ask about the run in natural language (risks, skips, flags, Critic
   findings, a specific class). Grounded in the run's Blackboard; keyless answers in mock mode,
-  full conversational answers on Anthropic/OpenRouter.
+  full conversational answers on Anthropic/Unorouter.
 
 Then in the browser: keep the default path (`Testing/acme-commerce-hybris`) or paste another
 codebase path / upload a `.zip`, pick **Provider = Mock** (free, keyless) for a rehearsal, and hit
 **Start migration**. Watch the stepper light up and the agent activity stream in real time.
 
-- **Provider**: `mock` (free), `anthropic` (needs a valid key in `../h2a-mvp/.env`), or `openrouter`.
+- **Provider**: `mock` (free), `anthropic` (needs a valid key in `../h2a-mvp/.env`), or `unorouter`.
 - **Engine**: `agentic` (agents) or `linear`.
 - **Supervised (review gates)**: on by default — the run **pauses for your review** (see below). Turn off for Autopilot (run straight through, review at the end).
 - **Verify vs org**: runs a validate-only deploy (needs the Salesforce CLI + a default org).
@@ -116,7 +116,7 @@ and **agent-transparency views** so a reviewer can see *what the AI is actually 
 
 > Depth scales with the provider: under **mock** these views show structure (purpose, patterns,
 > bundle parts) but sparse prose, because the mock stub doesn't invent business rules or findings;
-> with a real provider (Anthropic/OpenRouter) the rules, queries, and Critic findings fill in.
+> with a real provider (Anthropic/Unorouter) the rules, queries, and Critic findings fill in.
 
 The productionization once listed here as future work has shipped: accounts and sessions,
 per-tenant encrypted API keys, a FIFO run queue with bounded concurrency, durable SQLite

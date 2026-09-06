@@ -7,7 +7,7 @@ fine on a small/fast model; generation, repair, and critique are where reasoning
 quality matters and earn a frontier model.
 
 Routing only applies to the `anthropic` provider (the model ids are Claude ids);
-for `openrouter`/`mock` the router returns None and the configured model is used.
+for `unorouter`/`mock` the router returns None and the configured model is used.
 
 config.yaml:
     agentic:

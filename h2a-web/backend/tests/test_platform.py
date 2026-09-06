@@ -91,13 +91,13 @@ def test_a_runs_provider_never_leaks_into_another(fresh, tmp_path):
     O.comprehend_class = spy
     try:
         a = fresh.start_run(DEMO, str(tmp_path / "a"), provider="mock")
-        b = fresh.start_run(DEMO, str(tmp_path / "b"), provider="openrouter")
+        b = fresh.start_run(DEMO, str(tmp_path / "b"), provider="unorouter")
         _await(a), _await(b)
     finally:
         O.comprehend_class = real
 
     resolved = {p for s in seen.values() for p in s}
-    assert resolved == {"mock", "openrouter"}, f"provider leaked between runs: {resolved}"
+    assert resolved == {"mock", "unorouter"}, f"provider leaked between runs: {resolved}"
 
 
 # ── durability ────────────────────────────────────────────────────────────────

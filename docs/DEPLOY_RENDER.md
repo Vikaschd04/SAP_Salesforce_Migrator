@@ -36,22 +36,22 @@ Mock is the safe default. To get real Apex/LWC quality + full Copilot answers on
 in the Render dashboard **Environment** tab add a key and switch the provider:
 
 - `ANTHROPIC_API_KEY = sk-ant-…`  (then set `H2A_PROVIDER = anthropic`), **or**
-- `OPENROUTER_API_KEY = sk-or-…`  (then set `H2A_PROVIDER = openrouter`; pick the model in
-  `h2a-mvp/config.yaml`, e.g. `anthropic/claude-sonnet-5`).
+- `UNOROUTER_API_KEY = …`  (then set `H2A_PROVIDER = unorouter`; pick the model in
+  `h2a-mvp/config.yaml`, which defaults to `codestral-latest:free`).
 
 > ⚠️ **Anyone with the public URL would then spend your credits.** For a shared demo, prefer
 > keeping it on **mock**, or put the service behind access control before enabling a real key.
 
-### A gateway that is not OpenRouter
+### A gateway that is not Unorouter
 
-`openrouter` is the *wire format* (OpenAI-compatible), not the host. Any compatible gateway
-works by pointing `OPENROUTER_BASE_URL` at it — the key never has to be written into a file:
+`unorouter` is the *wire format* (OpenAI-compatible), not the host. Any compatible gateway
+works by pointing `UNOROUTER_BASE_URL` at it — the key never has to be written into a file:
 
 | Variable | Value |
 |---|---|
-| `H2A_PROVIDER` | `openrouter` |
-| `OPENROUTER_BASE_URL` | the gateway's `/v1` root |
-| `OPENROUTER_API_KEY` | the key — add it in the dashboard with **sync: false** |
+| `H2A_PROVIDER` | `unorouter` |
+| `UNOROUTER_BASE_URL` | the gateway's `/v1` root — omit to use `https://api.unorouter.com/v1` |
+| `UNOROUTER_API_KEY` | the key — add it in the dashboard with **sync: false** |
 | `H2A_CUSTOM_MODEL` | the model id the gateway serves |
 | `H2A_CONCURRENCY` | `1` on a free tier — see below |
 

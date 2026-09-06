@@ -88,7 +88,7 @@ This is the flow an in-IDE user experiences.
   │     + reports                   │                                  │
 ```
 
-**Settings that shape this flow** (VS Code → Settings → H2A Migrator): `provider` (anthropic/openrouter/mock), the matching API key, `engine` (agentic/linear), `incrementalMode`, `customModel`.
+**Settings that shape this flow** (VS Code → Settings → H2A Migrator): `provider` (anthropic/unorouter/mock), the matching API key, `engine` (agentic/linear), `incrementalMode`, `customModel`.
 
 ## 2. The linear pipeline flow (`repo-migrate`)
 
@@ -245,7 +245,7 @@ sf project deploy start --dry-run
 
 | Situation | What happens |
 |---|---|
-| No API key configured, provider = anthropic/openrouter | Clear error message naming the missing key and where to get one; nothing crashes |
+| No API key configured, provider = anthropic/unorouter | Clear error message naming the missing key and where to get one; nothing crashes |
 | `--verify` passed but `sf` CLI not installed | Verification step reports "not available" and is skipped; the rest of the pipeline completes normally |
 | `--verify` passed, `sf` installed, but no authorized org | Verification reports "no org — run `sf org login web`" and is skipped |
 | LLM call fails mid-run (auth error, rate limit) | The current domain is marked skipped, remaining domains are skipped, but everything generated so far is still written to disk with a report explaining what was skipped |

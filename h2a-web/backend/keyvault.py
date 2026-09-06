@@ -125,7 +125,7 @@ def get_key(user_id: str | None, provider: str) -> str | None:
 
 # Which providers the server itself can fall back to. Reported as a boolean only — the
 # server's own credential is never exposed, not even masked, since it is not the user's.
-_SERVER_ENV = {"anthropic": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
+_SERVER_ENV = {"anthropic": "ANTHROPIC_API_KEY", "unorouter": "UNOROUTER_API_KEY"}
 
 
 def server_fallbacks() -> dict:

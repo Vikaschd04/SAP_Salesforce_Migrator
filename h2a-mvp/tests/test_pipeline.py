@@ -368,10 +368,10 @@ def test_schema_directive_lists_keys():
     assert _schema_directive({}) == ""  # no schema → no directive
 
 
-def test_openrouter_provider_adapter(monkeypatch, tmp_path):
-    """OpenRouter path builds a chat request and parses the response (stubbed client)."""
-    monkeypatch.setenv("H2A_PROVIDER", "openrouter")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+def test_unorouter_provider_adapter(monkeypatch, tmp_path):
+    """Unorouter path builds a chat request and parses the response (stubbed client)."""
+    monkeypatch.setenv("H2A_PROVIDER", "unorouter")
+    monkeypatch.setenv("UNOROUTER_API_KEY", "sk-uno-test")
     monkeypatch.setenv("H2A_CUSTOM_MODEL", "some/free-model:free")
 
     captured = {}
@@ -402,7 +402,7 @@ def test_openrouter_provider_adapter(monkeypatch, tmp_path):
     import src.llm as llm
     llm._or_client = None
     llm.reset_accounting()
-    monkeypatch.setattr(llm, "_openrouter_client", lambda key, base_url: _FakeClient())
+    monkeypatch.setattr(llm, "_unorouter_client", lambda key, base_url: _FakeClient())
     monkeypatch.setattr(llm, "_cache_dir", lambda config: tmp_path / "cache")  # isolate cache
 
     from src.comprehend import comprehend_class
@@ -414,10 +414,10 @@ def test_openrouter_provider_adapter(monkeypatch, tmp_path):
     assert captured["model"] == "some/free-model:free"
     assert captured["messages"][-1]["role"] == "user"
     assert result["purpose"] == "adapter test"
-    # Accounting recorded the openrouter request + tokens.
+    # Accounting recorded the unorouter request + tokens.
     from src.llm import get_accounting
     acct = get_accounting()
-    assert acct["providers"].get("openrouter", 0) >= 1
+    assert acct["providers"].get("unorouter", 0) >= 1
 
 
 # ── Schema reconciliation (auto-resolve warnings) ─────────────────────────────

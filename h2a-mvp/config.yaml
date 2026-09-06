@@ -2,7 +2,7 @@
 # ─────────────────────
 # provider:
 #   anthropic  → real Claude calls           (needs ANTHROPIC_API_KEY)   — best quality
-#   openrouter → free/cheap models via OpenRouter (needs OPENROUTER_API_KEY) — dev/testing
+#   unorouter  → free/cheap models via Unorouter (needs UNOROUTER_API_KEY)  — dev/testing
 #   mock       → deterministic keyless stub   (no key)                    — CI / dry runs
 #
 # Same pipeline, prompts, schema grounding, and validation for every provider —
@@ -10,22 +10,33 @@
 provider: anthropic
 model: claude-opus-4-8        # used when provider=anthropic
 
-# Used when provider=openrouter — which is really "any OpenAI-compatible endpoint":
-# the provider names the *wire format*, and the host is configuration. OpenRouter is
+# Used when provider=unorouter — which is really "any OpenAI-compatible endpoint":
+# the provider names the *wire format*, and the host is configuration. Unorouter is
 # only the default. Point it anywhere that speaks /v1/chat/completions:
 #
-#   OPENROUTER_BASE_URL=https://api.unorouter.com/v1 \
-#   OPENROUTER_API_KEY=...  H2A_PROVIDER=openrouter \
-#   H2A_CUSTOM_MODEL=glm-5.3-flash-think-search:free
+#   UNOROUTER_BASE_URL=https://some-other-gateway/v1 \
+#   UNOROUTER_API_KEY=...  H2A_PROVIDER=unorouter \
+#   H2A_CUSTOM_MODEL=some/other-model
 #
 # All three are environment overrides, so a key never has to be written to a file.
 # Structured output is requested by a prompt directive rather than the OpenAI
 # structured-output API, so any chat model works — no schema support required.
-openrouter:
-  base_url: https://openrouter.ai/api/v1
-  # Free tiers change often & rate-limit; if one 404s/429s, pick another from
-  # https://openrouter.ai/models?max_price=0 (code-capable ones work best).
-  model: anthropic/claude-sonnet-5
+unorouter:
+  base_url: https://api.unorouter.com/v1
+  # Free tiers on a shared gateway change often and queue hard, so this is chosen for
+  # *availability* as much as quality — a model that answers is worth more than a better
+  # one that times out. Two rules learned the expensive way [1.47–1.49]:
+  #
+  #   · Avoid the `think`/`search` variants. They exceed the gateway's ~100s origin
+  #     timeout on a generate prompt and come back as a Cloudflare 524.
+  #   · Check the model is still listed. `glm-4.7-flash:free`, which the first
+  #     end-to-end Adobe→Hybris run used, was withdrawn from the catalogue; the
+  #     gateway answers a request for it with a 503 that says the providers are
+  #     "busy", which reads like load and is really a missing model.
+  #
+  # `glm-5.3-flash:free` is the surviving GLM equivalent and does work, but was taking
+  # minutes per call when this was set. Override per run with H2A_CUSTOM_MODEL.
+  model: codestral-latest:free
 
 cache_dir: cache/
 # Layer→artifact mapping rules, prompts and the RAG corpus now live in a per-pipeline

@@ -36,7 +36,7 @@ This document lists *what the system must do and support* (requirements). For *h
 | FR-14 | Produce a migration *plan* before generating code: for each source class, decide whether it should become custom Apex, be replaced by a native Salesforce feature, or be skipped — with a stated rationale | ✅ Done |
 | FR-15 | Adversarially review every generated artifact for behavior preservation, security (FLS/sharing), and fflib conformance before accepting it | ✅ Done |
 | FR-16 | Score "behavioral parity" — how many of the comprehended business rules are actually asserted by the generated tests — and optionally close the gap by strengthening tests | ✅ Done |
-| FR-17 | Support three interchangeable LLM providers (Anthropic, OpenRouter, keyless mock) with identical prompts/pipeline — only the model changes | ✅ Done |
+| FR-17 | Support three interchangeable LLM providers (Anthropic, Unorouter, keyless mock) with identical prompts/pipeline — only the model changes | ✅ Done |
 | FR-18 | Route different pipeline stages to different model tiers (cheap vs. frontier) to control cost | ✅ Done |
 | FR-19 | Ground generation/review in a bundled Salesforce/Apex/fflib knowledge base via lightweight retrieval | ✅ Done (scaffold; production-scale corpus is future work) |
 | FR-20 | Provide a VS Code extension that runs the full pipeline from a right-click on a folder | ✅ Done |
@@ -75,11 +75,11 @@ This document lists *what the system must do and support* (requirements). For *h
 | Component | Requirement |
 |---|---|
 | **Python** | 3.10+ (engine and CLI) |
-| **Python packages** | `anthropic`, `openai` (for OpenRouter), `javalang` (Java parsing), `pyyaml`, `pydantic`, `rich`, `pytest` — see `h2a-mvp/requirements.txt` |
+| **Python packages** | `anthropic`, `openai` (for Unorouter), `javalang` (Java parsing), `pyyaml`, `pydantic`, `rich`, `pytest` — see `h2a-mvp/requirements.txt` |
 | **Node / VS Code** | Node.js + `@vscode/vsce` to build the extension; VS Code 1.75+ to run it |
 | **Salesforce CLI (`sf`)** | Optional — only required for `--verify` (real deploy verification) |
 | **A Salesforce org** | Optional — a scratch org or sandbox for deploy verification; not required for generation |
-| **LLM API key** | Required only for the `anthropic` or `openrouter` provider; not required for `mock` |
+| **LLM API key** | Required only for the `anthropic` or `unorouter` provider; not required for `mock` |
 
 ## 5. Supported inputs
 

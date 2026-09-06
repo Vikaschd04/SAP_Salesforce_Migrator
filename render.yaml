@@ -38,11 +38,13 @@ services:
       # would then spend your credits, so prefer keeping it on mock or adding auth.
       # - key: ANTHROPIC_API_KEY
       #   sync: false
-      # - key: OPENROUTER_API_KEY
+      # - key: UNOROUTER_API_KEY
       #   sync: false
-      # `openrouter` is the wire format, not the host — any OpenAI-compatible gateway
-      # works by pointing OPENROUTER_BASE_URL at it, with the model in H2A_CUSTOM_MODEL.
-      # - key: OPENROUTER_BASE_URL
+      # `unorouter` is the wire format, not the host — any OpenAI-compatible gateway
+      # works by pointing UNOROUTER_BASE_URL at it, with the model in H2A_CUSTOM_MODEL.
+      # The base URL defaults to https://api.unorouter.com/v1, so only the key is
+      # required to enable real AI on a hosted deploy.
+      # - key: UNOROUTER_BASE_URL
       #   sync: false
       # - key: H2A_CUSTOM_MODEL
       #   sync: false
