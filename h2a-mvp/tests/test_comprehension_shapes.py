@@ -123,3 +123,38 @@ def test_the_planner_can_join_what_comprehension_returns(monkeypatch):
     got = comprehend_class({"class_name": "C", "layer": "Service", "source": "x",
                             "methods": [], "referenced_types": []})
     assert ", ".join(got["business_rules"]) == "a, b"
+
+
+# ── the secret scanner reads the customer's code, not our config [1.49] ───────
+#
+# Renaming the provider changed nothing here: this scans the codebase being migrated for
+# leaked credentials, and a Magento repo is no less likely to contain an OpenRouter key
+# because we stopped calling one. The gateway shape was added, not swapped in.
+
+def _found(text: str) -> list:
+    from src.preflight import _SECRETS
+
+    return [name for rx, name in _SECRETS if rx.search(text)]
+
+
+def test_an_openai_shaped_gateway_key_is_caught():
+    assert "an API key" in _found('token = "sk-voF6eSzBYjc8UD3dz08bFw60AlUOPcrv9Ttp0bY3S0do24kO"')
+
+
+def test_the_more_specific_names_still_win():
+    """A generic pattern that swallowed the Anthropic and OpenRouter keys would make
+    every finding read `an API key`, which tells a reviewer less than it could."""
+    assert _found("sk-ant-api03-" + "a" * 40) == ["an Anthropic API key"]
+    assert _found("sk-or-v1-" + "b" * 30) == ["an OpenRouter API key"]
+
+
+def test_a_short_identifier_beginning_sk_is_not_a_key():
+    """Precision over recall: a false alarm on every run teaches people to ignore the
+    warning, which is worse than missing one."""
+    assert _found("sk-test") == []
+    assert _found("const sku = 'sk-1'") == []
+
+
+def test_scanning_still_covers_openrouter_after_the_rename():
+    """The customer's repo does not care which provider we call."""
+    assert _found("sk-or-v1-" + "c" * 25) != []
