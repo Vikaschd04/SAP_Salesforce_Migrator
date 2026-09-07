@@ -224,6 +224,26 @@ def _format_dependency_sigs(dependency_sigs: list[str]) -> str:
     return "\n".join(f"  {s}" for s in dependency_sigs)
 
 
+#: What the sections are called when no pipeline is pinned — the v1 path, which is
+#: Salesforce by construction.
+_DEFAULT_SECTIONS = {
+    "types": "Java -> Salesforce type mappings",
+    "schema": "Target SObject schema (write SOQL only against these objects/fields)",
+}
+
+
+def _prompt_sections() -> dict:
+    """Section headings for the system prompt, from the target of this run. [1.56]"""
+    try:
+        from src import pipeline
+        target = pipeline.current_target()
+        if target is not None:
+            return {**_DEFAULT_SECTIONS, **getattr(target, "prompt_sections", {})}
+    except Exception:
+        pass
+    return _DEFAULT_SECTIONS
+
+
 def build_system_prompt(mappings: dict, schema: dict | None) -> str:
     """
     Build the stable, cacheable system prompt: role + global rules + type table +
@@ -237,12 +257,16 @@ def build_system_prompt(mappings: dict, schema: dict | None) -> str:
         "RestResource controllers). Output pure Apex only — never Java packages, "
         "imports, or Spring annotations."
     )]
-    parts.append("\n== Java -> Salesforce type mappings ==\n" + _format_type_mappings(mappings))
+    # Named by the target, not by this function. Hardcoding "Salesforce type mappings"
+    # and "Target SObject schema (write SOQL only...)" put them in *every* pipeline's
+    # prompt — so the Adobe→Hybris system prompt forbade Apex in its own words and then
+    # demanded SOQL in ours. A real run resolved the contradiction against us and wrote
+    # `public with sharing class ... magemonk_appointment__c` into a Hybris
+    # migration. [1.56]
+    sections = _prompt_sections()
+    parts.append(f"\n== {sections['types']} ==\n" + _format_type_mappings(mappings))
     parts.append("\n== Hard constraints (must always hold) ==\n" + _format_constraints(mappings))
-    parts.append(
-        "\n== Target SObject schema (write SOQL only against these objects/fields) ==\n"
-        + schema_prompt_block(schema or {})
-    )
+    parts.append(f"\n== {sections['schema']} ==\n" + schema_prompt_block(schema or {}))
     return "\n".join(parts)
 
 
@@ -332,17 +356,35 @@ def _extract_field(raw: str, field: str) -> str:
     if s.startswith("{"):
         try:
             obj = json.loads(s)
-            if isinstance(obj, dict) and isinstance(obj.get(field), str):
-                return obj[field]
+            if isinstance(obj, dict):
+                if isinstance(obj.get(field), str):
+                    return obj[field]
+                # A JSON object of some *other* shape. A real run returned
+                # `{"code": "..."}` and this fell through to the plain-text branch, so the
+                # raw JSON — braces, escaped newlines and all — was stored as the class
+                # and merged verbatim into an emitted `.java` file. The guard below
+                # existed for a truncated object and never for a differently-named one.
+                # [1.56]
+                alt = next((obj[k] for k in _CODE_KEYS
+                            if isinstance(obj.get(k), str) and obj[k].strip()), None)
+                if alt is not None:
+                    return alt
+                return ""
         except Exception:
             pass
-        if f'"{field}"' in s:      # a JSON object for this field that won't parse → give up
-            return ""
+        # Unparseable JSON. Returning it would write a brace-wrapped blob into a source
+        # file; returning nothing is a visible gap, which is the failure worth having.
+        return ""
     if "```" in s:
         blocks = re.findall(r"```(?:apex|java|cls)?\s*\n(.*?)```", s, re.DOTALL)
         if blocks:
             return blocks[0].strip()
     return s
+
+
+#: Keys a model reaches for when it answers with an object of its own design instead of
+#: the requested schema. Ordered by how unambiguously each names source code.
+_CODE_KEYS = ("code", "source", "java", "apex", "class", "content", "text")
 
 
 def _parse_generation_response(content: str) -> dict:

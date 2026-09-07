@@ -20,6 +20,16 @@ class SalesforceTarget:
     #: to hardcode these, so a run on the *other* pipeline searched a shelf of Hybris
     #: documents for "apex fflib governor limits" and was handed whatever matched
     #: worst — under a heading that called it a Salesforce reference. [1.48]
+    #: Headings for the generated system prompt. They used to be hardcoded Salesforce
+    #: *for every pipeline*, so an Adobe→Hybris prompt said "never emit Salesforce Apex"
+    #: and then, two sections later, "Target SObject schema (write SOQL only against
+    #: these objects/fields)". The model resolved the contradiction the way anyone would
+    #: — in favour of the concrete instruction — and wrote Apex into a Hybris
+    #: migration. [1.56]
+    prompt_sections = {
+        "types": "Java -> Salesforce type mappings",
+        "schema": "Target SObject schema (write SOQL only against these objects/fields)",
+    }
     retrieval_terms = ("apex fflib governor limits SOQL DML security bulkification "
                        "testing")
 

@@ -61,6 +61,13 @@ class HybrisTarget:
         return target_contract(getattr(plan_item, "kind", ""),
                                getattr(plan_item, "target_name", ""), methods)
 
+    #: See `SalesforceTarget.prompt_sections`. This pipeline's target has item types and
+    #: FlexibleSearch, not SObjects and SOQL, and saying so is the difference between a
+    #: prompt that contradicts itself and one that does not. [1.56]
+    prompt_sections = {
+        "types": "PHP -> Java type mappings",
+        "schema": "Item types declared in items.xml (query these with FlexibleSearch)",
+    }
     retrieval_terms = ("hybris service layer spring bean flexiblesearch interceptor "
                        "decorator cronjob performable items.xml model impex")
 
