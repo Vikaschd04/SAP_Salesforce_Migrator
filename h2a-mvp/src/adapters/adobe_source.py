@@ -349,6 +349,11 @@ class AdobeCommerceSource:
                 # because it is how the PHP is *reached* — and that is the first thing a
                 # migration loses.
                 "di": di,
+                # A controller's URL is assembled from `etc/*/routes.xml`, the
+                # directory and the class name — none of it is in the class. Every
+                # other `etc/` file was read and this one was not, so controllers
+                # arrived looking like ordinary classes with an `execute()`. [1.53]
+                "routes": magento_config.read_routes(root),
                 "observers": magento_config.read_events(root),
                 "unresolved_types": php_types.unresolved_by_unit(types),
                 "type_resolutions": types["resolutions"],

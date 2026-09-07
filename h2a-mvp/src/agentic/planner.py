@@ -88,6 +88,11 @@ def _candidate_targets(bb, classes: list) -> list:
         wiring = (getattr(_model, "extra", None) or {}).get("di") if _model else None
         if wiring:
             cfg["wiring"] = wiring
+        # The declared routes, for the same reason: whether a controller is a storefront
+        # entry point or an admin action is in `routes.xml`, not in the class. [1.53]
+        routes = (getattr(_model, "extra", None) or {}).get("routes") if _model else None
+        if routes:
+            cfg["routes"] = routes
         return get_pipeline(bb.pipeline_id).target.plan(classes, cfg)
     from src.generate import plan_targets
     return plan_targets(classes)

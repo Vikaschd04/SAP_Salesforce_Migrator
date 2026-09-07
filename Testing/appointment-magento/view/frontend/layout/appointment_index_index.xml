@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" layout="1column" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <head>
+        <title>Book an appointment</title>
+    </head>
+    <body>
+        <referenceContainer name="content">
+             <container name="appointment.banner" htmlClass="appointment-banner" htmlTag="div">
+                    <block class="Magento\Cms\Block\Block" name="appointment-banner">
+                        <arguments>
+                            <argument name="block_id" xsi:type="string">appointment-banner</argument>
+                        </arguments>
+                    </block>
+                </container>
+            <container name="appointment.container" htmlClass="appointment-container" htmlTag="div">
+                <container name="appointment.content" htmlClass="appointment-content" htmlTag="div">
+                    <block class="Magento\Cms\Block\Block" name="appointment-content">
+                        <arguments>
+                            <argument name="block_id" xsi:type="string">appointment-content</argument>
+                        </arguments>
+                    </block>
+                </container>
+                <container name="appointment.form" htmlClass="appointment-form-container" htmlTag="div">
+                    <block class="MageMonk\Appointment\Block\Data" name="appointment.data" template="MageMonk_Appointment::createAppointment.phtml"/>
+                </container>
+            </container>
+        </referenceContainer>
+    </body>
+</page>

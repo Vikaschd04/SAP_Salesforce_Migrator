@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Acl/etc/acl.xsd">
+   <acl>
+     <resources>
+        <resource id="Magento_Backend::admin">
+           <resource id="MageMonk_Base::base" title="MageMonk" sortOrder="65" >
+              <resource id="MageMonk_Appointment::appointment" title="Appointment" sortOrder="40" />
+           </resource>
+        </resource>
+     </resources>
+   </acl>
+</config>

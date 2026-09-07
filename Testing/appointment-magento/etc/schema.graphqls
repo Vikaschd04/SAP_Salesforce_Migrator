@@ -1,0 +1,35 @@
+type Mutation {
+    saveAppointment(input: AppointmentFormInput!): AppointmentOutput @resolver(class: "\\MageMonk\\Appointment\\Model\\Resolver\\SaveAppointment") @doc(description:"Contact us form")
+}
+
+input AppointmentFormInput {
+    name: String @doc(description: "The customer's full name")
+    email: String @doc(description: "The customer's email address")
+    contact_number: String @doc(description: "The Telephone")
+    mode_of_appointment: String @doc(description: "Mode of Appointment")
+    store_id: String @doc(description: "Store Info")
+    address: String @doc(description: "Address")
+    country_id: String @doc(description: "Country")
+    region: String @doc(description: "State")
+    city: String @doc(description: "City")
+    appointment_datetime: String @doc(description: "Appointment Datetime")
+    preferred_language: String @doc(description: "Preferred Language")
+}
+
+type AppointmentOutput {
+   message: String @doc(description: "Success/Error Message")
+}
+
+type Query {
+    getAppointmentFormFields: AppointmentFormFields @resolver(class: "\\MageMonk\\Appointment\\Model\\Resolver\\AppointmentFields") @doc(description: "Return all the fields of appointment table.")
+}
+
+type AppointmentFormFields {
+    items: [AppointmentFormField]
+}
+
+type AppointmentFormField {
+    id: String @doc(description: "Field ID.")
+    column_name: String @doc(description: "Field Label.")
+    data_type: String @doc(description: "Field Data Type.")
+}

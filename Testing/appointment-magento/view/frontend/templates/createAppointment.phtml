@@ -1,0 +1,189 @@
+<?php
+ /** @var \MageMonk\Appointment\Block\Data $block */
+
+$customer = $block->getCustomer();
+$stores = $block->getStores();
+?>
+<div class="appointment-form">
+<h2>Please provide all your details</h2>
+<div>
+    <form id="bookappointment_form" name="bookappointment_form" method="post" action="<?= $block->getUrl('appointment/index/create')?>" data-mage-init='{"validation":{}}'>
+        <fieldset class="fieldset login" data-hasrequired="<?= $block->escapeHtmlAttr(__('* Required Fields')) ?>">
+            <div class="field name required">
+                <label class="label" for="name"><span><?= $block->escapeHtml(__('Name')) ?></span></label>
+                <div class="control">
+                    <input type="text" class="input-text" name="name" id="name"
+                    title="<?= $block->escapeHtml(__('Name')) ?>"
+                    placeholder="<?= $block->escapeHtml(__('Name')) ?>"
+                    value="<?= $block->escapeHtmlAttr($customer->getName()) ?>"
+                    data-validate="{required:true}"/>
+                </div>
+            </div>
+            <div class="field email required">
+                <label class="label" for="email"><span><?= $block->escapeHtml(__('Email')) ?></span></label>
+                <div class="control">
+                    <input type="email" class="input-text" name="email" id="email" data-validate="{required:true}"
+                    title="<?= $block->escapeHtml(__('Email')) ?>" placeholder="<?= $block->escapeHtml(__('Email')) ?>"
+                    value="<?= $block->escapeHtmlAttr($customer->getEmail()) ?>"
+                    data-mage-init='{"mage/trim-input":{}}' data-validate="{required:true, 'validate-email':true}"/>
+                </div>
+            </div>
+            <div class="field phone required">
+                <label class="label" for="contact_number"><span><?= $block->escapeHtml(__('Contact Number')) ?></span></label>
+                <div class="control">
+                    <input type="number" class="input-text" name="contact_number" id="contact_number" data-validate="{required:true, 'validateMobile':true}"
+                    title="<?= $block->escapeHtml(__('Contact Number')) ?>" placeholder="<?= $block->escapeHtml(__('Contact Number')) ?>"
+                    value="<?= $block->escapeHtmlAttr($customer->getContactNumber()) ?>"/>
+                </div>
+            </div>
+            <div class="field mode_of_appointment required">
+                <label class="label" for="mode_of_appointment"><span><?= $block->escapeHtml(__('Mode of Appointment')) ?></span></label>
+                <div class="control">
+                    <select id="mode_of_appointment" name="mode_of_appointment" title="<?= $block->escapeHtml(__('Mode of Appointment')) ?>" data-validate="{required:true}">
+                        <option selected="selected hidden" value="">Mode of Appointment</option>
+                        <option value="Walk-in">Walk-in</option>
+                        <option value="Video">Video</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field mode_of_communication" style="display: none;">
+                <label class="label" for="mode_of_communication"><span><?= $block->escapeHtml(__('Mode of Communication')) ?></span></label>
+                <div class="control">
+                    <select id="mode_of_communication" name="mode_of_communication" title="<?= $block->escapeHtml(__('Mode of Communication')) ?>">
+                        <option selected="selected hidden" value="">Mode of Communication</option>
+                        <option value="WhatsApp">WhatsApp</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field store required">
+                <label class="label" for="store_id"><span><?= $block->escapeHtml(__('Store')) ?></span></label>
+                <div class="control">
+                    <select id="store_id" name="store_id" title="<?= $block->escapeHtml(__('Store')) ?>" data-validate="{required:true}">
+                        <?php foreach($stores as $store) :?>
+                            <option value="<?= $store['source_code'] ?>"><?= $store['name'] ?></option>
+                         <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+            <div class="field address required">
+                <label class="label" for="address"><span><?= $block->escapeHtml(__('Address')) ?></span></label>
+                <div class="control">
+                    <input type="text" class="input-text" name="address" id="address" data-validate="{required:true}"
+                    placeholder="<?= $block->escapeHtml(__('Address')) ?>" title="<?= $block->escapeHtml(__('Address')) ?>"
+                    value="<?= $block->escapeHtmlAttr($customer->getAddress()) ?>"/>
+                </div>
+            </div>
+            <div class="field two-field">
+                <div class="field country required">
+                    <label class="label" for="country"><span><?= $block->escapeHtml(__('Country')) ?></span></label>
+                    <div class="control">
+                        <?= $block->getCountries() ?>
+                        <input type ="hidden" id="customer-country" name="country" value="" />
+                    </div>
+                </div>
+                <div class="field state required">
+                    <label class="label" for="state"><span><?= $block->escapeHtml(__('State')) ?></span></label>
+                    <div class="control">
+                        <input type="hidden"  id="customer-state" name="state" id="state" value=""/>
+                        <?= $block->getRegion() ?>
+                    </div>
+                </div>
+
+            </div>
+            <div class="field two-field">
+                <div class="field city required">
+                    <label class="label" for="city"><span><?= $block->escapeHtml(__('City')) ?></span></label>
+                    <div class="control">
+                        <input type="text" class="input-text" name="city" id="city" data-validate="{required:true}"
+                               placeholder="<?= $block->escapeHtml(__('City')) ?>" title="<?= $block->escapeHtml(__('City')) ?>"
+                               value="<?= $block->escapeHtmlAttr($customer->getCity()) ?>"/>
+                    </div>
+                </div>
+                <div class="field appointment_datetime required">
+                    <label class="label" for="appointment_datetime"><span><?= $block->escapeHtml(__('Appointment Date and Time')) ?></span></label>
+                    <div class="control">
+                        <input type="text" class="input-text" name="appointment_datetime" id="appointment_datetime" data-validate="{required:true}"
+                        placeholder="<?= $block->escapeHtml(__('Appointment Date and Time')) ?>" title="<?= $block->escapeHtml(__('Appointment Date and Time')) ?>"/>
+                    </div>
+                </div>
+            </div>
+            <div class="field preferred-language required">
+                <label class="label" for="preferred_language"><span><?= $block->escapeHtml(__('Preferred Language')) ?></span></label>
+                <div class="control">
+                    <select id="preferred_language" name="preferred_language" title="<?= $block->escapeHtml(__('Preferred Language')) ?>" data-validate="{required:true}">
+                        <option selected="selected hidden" value="">Preferred Language</option>
+                        <option value="English">English</option>
+                        <option value="Regional Language">Regional Language</option>
+                    </select>
+                </div>
+            </div>
+            <input type="hidden" name="status" value="Pending" />
+            <input type="hidden" name="customer_id" value="<?= $customer->getId()?>" />
+        </fieldset>
+        <div class="actions-toolbar">
+            <div class="primary">
+                <button type="submit" class="action submit primary" title="<?= $block->escapeHtmlAttr(__('Book Now')) ?>">
+                    <span><?= $block->escapeHtml(__('Book Now')) ?></span>
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script type="text/x-magento-init">
+   {
+       "*": {
+           "MageMonk_Appointment/js/validation": ""
+       }
+   }
+</script>
+
+<script>
+    require(["jquery", "mage/calendar"], function($){
+        $("#appointment_datetime").datetimepicker({
+            dateFormat: 'mm/dd/yy',
+            timeFormat: 'HH:mm:ss',
+            minDate: 0,
+            changeMonth: true,
+            changeYear: true,
+            showsTime: true
+        })
+
+        $('#mode_of_appointment').on('change', function() {
+            var val= this.value;
+            if(val === 'Video') {
+                $('.mode_of_communication').show();
+            } else {
+                $('.mode_of_communication').hide();
+            }
+        });
+
+    $(document).on('change','#country',function() {
+        //console.log($('#country').find('option:selected').text());
+        $('#customer-country').val($('#country').find('option:selected').text());
+
+    var param = 'country='+$('#country').val();
+    //console.log(param);
+    $.ajax({
+        showLoader: true,
+        url: "<?= $block->getUrl('appointment/index/address')?>",
+        data: param,
+        type: "GET",
+        dataType: 'json'
+    }).done(function (data) {
+        //data.value has the array of regions
+        console.log(data);
+        $('#state').html('');
+         $('#state').append('<option value="" selected="selected">Please select a region, state or province.</option>');
+         $.each(data.value, function (i, value) {
+                $('#state').append('<option id=' + JSON.stringify(value.region_id) + '>' + value.name + '</option>');
+        });
+    });
+});
+ $(document).on('change','#state',function() {
+// console.log($('#customer-state').val($('#state').find('option:selected').text()));
+    $('#customer-state').val($('#state').find('option:selected').text());
+ });
+
+    });
+</script>

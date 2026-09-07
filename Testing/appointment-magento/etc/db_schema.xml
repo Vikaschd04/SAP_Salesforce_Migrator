@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+
+    <table name="magemonk_appointment">
+        <column xsi:type="int" name="entity_id" nullable="false" identity="true" unsigned="true" primary="true" comment="Appointment Id" />
+        <column xsi:type="varchar" name="name" nullable="false" size="255" comment="Name" />
+        <column xsi:type="varchar" name="email" nullable="false" comment="Email" />
+        <column xsi:type="varchar" name="contact_number" size="255" nullable="false" comment="Contact number" />
+        <column xsi:type="text" name="address" nullable="false" size="2M" comment="Address" />
+        <column xsi:type="text" name="state" nullable="false" size="255" comment="State" />
+        <column xsi:type="text" name="city" nullable="false" size="255" comment="Address" />
+        <column xsi:type="text" name="country" nullable="false" size="255" comment="Country" />
+        <column xsi:type="text" name="mode_of_appointment" nullable="false" size="255" comment="Mode of Appointment" />
+        <column xsi:type="text" name="mode_of_communication" nullable="false" size="255" comment="Mode of Communication" />
+        <column xsi:type="text" name="store_id" nullable="false" size="255" comment="Store ID" />
+        <column xsi:type="datetime" name="appointment_datetime" nullable="false" comment="Appointment Datetime" />
+        <column xsi:type="text" name="preferred_language" nullable="false" size="255" comment="Preferred Language" />
+        <column xsi:type="int" name="customer_id" nullable="false" comment="Customer ID" />
+        <column xsi:type="text" name="status" nullable="false" size="255" comment="Status" />
+        <column xsi:type="text" name="comment" nullable="false" size="2M" comment="Comment" />
+        <column xsi:type="datetime" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Created At"/>
+        <column xsi:type="datetime" name="updated_at" on_update="true" nullable="false" default="CURRENT_TIMESTAMP" comment="Updated At"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="entity_id"/>
+        </constraint>
+        <index referenceId="MAGEMONK_APPOINTMENT_MAGEMONK_APPOINTMENT_ENTITY_ID" indexType="btree">
+            <column name="entity_id"/>
+            <column name="customer_id"/>
+            <column name="email"/>
+            <column name="contact_number"/>
+        </index>
+    </table>
+</schema>

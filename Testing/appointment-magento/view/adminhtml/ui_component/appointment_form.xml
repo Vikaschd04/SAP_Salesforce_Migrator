@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Ui:etc/ui_configuration.xsd">
+    <argument name="data" xsi:type="array">
+        <item name="js_config" xsi:type="array">
+            <item name="provider" xsi:type="string">appointment_form.appointment_form_data_source</item>
+            <item name="deps" xsi:type="string">appointment_form.appointment_form_data_source</item>
+        </item>
+        <item name="label" xsi:type="string" translate="true">Appointment Information</item>
+        <item name="config" xsi:type="array">
+            <item name="dataScope" xsi:type="string">data</item>
+            <item name="namespace" xsi:type="string">appointment_form</item>
+        </item>
+        <item name="template" xsi:type="string">templates/form/collapsible</item>
+        <item name="buttons" xsi:type="array">
+            <item name="back" xsi:type="string">MageMonk\Appointment\Block\Adminhtml\Appointment\Edit\BackButton</item>
+            <item name="save" xsi:type="string">MageMonk\Appointment\Block\Adminhtml\Appointment\Edit\SaveButton</item>
+        </item>
+    </argument>
+    <dataSource name="appointment_form_data_source">
+        <argument name="dataProvider" xsi:type="configurableObject">
+            <argument name="class" xsi:type="string">MageMonk\Appointment\Model\DataProvider</argument>
+            <argument name="name" xsi:type="string">appointment_form_data_source</argument>
+            <argument name="primaryFieldName" xsi:type="string">entity_id</argument>
+            <argument name="requestFieldName" xsi:type="string">entity_id</argument>
+        </argument>
+        <argument name="data" xsi:type="array">
+            <item name="js_config" xsi:type="array">
+                <item name="component" xsi:type="string">Magento_Ui/js/form/provider</item>
+                <item name="submit_url" path="*/*/save" xsi:type="url" />
+            </item>
+        </argument>
+    </dataSource>
+    <fieldset name="appointment_details">
+        <argument name="data" xsi:type="array">
+            <item name="config" xsi:type="array">
+                <item name="collapsible" xsi:type="boolean">true</item>
+                <item name="label" xsi:type="string" translate="true">Appointment Details</item>
+                <item name="sortOrder" xsi:type="number">20</item>
+            </item>
+        </argument>
+        <field name="name">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Name</item>
+                    <item name="formElement" xsi:type="string">input</item>
+                    <item name="source" xsi:type="string">name</item>
+                    <item name="dataScope" xsi:type="string">name</item>
+                </item>
+            </argument>
+            <settings>
+                <disabled>1</disabled>
+            </settings>
+        </field>
+        <field name="email">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Email</item>
+                    <item name="formElement" xsi:type="string">input</item>
+                    <item name="source" xsi:type="string">email</item>
+                    <item name="dataScope" xsi:type="string">email</item>
+                </item>
+            </argument>
+            <settings>
+                <disabled>1</disabled>
+            </settings>
+        </field>
+        <field name="contact_number">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Contact Number</item>
+                    <item name="formElement" xsi:type="string">input</item>
+                    <item name="source" xsi:type="string">contact_number</item>
+                    <item name="dataScope" xsi:type="string">contact_number</item>
+                </item>
+            </argument>
+            <settings>
+                <disabled>1</disabled>
+            </settings>
+        </field>
+        <field name="address">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Address</item>
+                    <item name="formElement" xsi:type="string">textarea</item>
+                    <item name="source" xsi:type="string">address</item>
+                    <item name="dataScope" xsi:type="string">address</item>
+                </item>
+            </argument>
+            <settings>
+                <disabled>1</disabled>
+            </settings>
+        </field>
+         <field name="state">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">State</item>
+                    <item name="formElement" xsi:type="string">input</item>
+                    <item name="source" xsi:type="string">state</item>
+                    <item name="dataScope" xsi:type="string">state</item>
+                </item>
+            </argument>
+            <settings>
+                <disabled>1</disabled>
+            </settings>
+        </field>
+         <field name="city">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">City</item>
+                    <item name="formElement" xsi:type="string">input</item>
+                    <item name="source" xsi:type="string">city</item>
+                    <item name="dataScope" xsi:type="string">city</item>
+                </item>
+            </argument>
+            <settings>
+                <disabled>1</disabled>
+            </settings>
+        </field>
+        <field name="country">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Country</item>
+                    <item name="formElement" xsi:type="string">input</item>
+                    <item name="source" xsi:type="string">country</item>
+                    <item name="dataScope" xsi:type="string">country</item>
+                </item>
+            </argument>
+            <settings>
+                <disabled>1</disabled>
+            </settings>
+        </field>
+        <field name="mode_of_appointment">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Mode Of Appointment</item>
+                    <item name="formElement" xsi:type="string">input</item>
+                    <item name="source" xsi:type="string">mode_of_appointment</item>
+                    <item name="dataScope" xsi:type="string">mode_of_appointment</item>
+                </item>
+            </argument>
+            <settings>
+                <disabled>1</disabled>
+            </settings>
+        </field>
+        <field name="mode_of_communication">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Mode Of Communication</item>
+                    <item name="formElement" xsi:type="string">input</item>
+                    <item name="source" xsi:type="string">mode_of_communication</item>
+                    <item name="dataScope" xsi:type="string">mode_of_communication</item>
+                </item>
+            </argument>
+            <settings>
+                <disabled>1</disabled>
+            </settings>
+        </field>
+        <field name="store_id">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Store</item>
+                    <item name="formElement" xsi:type="string">input</item>
+                    <item name="source" xsi:type="string">store_id</item>
+                    <item name="dataScope" xsi:type="string">store_id</item>
+                </item>
+            </argument>
+            <settings>
+                <disabled>1</disabled>
+            </settings>
+        </field>
+        <field name="appointment_datetime">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="options" xsi:type="array">
+                        <item name="showsTime" xsi:type="boolean">true</item>
+                    </item>
+                    <item name="label" xsi:type="string" translate="true">Appointment Datetime</item>
+                    <item name="formElement" xsi:type="string">date</item>
+                    <item name="source" xsi:type="string">appointment_datetime</item>
+                    <item name="dataScope" xsi:type="string">appointment_datetime</item>
+                </item>
+            </argument>
+            <settings>
+                <dataType>timestamp</dataType>
+                <label translate="true">Appointment Datetime</label>
+                <visible>true</visible>
+                <dataScope>appointment_datetime</dataScope>
+            </settings>
+        </field>
+        <field name="preferred_language">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Preferred Language</item>
+                    <item name="formElement" xsi:type="string">input</item>
+                    <item name="source" xsi:type="string">preferred_language</item>
+                    <item name="dataScope" xsi:type="string">preferred_language</item>
+                </item>
+            </argument>
+            <settings>
+                <disabled>1</disabled>
+            </settings>
+        </field>
+        <field name="customer_id">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Customer Id</item>
+                    <item name="formElement" xsi:type="string">input</item>
+                    <item name="source" xsi:type="string">appointment</item>
+                    <item name="dataScope" xsi:type="string">customer_id</item>
+                </item>
+            </argument>
+            <settings>
+                <disabled>1</disabled>
+            </settings>
+        </field>
+        <field name="status">
+            <argument name="data" xsi:type="array">
+                <item name="options" xsi:type="array">
+                    <item name="0" xsi:type="array">
+                        <item name="value" xsi:type="string">Pending</item>
+                        <item name="label" xsi:type="string" translate="true">Pending</item>
+                    </item>
+                    <item name="1" xsi:type="array">
+                        <item name="value" xsi:type="string">In Progress</item>
+                        <item name="label" xsi:type="string" translate="true">In Progress</item>
+                    </item>
+                    <item name="2" xsi:type="array">
+                        <item name="value" xsi:type="string">Approved</item>
+                        <item name="label" xsi:type="string" translate="true">Approved</item>
+                    </item>
+                    <item name="3" xsi:type="array">
+                        <item name="value" xsi:type="string">Declined</item>
+                        <item name="label" xsi:type="string" translate="true">Declined</item>
+                    </item>
+                    <item name="4" xsi:type="array">
+                        <item name="value" xsi:type="string">Cancelled</item>
+                        <item name="label" xsi:type="string" translate="true">Cancelled</item>
+                    </item>
+                </item>
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Status</item>
+                    <item name="formElement" xsi:type="string">select</item>
+                    <item name="source" xsi:type="string">status</item>
+                    <item name="dataScope" xsi:type="string">status</item>
+                </item>
+            </argument>
+        </field>
+        <field name="comment">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="dataType" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Comment</item>
+                    <item name="formElement" xsi:type="string">textarea</item>
+                    <item name="source" xsi:type="string">comment</item>
+                    <item name="dataScope" xsi:type="string">comment</item>
+                </item>
+            </argument>
+        </field>
+    </fieldset>
+</form>

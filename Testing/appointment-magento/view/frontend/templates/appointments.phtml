@@ -1,0 +1,67 @@
+<?php
+use MageMonk\Appointment\Block\Data;
+
+ /** @var Data $block */
+
+$appointments = $block->getAppointments();
+?>
+<div class="block-title order">
+    <strong>Recent Appointments</strong>
+</div>
+<div class="block-content">
+    <?php if(count($appointments)>0):?>
+    <div class="table-wrapper orders-recent">
+        <table class="data table table-order-items recent" id="my-orders-table">
+            <thead>
+                <tr>
+                    <th scope="col" class="col name"> Name </th>
+                    <th scope="col" class="col email">Email</th>
+                    <th scope="col" class="col contact_number">Contact</th>
+                    <th scope="col" class="col address">Address</th>
+                    <th scope="col" class="col mode_of_appointment">Mode of Appointment</th>
+                    <th scope="col" class="col store">Store</th>
+                    <th scope="col" class="col date">Date</th>
+                    <th scope="col" class="col status">Status</th>
+                    <th scope="col" class="col comment">Comment</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach($appointments as $appointment):?>
+                    <tr>
+                        <td data-th="Name" class="col name">
+                            <?= $appointment['name'] ?>
+                        </td>
+                        <td  data-th="Email" class="col email">
+                           <?= $appointment['email'] ?>
+                        </td>
+                        <td data-th="Contact" class="col contact_number">
+                            <?= $appointment['contact_number'] ?>
+                        </td>
+                        <td data-th="Address" class="col address"><?= $appointment['address'] ?>
+                                <br><?= $appointment['city'] . " " . $appointment['state'] ?><br><?=$appointment['country'] ?>
+                        </td>
+                        <td data-th="Mode of Appointment" class="col mode_of_appointment">
+                           <?= $appointment['mode_of_appointment'] ?>
+                        </td>
+                        <td data-th="store" class="col store">
+                            <?= $appointment['store_id'] ?>
+                        </td>
+                        <td data-th="Date" class="col date">
+                            <?= $appointment['appointment_datetime'] ?>
+                        </td>
+
+                        <td data-th="Status" class="col status">
+                            <?= $appointment['status'] ?>
+                        </td>
+                        <td data-th="comment" class="col comment">
+                            <?= $appointment['comment'] ?>
+                        </td>
+                    </tr>
+                <?php endforeach;?>
+            </tbody>
+        </table>
+    </div>
+    <?php else: ?>
+    <div class="message info empty"><span>You have placed no appointments yet!</span></div>
+      <?php  endif;?>
+</div>

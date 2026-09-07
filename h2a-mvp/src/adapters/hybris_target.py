@@ -82,7 +82,8 @@ class HybrisTarget:
         from src.ir import SourceUnit
         units = [u if hasattr(u, "name") else SourceUnit.from_dict(u)
                  for u in (units or [])]
-        return plan_targets(units, (config or {}).get("wiring"))
+        return plan_targets(units, (config or {}).get("wiring"),
+                            (config or {}).get("routes"))
 
     def schema(self, item_types: list, relations: list, enum_types: list) -> dict:
         """The `items.xml` type model, in the shape everything downstream reads. [1.33]
@@ -271,8 +272,8 @@ def target_contract(kind: str, target_name: str, source_methods: list) -> str:
     same helpers the emitters call, so the contract cannot drift from what is emitted.
     """
     from src.adapters import hybris_hooks
-    from src.adapters.hybris_plan import (DECORATOR, EVENT_LISTENER, INTERCEPTOR, JOB,
-                                          SERVICE)
+    from src.adapters.hybris_plan import (CONTROLLER, DECORATOR, EVENT_LISTENER,
+                                          INTERCEPTOR, JOB, SERVICE)
     from src.adapters.hybris_service import _camel
 
     names = [getattr(m, "name", "") for m in (source_methods or [])
@@ -310,6 +311,17 @@ def target_contract(kind: str, target_name: str, source_methods: list) -> str:
                 "- One method per plugin method, named exactly: "
                 + (", ".join(f"`{e}`" for e in emitted) or "(none)") + ".",
                 "- Each takes `(final Object... args)` and returns `Object`."]
+    elif kind == CONTROLLER:
+        body = [f"- Write `public class {target_name}` — an OCC REST controller.",
+                "- One method, named for the action, taking "
+                "`(@PathVariable String baseSiteId, @RequestParam String code)` and "
+                "returning the `WsDTO` named in the file.",
+                "- The route, the HTTP verb and the class name are already decided and "
+                "written; do not restate them.",
+                "- Translate what the Magento action *did* — the reads, the writes, the "
+                "validation. It ended by rendering a page, and this returns a DTO "
+                "instead: map what the page would have shown, and say in a comment where "
+                "you had to choose."]
     elif kind == SERVICE:
         emitted = [_camel(n) for n in names]
         body = [f"- Write the **implementation**, `public class {target_name}`. The "

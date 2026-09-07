@@ -22,8 +22,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.adapters import (hybris_backoffice, hybris_data, hybris_extension,
+                          hybris_occ, magento_config,
                           hybris_hooks, hybris_service, java_bodies)
-from src.adapters.hybris_plan import (BACKOFFICE, DAO, DATA, DECORATOR,
+from src.adapters.hybris_plan import (BACKOFFICE, CONTROLLER, DAO, DATA, DECORATOR,
                                       EVENT_LISTENER, INTERCEPTOR, JOB, SERVICE)
 
 #: Kinds assembly writes today — services and DAOs through the target loop, jobs through
@@ -34,7 +35,7 @@ from src.adapters.hybris_plan import (BACKOFFICE, DAO, DATA, DECORATOR,
 #: and `build_items_xml` already wrote its EAV attributes onto the platform type they
 #: extend. Listing it as unwritten claimed a loss that had not happened — the mirror of
 #: the failure this set exists to prevent. [1.34]
-EMITTABLE = {SERVICE, DAO, JOB, DATA, DECORATOR, INTERCEPTOR, EVENT_LISTENER,
+EMITTABLE = {SERVICE, DAO, JOB, DATA, DECORATOR, INTERCEPTOR, EVENT_LISTENER, CONTROLLER,
              BACKOFFICE}
 
 
@@ -199,6 +200,42 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
             if c.get("file"):
                 emitted_as[c["file"]] = (
                     f"src/{package.replace('.', '/')}/service/{t['target_name']}.java")
+
+    # Storefront controllers. Their own pass because each needs its route, which no other
+    # kind does — and a DTO, which the controller will not compile without. [1.53]
+    routes = (getattr(source_model, "extra", None) or {}).get("routes") or {}
+    seen_dto = set()
+    for t_row in targets or []:
+        if t_row.get("kind") != CONTROLLER:
+            continue
+        # By *file*, not by class name. Three of this module's controllers are called
+        # `Index`, so `units_by_name` holds one of them and the other two would be emitted
+        # from a namesake's source — with its route, its name, and its logic. The file is
+        # the only thing that tells them apart. [1.53]
+        wanted_files = {c.get("file") for c in t_row.get("source_classes", []) if c.get("file")}
+        unit = next((u for u in (getattr(source_model, "units", None) or [])
+                     if getattr(u, "file", "") in wanted_files), None)
+        if unit is None:
+            continue
+        route = magento_config.route_for(getattr(unit, "file", "") or "", routes)
+        ctrl_src = (generated or {}).get(t_row["target_name"]) or ""
+        written_ctrl = hybris_occ.build_controller(
+            unit, package, route, generated_class=ctrl_src)
+        write(_pkg_dir(src, package, "controllers", f"{t_row['target_name']}.java"),
+              written_ctrl)
+        emitted_source[t_row["target_name"]] = written_ctrl
+        if "Reviewed as generated logic" in written_ctrl:
+            bodies_used.add(f"{t_row['target_name']}.{hybris_occ._method_name(route.get('action',''))}")
+        dto = hybris_occ.dto_name(route)
+        if dto not in seen_dto:
+            seen_dto.add(dto)
+            write(_pkg_dir(src, package, "dto", f"{dto}.java"),
+                  hybris_occ.build_dto(route, package))
+        for c in t_row.get("source_classes", []):
+            if c.get("file"):
+                emitted_as[c["file"]] = (
+                    f"src/{package.replace('.', '/')}/controllers/"
+                    f"{t_row['target_name']}.java")
 
     # DAOs come from the data model rather than from source units: a Magento
     # ResourceModel is optional, and the tables exist either way.

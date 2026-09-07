@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="../../../../Magento/Backend/etc/menu.xsd">
+    <menu>
+        <add id="MageMonk_Appointment::appointment_title" title="Appointment" module="MageMonk_Base"
+             sortOrder="60" parent="MageMonk_Base::base" resource="MageMonk_Appointment::appointment"/>
+        <add id="MageMonk_Appointment::appointment" title="Appointment" module="MageMonk_Appointment"
+             sortOrder="70" parent="MageMonk_Appointment::appointment_title" action="appointment/index/index"
+             resource="MageMonk_Appointment::appointment"/>
+    </menu>
+</config>

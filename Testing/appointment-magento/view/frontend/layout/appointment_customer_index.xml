@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../../../../lib/internal/Magento/Framework/View/Layout/etc/page_configuration.xsd">
+    <head>
+        <title>My Appointments</title>
+    </head>
+    <update handle="customer_account"/>
+    <body>
+        <referenceBlock name="page.main.title">
+            <action method="setPageTitle">
+                <argument translate="true" name="title" xsi:type="string">My Appointments</argument>
+            </action>
+        </referenceBlock>
+        <referenceContainer name="content">
+            <block class="MageMonk\Appointment\Block\Data" name="my_appointment" template="MageMonk_Appointment::appointments.phtml" />
+        </referenceContainer>
+    </body>
+</page>
