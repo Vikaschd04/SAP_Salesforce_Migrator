@@ -3,6 +3,7 @@ import type { GateState } from '../useRun';
 import { fetchFiles, submitGate } from '../api';
 import Discovery from './Discovery';
 import ArtifactReview from './ArtifactReview';
+import { useVocab } from '../vocabulary';
 
 export function cxBadge(cx?: string) {
   if (!cx) return null;
@@ -13,6 +14,9 @@ export default function Gate({ runId, gate, onClosed, onStop, sourceLabel }: {
   runId: string; gate: GateState; onClosed: () => void; onStop?: (gate: string) => void;
   sourceLabel?: string;
 }) {
+  // The target is the run's, not this file's: the same pane said "Salesforce Apex"
+  // over generated Java. The *source* side was already taken from the run. [1.61]
+  const v = useVocab();
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   // The platform names this run's output belongs to. Fetched here rather than passed
   // down: the gate is reached from more than one place, and a label that depends on the
@@ -91,7 +95,7 @@ export default function Gate({ runId, gate, onClosed, onStop, sourceLabel }: {
             </>
           ) : (
             <>
-              <p className="gate-note">Open any file to see the generated Salesforce code, compare it side-by-side with
+              <p className="gate-note">Open any file to see the generated {v.language} code, compare it side-by-side with
                 the original SAP source, read every Critic finding, and see exactly what was mapped. If something looks
                 wrong, <b>regenerate just that file</b> — you never need to re-run the whole migration.</p>
 

@@ -29,6 +29,34 @@ if str(ENGINE_ROOT) not in sys.path:
     sys.path.insert(0, str(ENGINE_ROOT))
 
 
+#: What a screen should call things when no pipeline is known — the v1 path, Salesforce.
+_DEFAULT_VOCAB = {
+    "source_platform": "SAP Hybris", "target_platform": "Salesforce",
+    "target_language": "Apex", "target_short": "Salesforce",
+}
+
+
+def _vocabulary(pipeline_id: str) -> dict:
+    """Platform words for one run, from the adapters that own them. [1.61]"""
+    if not pipeline_id:
+        return dict(_DEFAULT_VOCAB)
+    try:
+        from src import pipeline as _p
+        _p.ensure_registered()
+        pl = _p.get(pipeline_id)
+        src_label = (getattr(pl.source, "label", "") or "").split(" (")[0]
+        tgt_label = (getattr(pl.target, "label", "") or "").split(" (")[0]
+        return {
+            "source_platform": src_label or _DEFAULT_VOCAB["source_platform"],
+            "target_platform": tgt_label or _DEFAULT_VOCAB["target_platform"],
+            "target_language": getattr(pl.target, "code_language", "") or
+                               _DEFAULT_VOCAB["target_language"],
+            "target_short": tgt_label or _DEFAULT_VOCAB["target_short"],
+        }
+    except Exception:
+        return dict(_DEFAULT_VOCAB)
+
+
 class Run:
     def __init__(self, run_id: str, input_dir: str, output_dir: str, provider: str,
                  engine: str, verify: bool, owner: str | None = None):
@@ -38,6 +66,12 @@ class Run:
         self.output_dir = output_dir
         self.provider = provider
         self.engine = engine
+        #: Which migration this run is. The cockpit had no way to know — so every screen
+        #: that named a platform named Salesforce, and an Adobe→Hybris run was told its
+        #: hazards mattered "On Salesforce". Not a wording bug: the UI could not be
+        #: migration-aware because nothing ever told it which migration it was. [1.61]
+        self.pipeline = ""
+
         self.verify = verify
         self.status = "queued"          # queued | running | complete | error | cancelled
         self.error: str | None = None
@@ -101,6 +135,11 @@ class Run:
             "result": self.result, "event_count": len(self.events),
             "supervised": self.supervised, "awaiting_gate": self.awaiting_gate,
             "owner": self.owner,
+            "pipeline": self.pipeline,
+            # The words this run's screens should use. Sent as data rather than derived in
+            # the browser, because the adapters are the one place that knows them and a
+            # second copy in TypeScript is a second thing to keep true.
+            "vocabulary": _vocabulary(self.pipeline),
             "queue_position": queue_position(self.id) if self.status == "queued" else 0,
         }
 
@@ -255,6 +294,7 @@ def start_run(input_dir: str, output_dir: str, *, provider: str = "mock",
     run_id = uuid.uuid4().hex[:12]
     run = Run(run_id, input_dir, output_dir, provider, engine, verify, owner=owner)
     run.supervised = supervised
+    run.pipeline = pipeline or ""
     _runs[run_id] = run
 
     def worker():

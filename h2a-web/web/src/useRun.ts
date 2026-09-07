@@ -37,7 +37,7 @@ export interface RunState {
   triage: any | null;
   provenance: any | null;
   /** Which migration this run is. Named by the engine, not assumed here. */
-  pipeline: { id: string; source: string; target: string } | null;
+  pipeline: { id: string; source: string; target: string; language?: string } | null;
   alignment: any | null;
   forecast: any | null;
   orgfit: any | null;

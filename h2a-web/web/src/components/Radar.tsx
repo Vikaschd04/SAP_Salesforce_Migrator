@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
+import { useVocab } from '../vocabulary';
 
 /**
- * Hybris patterns that become hazards on Salesforce.
+ * Source patterns that become hazards on the target.
  *
  * Shown at the Discovery gate, beside the preflight report — before a plan is approved
  * and before anything is generated. That placement is the point: fixing a
@@ -39,6 +40,9 @@ const title = (r: string) => TITLES[r] || r.replace(/_/g, ' ').toLowerCase();
 const LEVELS = ['critical', 'high', 'medium', 'info'] as const;
 
 export default function Radar({ r }: { r: RadarData | null }) {
+  // Named by the run, not by this file. This said "On Salesforce:" above every
+  // hazard, including on runs emitting Java for SAP Hybris. [1.61]
+  const v = useVocab();
   const [only, setOnly] = useState<string>('all');
   const s = r?.summary;
   const rows = useMemo(
@@ -76,7 +80,7 @@ export default function Radar({ r }: { r: RadarData | null }) {
       {s.critical > 0 && (
         <div className="rd-warn">
           <strong>{s.critical} will fail at realistic volume</strong> — not in a test with three
-          records. Cheaper to fix in the Hybris source now than in the Apex afterwards.
+          records. Cheaper to fix in the {v.source} source now than in the {v.language} afterwards.
         </div>
       )}
 
@@ -90,7 +94,7 @@ export default function Radar({ r }: { r: RadarData | null }) {
             </summary>
             <div className="rd-body">
               {f.snippet && <pre className="rd-snippet">{f.snippet}</pre>}
-              <p><b>On Salesforce:</b> {f.hazard}</p>
+              <p><b>On {v.target}:</b> {f.hazard}</p>
               <p className="rd-fix"><b>Fix:</b> {f.fix}</p>
               <p className="rd-path faint mono">{f.file}</p>
             </div>

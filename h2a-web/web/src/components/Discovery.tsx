@@ -3,6 +3,7 @@ import Preflight from './Preflight';
 import Radar from './Radar';
 import Forecast from './Forecast';
 import OrgFit from './OrgFit';
+import { useVocab } from '../vocabulary';
 
 export interface DiscoveryData {
   summary: { files_scanned: number; classes: number; components: number; objects: number; domains: number; total_loc: number };
@@ -398,6 +399,9 @@ const fileIcon = (n: string) =>
  * missing, not that something was found.
  */
 function Processes({ list }: { list: NonNullable<DiscoveryData['processes']> }) {
+  // This paragraph described Salesforce Flows and Apex state machines on every
+  // pipeline, including one emitting Java for SAP Hybris. [1.61]
+  const v = useVocab();
   const [open, setOpen] = useState<string | null>(null);
   const actions = list.reduce((n, p) => n + (p.actions || []).length, 0);
   const resolved = list.reduce(
@@ -410,9 +414,10 @@ function Processes({ list }: { list: NonNullable<DiscoveryData['processes']> }) 
           <h4>{list.length === 1 ? '1 business process' : `${list.length} business processes`} — not migrated</h4>
           <p>
             The {actions} action {actions === 1 ? 'class' : 'classes'} inside {list.length === 1 ? 'it' : 'them'} convert
-            to Apex ({resolved} matched to source so far). The state machine that sequences
+            to {v.language} ({resolved} matched to source so far). The state machine that sequences
             them — the order, the branches, the waits, the error paths — does not. Rebuild
-            each as a Salesforce Flow, or as an Apex state machine where Flow can't express it.
+            each — on the target's own orchestration where it can express them, and in
+            {v.language} where it cannot.
           </p>
         </div>
       </header>

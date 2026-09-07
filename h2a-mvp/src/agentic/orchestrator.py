@@ -683,6 +683,18 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         from src.runctx import set_overrides as _set_run_overrides
         _set_run_overrides(pipeline_id=_pl.id)
 
+        # Tell the cockpit which migration this is, *before* the first gate. The UI has
+        # carried a `pipeline` field since it was written and nothing ever filled it, so
+        # every screen fell back to naming Salesforce — an Adobe→Hybris run was told its
+        # hazards mattered "On Salesforce", in a run emitting Java for SAP Hybris. The
+        # reports were fixed for exactly this in 1.39; the cockpit was not. [1.61]
+        emit("pipeline",
+             id=_pl.id,
+             source=_pl.source.label.split(" (")[0],
+             target=_pl.target.label.split(" (")[0],
+             language=getattr(_pl.target, "code_language", ""),
+             has_oracle=bool(getattr(_pl.target, "has_oracle", False)))
+
     # Is there anything here worth migrating? Walking three review gates to discover
     # there was not is a poor use of anyone's time, and with a real provider it is a poor
     # use of their money. Asked of the source adapter, so each platform answers in its

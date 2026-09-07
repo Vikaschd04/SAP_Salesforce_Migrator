@@ -13,6 +13,7 @@ import History from './components/History';
 import Logo from './components/Logo';
 import SignIn from './components/SignIn';
 import Keys from './components/Keys';
+import { VocabularyContext, vocabFrom } from './vocabulary';
 import ProviderKey from './components/ProviderKey';
 import AccountMenu from './components/AccountMenu';
 
@@ -104,7 +105,10 @@ export default function App() {
 
   const signOut = async () => { await logout(); reset(); setMe({ ...me, user: null }); };
 
+  const vocab = vocabFrom(state.pipeline);
+
   return (
+    <VocabularyContext.Provider value={vocab}>
     <div className="app">
       <header className="topbar">
         <div className="brand">
@@ -220,5 +224,6 @@ export default function App() {
         onStop={stopFromGate} sourceLabel={state.pipeline ? PLATFORM_LABEL[state.pipeline.source] : ''} />}
       <Copilot runId={state.runId} open={cpOpen} onClose={() => setCpOpen(false)} onEvents={injectEvents} />
     </div>
+    </VocabularyContext.Provider>
   );
 }

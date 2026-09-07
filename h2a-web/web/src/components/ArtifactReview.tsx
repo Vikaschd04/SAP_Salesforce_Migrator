@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { fetchDiff, regenerateArtifact, type DiffPayload } from '../api';
 import BlastRadius, { type BlastData } from './BlastRadius';
+import { useVocab } from '../vocabulary';
 
 type Pane = 'generated' | 'compare' | 'findings' | 'details';
 
@@ -12,6 +13,9 @@ type Pane = 'generated' | 'compare' | 'findings' | 'details';
 export default function ArtifactReview({ runId, art, onUpdated, blast, sourceLabel }:
   { runId: string; art: any; blast?: BlastData | null; sourceLabel?: string;
     onUpdated?: (a: any) => void }) {
+  // The target is the run's, not this file's: the same pane said "Salesforce Apex"
+  // over generated Java. The *source* side was already taken from the run. [1.61]
+  const v = useVocab();
   const [open, setOpen] = useState(false);
   const [pane, setPane] = useState<Pane>('generated');
   const [diff, setDiff] = useState<DiffPayload | null>(null);
@@ -46,7 +50,7 @@ export default function ArtifactReview({ runId, art, onUpdated, blast, sourceLab
     finally { setBusy(false); }
   };
 
-  const kind = art.is_lwc ? 'LWC' : (art.apex_pattern || 'Apex');
+  const kind = art.is_lwc ? 'LWC' : (art.apex_pattern || v.language);
   const PANES: [Pane, string][] = [
     ['generated', 'Generated code'], ['compare', 'Compare with source'],
     ['findings', `Findings (${findings.length})`], ['details', 'What was mapped'],
@@ -102,7 +106,7 @@ export default function ArtifactReview({ runId, art, onUpdated, blast, sourceLab
                       <pre className="code-view sm">{diff.source || '(no source captured)'}</pre>
                     </div>
                     <div>
-                      <div className="cmp-h">Generated {diff.is_lwc ? 'LWC' : 'Salesforce Apex'} ►</div>
+                      <div className="cmp-h">Generated {diff.is_lwc ? 'LWC' : `${v.target} ${v.language}`} ►</div>
                       <pre className="code-view sm">{diff.generated || '(empty)'}</pre>
                     </div>
                   </div>
@@ -133,7 +137,7 @@ export default function ArtifactReview({ runId, art, onUpdated, blast, sourceLab
                 <ul>{art.business_rules.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul></div>}
               {art.is_lwc && !!(art.lwc_parts || []).length && <div className="a-sec"><span className="u-lbl">LWC bundle files</span>
                 {art.lwc_parts.map((x: string, i: number) => <code key={i}>{x}</code>)}
-                {art.has_controller && <code>+ Apex controller</code>}</div>}
+                {art.has_controller && <code>+ {v.language} controller</code>}</div>}
               {!!(art.review_flags || []).length && <div className="a-sec"><span className="u-lbl">Review flags</span>
                 <ul>{art.review_flags.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul></div>}
             </>
