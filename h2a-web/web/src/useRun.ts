@@ -162,6 +162,13 @@ export function useRun() {
         }
         case 'decision':
           return { ...s, decisions: [...s.decisions, { agent: ev.agent, action: ev.action, detail: ev.detail }] };
+        // Which migration this run is, sent before the first gate. Without this the
+        // event arrived and was dropped by the switch, `pipeline` stayed null, and every
+        // screen fell back to naming Salesforce — including a review gate on an
+        // Adobe→Hybris run. Emitting it was only half the fix. [1.62]
+        case 'pipeline':
+          return { ...s, pipeline: { id: ev.id, source: ev.source, target: ev.target,
+                                     language: ev.language } };
         case 'radar':
           return { ...s, radar: ev };
         case 'discovery_meta':

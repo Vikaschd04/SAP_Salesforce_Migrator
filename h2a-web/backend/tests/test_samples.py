@@ -148,3 +148,50 @@ def test_whether_the_shared_key_may_be_spent_is_stated(samples):
     """"No key configured" means "add one" or "you cannot run this" depending on this,
     and the cockpit cannot tell the difference without being told."""
     assert isinstance(samples["server_allowed"], bool)
+
+
+# ── the cockpit must be told which migration it is showing [1.62] ────────────
+
+def test_a_run_announces_its_pipeline_before_any_gate():
+    """A review gate on an Adobe→Hybris run said "On Salesforce:". `RunState.pipeline`
+    had existed since the cockpit was written — "Named by the engine, not assumed here" —
+    and the engine never emitted it, so the field was always null and every screen fell
+    back to the one platform named in the code.
+
+    Asserted on the *event stream*, not on the engine, because emitting it was only half
+    the fix: the first attempt emitted the event and the UI's reducer had no case for it,
+    so it arrived and was dropped in silence.
+    """
+    import time
+
+    from fastapi.testclient import TestClient
+
+    c = TestClient(backend.app)
+    rid = c.post("/api/runs", data={"input_path": "Testing/appointment-demo",
+                                    "provider": "mock", "supervised": "false"}
+                 ).json()["run_id"]
+    for _ in range(180):
+        d = c.get(f"/api/runs/{rid}").json()
+        if d.get("status") in ("complete", "error"):
+            break
+        time.sleep(1)
+
+    events = d.get("events", [])
+    pipeline = [e for e in events if e.get("type") == "pipeline"]
+    assert pipeline, "the cockpit is never told which migration this is"
+    ev = pipeline[0]
+    assert ev["target"] == "SAP Hybris" and ev["language"] == "Java"
+    assert ev["source"] == "Adobe Commerce"
+
+    # Before the first gate, which is the screen that was wrong.
+    gates = [e for e in events if e.get("type") == "gate_open"]
+    if gates:
+        assert ev.get("seq", 0) < gates[0].get("seq", 10**9), \
+            "it arrives after the gate it is supposed to label"
+
+
+def test_the_reducer_consumes_it():
+    """The half that was missing. A `case` in a switch is easy to forget and impossible
+    to notice: the event is delivered, ignored, and the screen looks exactly as it did."""
+    src = (REPO / "h2a-web" / "web" / "src" / "useRun.ts").read_text(encoding="utf-8")
+    assert "case 'pipeline':" in src

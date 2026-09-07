@@ -63,7 +63,7 @@ export default function Discovery({ d }: { d: DiscoveryData }) {
   }, [d.classes, q]);
 
   const VIEWS: [View, string][] = [
-    ['overview', 'Architecture'], ['files', `Files (${(d.tree || []).length})`],
+    ['overview', 'Architecture'], ['files', `All files (${(d.tree || []).length})`],
     ['classes', `Classes (${(d.classes || []).length})`], ['model', `Data model (${(d.schema || []).length})`],
   ];
 
@@ -77,7 +77,10 @@ export default function Discovery({ d }: { d: DiscoveryData }) {
       {orgfit && <OrgFit o={orgfit} />}
       {radar && <Radar r={radar} />}
       <div className="stat-row">
-        <Stat n={s.files_scanned} l="files scanned" />
+        {/* "files scanned" counts everything the reader can open below; preflight counts
+    only the source files it can migrate. Two true numbers that disagree with no
+    explanation read as a bug — one of them said 11 while this said 19. [1.62] */}
+        <Stat n={s.files_scanned} l="files scanned (all types)" />
         <Stat n={s.classes} l="backend classes" />
         <Stat n={s.components} l="UI components" />
         <Stat n={s.objects} l="data objects" />
