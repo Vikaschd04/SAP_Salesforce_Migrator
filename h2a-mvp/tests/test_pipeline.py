@@ -251,13 +251,23 @@ def test_metadata_generator(tmp_path):
     out_dir = tmp_path / "out"
     generate_salesforce_metadata(str(items_xml), str(out_dir))
     
-    # Verify outputs
-    obj_meta = out_dir / "force-app" / "main" / "default" / "objects" / "TestObj__c" / "TestObj__c.object-meta.xml"
-    field_meta = out_dir / "force-app" / "main" / "default" / "objects" / "TestObj__c" / "fields" / "active__c.field-meta.xml"
-    
+    # Verify outputs. `Active__c`, capitalised: Salesforce field API names are, and the
+    # generator has always written it that way. This asserted `active__c` and passed for
+    # as long as it ran on a case-insensitive filesystem — macOS matched the file, Linux
+    # did not, and CI caught it on its first honest run. [1.55]
+    objects = out_dir / "force-app" / "main" / "default" / "objects" / "TestObj__c"
+    obj_meta = objects / "TestObj__c.object-meta.xml"
+    field_meta = objects / "fields" / "Active__c.field-meta.xml"
+
     assert obj_meta.exists()
     assert field_meta.exists()
     assert "<type>Checkbox</type>" in field_meta.read_text(encoding="utf-8")
+
+    # Asserted by listing rather than by `exists()`, so the case is checked even where the
+    # filesystem would not care. A test that only fails on someone else's machine is worse
+    # than no test: it passes review, ships, and then blames the runner.
+    written = sorted(p.name for p in (objects / "fields").iterdir())
+    assert written == ["Active__c.field-meta.xml", "Name__c.field-meta.xml"], written
 
 
 def test_domain_classifier(tmp_path):
