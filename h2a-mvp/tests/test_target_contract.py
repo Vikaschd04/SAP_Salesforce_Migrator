@@ -229,3 +229,54 @@ def test_every_forecast_stage_names_a_priced_model():
                  targets=1, config=_load_config(), provider="anthropic")
     for s in f["stages"]:
         assert pricing.cost_of(s["model"], prompt_tokens=1000) is not None, s["model"]
+
+
+# ── the contract certifies the migration, not the machine [1.54] ─────────────
+
+def _signed(input_dir: str) -> dict:
+    """A sign-off over a real Blackboard, so the test cannot drift from its fields."""
+    from src.agentic.blackboard import Blackboard
+    from src.signoff import build_signoff
+
+    bb = Blackboard(input_dir=input_dir, output_dir="/tmp/out", offline=True)
+    bb.pipeline_id = "adobe->hybris"
+    return build_signoff(bb)
+
+
+def test_the_contract_id_does_not_depend_on_where_the_repo_lives():
+    """CI failed on its first real push, and the cause was three lines above the
+    signature: "Re-running the same migration with the same outcome reproduces it."
+
+    It did not. `input_dir` — an absolute path — was inside the hash, so the same
+    migration of the same code produced a different contract from a different checkout.
+    A runner is just a different directory, which is how it was found. Two people
+    verifying the same sign-off would have disagreed, which is the one thing a contract
+    exists to prevent.
+    """
+    assert _signed("/home/runner/work/repo/Testing/acme-commerce-magento")["contract_id"] \
+        == _signed("/Users/someone/projects/repo/Testing/acme-commerce-magento")["contract_id"]
+
+
+def test_a_different_project_still_gets_a_different_contract():
+    """The path is dropped, not the identity. Two unrelated migrations that happen to
+    produce identical statistics must not certify each other."""
+    assert _signed("/x/Testing/acme-commerce-magento")["contract_id"] \
+        != _signed("/x/Testing/appointment-magento")["contract_id"]
+
+
+def test_the_report_still_records_where_it_ran():
+    """Dropping the path from the *hash* must not drop it from the document — a reviewer
+    needs to know which directory was migrated."""
+    assert _signed("/x/Testing/acme-commerce-magento")["input_dir"] \
+        == "/x/Testing/acme-commerce-magento"
+
+
+def test_the_golden_normaliser_scrubs_every_corpus_path():
+    """Only the Salesforce corpus was replaced, so an Adobe report kept an absolute path
+    and differed between checkouts — the same defect in the harness that the contract had
+    in the product."""
+    from tests import golden
+
+    for corpus in (golden.CORPUS, golden.ADOBE_CORPUS):
+        got = golden._normalise(f"ran against {corpus}", golden.ROOT / "nowhere")
+        assert str(corpus) not in got

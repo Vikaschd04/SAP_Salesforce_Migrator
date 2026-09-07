@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import pathlib
 from pathlib import Path
 
 # The three gates, in the order a run reaches them, with what approving each one means.
@@ -130,10 +131,18 @@ def build_signoff(bb, *, accounting: dict | None = None, cost: dict | None = Non
     }
     # Over the substance, not the prose: two runs that certify the same facts produce the
     # same id, and a changed fact changes it. Cheap to check, hard to edit around.
+    #
+    # The *name* of the input, not its path. An absolute path is a fact about the machine
+    # rather than about the migration, and hashing it meant the same migration of the same
+    # code produced a different contract from a different checkout — which is precisely
+    # what this document promises it does not do, three lines above the signature. CI
+    # found it by being a different directory. [1.54]
+    identity = pathlib.Path(contract["input_dir"] or "").name or contract["input_dir"]
     contract["contract_id"] = hashlib.sha256(
-        repr([contract[k] for k in ("input_dir", "pipeline", "recipe", "approvals",
-                                    "completeness", "rules", "characterization",
-                                    "provenance", "org_verified")]).encode("utf-8")
+        repr([identity] + [contract[k] for k in ("pipeline", "recipe", "approvals",
+                                                 "completeness", "rules",
+                                                 "characterization", "provenance",
+                                                 "org_verified")]).encode("utf-8")
     ).hexdigest()[:16]
     return contract
 

@@ -3,7 +3,7 @@
   "files": {
     ".forceignore": "4e2402944ba1ffda",
     "ANTI_PATTERNS.md": "dd0c577006c39b54",
-    "BUSINESS_PROCESSES.md": "212be37d482961f8",
+    "BUSINESS_PROCESSES.md": "b9a8db0ae127a2a6",
     "BUSINESS_RULES.md": "d78cf7815fbbe8b9",
     "CHARACTERIZATION.md": "751386aa50c5d61e",
     "CRON_JOBS.md": "053faaea8dacbd52",
@@ -15,7 +15,7 @@
     "MIGRATION_PLAN.md": "34b6e890805a8f7c",
     "PARITY.md": "6975a7567b8b0e23",
     "PROVENANCE.md": "d6deab17803ccb44",
-    "SIGN_OFF.md": "41f2fbfe06ecd998",
+    "SIGN_OFF.md": "a84cc81431e5c7e1",
     "TRIAGE.md": "5da59e8db6895558",
     "config/project-scratch-def.json": "bed942971fa6dddc",
     "data/AcmePromotionRule__c.csv": "6da730e391d2757f",

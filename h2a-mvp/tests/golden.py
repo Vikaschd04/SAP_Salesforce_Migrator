@@ -78,7 +78,11 @@ _CALLROW = re.compile(r"^\|\s*\d+\s*\|\s*\S+\s*\|.*\|\s*$")
 def _normalise(text: str, out_dir: Path) -> str:
     """Strip what is environmental, keep everything that is behaviour."""
     text = text.replace(str(out_dir), "<OUT>").replace(str(out_dir.resolve()), "<OUT>")
-    text = text.replace(str(CORPUS), "<CORPUS>").replace(str(CORPUS.resolve()), "<CORPUS>")
+    # Every corpus, not just the Salesforce one. The Adobe path was left absolute, so a
+    # report naming it differed between checkouts — and `ROOT` covers anything else under
+    # the repository that finds its way into a report. [1.54]
+    for corpus in (CORPUS, ADOBE_CORPUS, ROOT):
+        text = text.replace(str(corpus), "<REPO>").replace(str(corpus.resolve()), "<REPO>")
     text = _ISO.sub("<TIME>", text)
     text = _DATE.sub("<DATE>", text)
     text = _ELAPSED.sub("<ELAPSED>", text)
