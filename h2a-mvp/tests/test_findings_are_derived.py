@@ -73,3 +73,50 @@ def test_two_different_projects_do_not_produce_the_same_preflight():
     b = ADAPTER.preflight(str(ROOT / "Testing" / "acme-commerce-magento"))
     assert a["project"] != b["project"]
     assert a["signals"] != b["signals"]
+
+
+# ── a skip without a reason is an accusation with no evidence [1.66] ─────────
+
+def test_every_skipped_file_carries_a_reason():
+    """The gate's heading promises "will be skipped, with reasons" and the Adobe
+    adapter's list had none, so a reviewer saw `registration —` with the sentence
+    missing after the dash. The frontend ingest had always attached one; this path never
+    did."""
+    model = ADAPTER.read(str(ROOT / "Testing" / "appointment-demo"))
+    assert model.skipped, "the demo module has a registration.php to skip"
+    for s in model.skipped:
+        reason = s.get("reason") if isinstance(s, dict) else getattr(s, "reason", "")
+        assert reason and reason.strip(), s
+
+
+def test_the_reason_describes_that_file_and_not_files_in_general():
+    """"Not migratable" tells a reviewer nothing they could check. Naming the construct
+    lets them disagree — and a file the reason is wrong about is one whose reason will
+    not match it."""
+    from src.adapters.adobe_source import _skip_reason
+
+    class _U:
+        def __init__(self, file, source):
+            self.file, self.name, self.source = file, file, source
+
+    registrar = _skip_reason(_U("registration.php",
+                                "<?php ComponentRegistrar::register(X::MODULE, 'A', __DIR__);"))
+    config = _skip_reason(_U("etc/config.php", '<?php\nreturn [\n  "a" => 1,\n];'))
+    other = _skip_reason(_U("bootstrap.php", '<?php define("X", 1);'))
+
+    assert len({registrar, config, other}) == 3, "one reason for every file is no reason"
+    assert "component registry" in registrar
+    assert "configuration array" in config
+    assert "config.php" in config, "it names the file it is about"
+
+
+def test_the_registrar_reason_says_what_the_target_does_instead():
+    """A skip that only says "no" leaves the reader wondering what happened to the thing.
+    This one names `extensioninfo.xml`, which the migration writes."""
+    from src.adapters.adobe_source import _skip_reason
+
+    class _U:
+        file = name = "registration.php"
+        source = "<?php ComponentRegistrar::register(X::MODULE, 'A', __DIR__);"
+
+    assert "extensioninfo.xml" in _skip_reason(_U())
