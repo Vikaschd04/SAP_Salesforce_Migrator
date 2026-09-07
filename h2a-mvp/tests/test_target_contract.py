@@ -129,3 +129,51 @@ def test_a_target_that_offers_no_contract_is_simply_not_asked():
     from src.adapters.salesforce_target import ADAPTER as sf
 
     assert not hasattr(sf, "contract_for")
+
+
+# ── the reports measure what shipped, not the draft [1.51] ───────────────────
+
+def test_provenance_prefers_what_actually_reached_disk():
+    """Since 1.48 the Hybris emitter writes a merge of derived skeleton and selected
+    generated bodies, so `main_class` is the model's draft rather than the artifact. The
+    reports were measuring a population that largely never shipped — 0/21 traced, about
+    methods that were not in the output."""
+    from src.provenance import map_artifact
+
+    art = type("A", (), {
+        "target_name": "T", "is_lwc": False,
+        "source_classes": [{"class_name": "PricingService",
+                            "source": "class PricingService {\n"
+                                      "    public void applyDiscount() {\n    }\n}"}],
+        "main_class": "public class Draft {\n    public void neverShipped() {\n    }\n}",
+        "shipped_source": "public class T {\n    public void applyDiscount() {\n    }\n}",
+    })()
+    got = map_artifact(art)
+    named = {l["target"] for l in got["links"]} | set(got["target_without_origin"])
+    assert "applyDiscount" in named
+    assert "neverShipped" not in named, "the draft was measured instead of the file"
+
+
+def test_a_verbatim_target_is_unaffected():
+    """Salesforce writes `main_class` straight into the `.cls`, so the two are the same
+    string and nothing changes — which its byte-identical golden baseline proves."""
+    from src.provenance import map_artifact
+
+    art = type("A", (), {
+        "target_name": "T", "is_lwc": False, "shipped_source": "",
+        "source_classes": [{"class_name": "C",
+                            "source": "class C {\n    public void doThing() {\n    }\n}"}],
+        "main_class": "public class T {\n    public void doThing() {\n    }\n}",
+    })()
+    named = {l["target"] for l in map_artifact(art)["links"]}
+    assert "doThing" in named
+
+
+def test_alignment_follows_provenance():
+    """It calls `map_artifact`, so the fix reaches both reports at once — which is why it
+    belongs there rather than in each caller."""
+    import inspect
+
+    from src import alignment
+
+    assert "map_artifact" in inspect.getsource(alignment.build_alignment)

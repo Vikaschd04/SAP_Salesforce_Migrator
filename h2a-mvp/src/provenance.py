@@ -99,7 +99,12 @@ def _class_name(text: str) -> str:
 
 def map_artifact(artifact) -> dict:
     """Trace each generated method back to the Java that produced it."""
-    target_src = getattr(artifact, "main_class", "") or ""
+    # What reached disk, when the target rewrote it on the way out; otherwise the
+    # generated class, which on a verbatim target is the same string. Reading
+    # `main_class` unconditionally measured the model's draft on any pipeline whose
+    # emitter assembles a package. [1.51]
+    target_src = (getattr(artifact, "shipped_source", "")
+                  or getattr(artifact, "main_class", "") or "")
     # A constructor has no Java origin by definition and listing it as unexplained
     # would be noise in exactly the column that is supposed to mean something.
     ctor = _class_name(target_src)

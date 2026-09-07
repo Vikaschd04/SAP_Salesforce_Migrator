@@ -130,6 +130,12 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
     #: derived. The ledger reports the split; a reader should never have to
     #: guess which half of the file a model wrote. [1.48]
     bodies_used: set = set()
+    #: `target name -> the Java actually written` for the class that carries this
+    #: target's logic. The reports measure what *ships*, and since 1.48 that is a merge
+    #: of derived skeleton and selected bodies — no longer the model's raw output. A
+    #: metric describing something other than the artifact is the defect this whole item
+    #: began with. [1.51]
+    emitted_source: dict = {}
 
     for t in targets or []:
         kind = t.get("kind")
@@ -174,14 +180,14 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                                              models=generated_models))
         written = (generated or {}).get(t['target_name']) or ""
         merged = java_bodies.bodies(written)
+        impl_src = hybris_service.build_implementation(
+            unit, package, resolutions, renames, name=t['target_name'],
+            source_names=source_names, models=generated_models,
+            bodies=merged, generated_class=written)
         write(_pkg_dir(src, package, "service", "impl",
                        f"Default{t['target_name']}.java"),
-              hybris_service.build_implementation(unit, package, resolutions, renames,
-                                                  name=t['target_name'],
-                                             source_names=source_names,
-                                             models=generated_models,
-                                             bodies=merged,
-                                             generated_class=written))
+              impl_src)
+        emitted_source[t['target_name']] = impl_src
         for m in getattr(unit, "methods", None) or []:
             if merged.get(getattr(m, "name", "")) is not None:
                 bodies_used.add(f"{t['target_name']}.{m.name}")
@@ -216,6 +222,7 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
         written_job = hybris_data.build_job_performable(
             job, package, class_name=performable, generated_class=job_src)
         write(_pkg_dir(src, package, "jobs", f"{performable}.java"), written_job)
+        emitted_source[performable] = written_job
         if "Reviewed as generated logic" in written_job:
             bodies_used.add(f"{performable}.perform")
         for t_row in targets or []:
@@ -307,10 +314,12 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
             # makes — they keep their TODO. [1.48]
             hook_src = (generated or {}).get(target_name) or ""
             hook_bodies = java_bodies.bodies(hook_src)
+            written_decorator = hybris_hooks.build_decorator(
+                unit, package, di, emitted_service_names, bodies=hook_bodies,
+                generated_class=hook_src)
             write(_pkg_dir(src, package, "decorators", f"{target_name}.java"),
-                  hybris_hooks.build_decorator(
-                      unit, package, di, emitted_service_names, bodies=hook_bodies,
-                      generated_class=hook_src))
+                  written_decorator)
+            emitted_source[target_name] = written_decorator
             for m in getattr(unit, "methods", None) or []:
                 mn = getattr(m, "name", "")
                 for key in (hybris_hooks.wrapped_method(mn), mn):
@@ -327,6 +336,7 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                 unit, package, di, generated_class=interceptor_src)
             write(_pkg_dir(src, package, "interceptors", f"{target_name}.java"),
                   written_interceptor)
+            emitted_source[target_name] = written_interceptor
             if "Reviewed as generated logic" in written_interceptor:
                 bodies_used.add(f"{target_name}.{hybris_hooks.interceptor_hook(unit)}")
             hooks.append({"kind": kind, "name": target_name,
@@ -346,6 +356,7 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                 unit, package, event, generated_class=listener_src)
             write(_pkg_dir(src, package, "listeners", f"{target_name}.java"),
                   written_listener)
+            emitted_source[target_name] = written_listener
             if "Reviewed as generated logic" in written_listener:
                 bodies_used.add(f"{target_name}.onEvent")
             hooks.append({"kind": kind, "name": target_name, "event": event})
@@ -394,7 +405,8 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                       "message": compiled["message"], "compiler": True}
     return {"created": sorted(set(created)), "manual": manual, "static": static,
             "emitted_as": emitted_as, "modelling": modelling,
-            "generated_bodies": sorted(bodies_used)}
+            "generated_bodies": sorted(bodies_used),
+            "emitted_source": emitted_source}
 
 
 def _spring(units: list, arguments: list, package: str, extension: str,

@@ -1265,6 +1265,13 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
             (getattr(_target, "last_emit", None) or {}).get("emitted_as") or {})
         bb.generated_bodies = list(
             (getattr(_target, "last_emit", None) or {}).get("generated_bodies") or [])
+        # What the emitter actually wrote, so provenance and alignment measure the file
+        # rather than the model's draft. [1.51]
+        _emitted = (getattr(_target, "last_emit", None) or {}).get("emitted_source") or {}
+        for _a in bb.artifacts:
+            _src = _emitted.get(_a.target_name)
+            if _src:
+                _a.shipped_source = _src
 
         # Attribute each finding to the artifact whose file it is in, so triage can see
         # it. A file the checker rejected belongs to a target that does not build, and

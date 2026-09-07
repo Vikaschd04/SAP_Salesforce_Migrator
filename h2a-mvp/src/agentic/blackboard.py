@@ -68,6 +68,18 @@ class Artifact:
     def is_lwc(self) -> bool:
         return self.layer == "Component"
 
+    #: The source that actually reached disk, when the target rewrote it. Empty on a
+    #: target that writes `main_class` verbatim — Salesforce puts it straight into the
+    #: `.cls`, so there the two are the same string and this stays unset.
+    #:
+    #: The Hybris target does not: since 1.48 the emitted class is a merge of a derived
+    #: skeleton and selected generated bodies. Provenance and alignment read `main_class`,
+    #: so on that pipeline they were measuring a population that largely never shipped —
+    #: they reported 0/21 traced about methods that were not in the output. A metric
+    #: describing something other than the artifact is the defect this whole item began
+    #: with, so it is fixed the same way: measure what was written. [1.51]
+    shipped_source: str = ""
+
     def to_generated_dict(self) -> dict:
         """Shape the rest of the pipeline (report, parity, write_outputs) expects."""
         return {
