@@ -94,6 +94,15 @@ _TRANSIENT_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523,
                      524, 529}
 
 
+class TruncatedResponse(RuntimeError):
+    """The budget ran out before the model said anything. [1.59]
+
+    Distinct from an ordinary failure because it is not transient and not the model's
+    fault: retrying spends the same budget on the same prompt for the same result. The
+    fix is configuration, and the message says which knob.
+    """
+
+
 class ProviderAuthError(RuntimeError):
     """The credentials are wrong — every subsequent call will fail the same way.
 
@@ -599,6 +608,23 @@ def _call_anthropic(
 
     content = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
     usage = resp.usage
+
+    # Adaptive thinking shares `max_tokens` with the answer, so a hard prompt can spend
+    # the whole budget reasoning and return no text at all. That is what happened on the
+    # first single-target validation: 8000 completion tokens, empty content — and the
+    # artifact became an empty class that every downstream stage accepted in silence.
+    #
+    # A stop this specific deserves its own error. "The model produced nothing" and "the
+    # model was cut off mid-thought" call for different fixes, and only one of them is
+    # about the prompt. [1.59]
+    if not content.strip():
+        reason = getattr(resp, "stop_reason", None)
+        spent = getattr(usage, "output_tokens", 0) or 0
+        if reason == "max_tokens" or spent >= max_tokens:
+            raise TruncatedResponse(
+                f"{stage}: the model used its entire {max_tokens}-token budget without "
+                f"emitting an answer (stop_reason={reason!r}). Adaptive thinking shares "
+                "that budget, so raise `max_tokens` for this stage or lower `effort`.")
     return {
         "content": content,
         "prompt_tokens": getattr(usage, "input_tokens", 0) or 0,
@@ -858,6 +884,12 @@ def call_llm(
     full_prompt = f"{system_prompt}\n---\n{prompt}"
     if json_schema is not None:
         full_prompt += "\n---schema---\n" + json.dumps(json_schema, sort_keys=True)
+    # The budget belongs in the key. It decides whether an answer fits at all — an 8000
+    # token allowance returned nothing where 24000 returns a class — so a cached reply
+    # from a smaller budget is an answer to a different question. Raising the limit and
+    # replaying the truncated result is a confusing way to conclude a fix did not
+    # work. [1.59]
+    full_prompt += f"\n---budget---\n{max_tokens}|{effort or ''}"
     key = _cache_key(stage, f"{provider}:{model}", full_prompt)
 
     # Disk cache first (free replay for both providers).
@@ -931,7 +963,11 @@ def call_llm(
         "provider": provider,
         "model": model,
     }
-    _write_cache(cache_dir, key, to_cache)
+    # An empty answer is not worth keeping. Caching one makes a single bad response
+    # permanent and every later run inherits it for free — which is exactly how a
+    # truncated generate survived a budget increase and looked like a failed fix.
+    if (to_cache.get("content") or "").strip():
+        _write_cache(cache_dir, key, to_cache)
     _log_call(stage, result.get("provider", provider), result.get("model", model), key,
               cached=False, prompt_chars=len(full_prompt), effort=effort)
 

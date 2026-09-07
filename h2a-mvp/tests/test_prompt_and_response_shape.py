@@ -255,3 +255,44 @@ def test_no_generated_class_ever_starts_with_a_brace():
     for raw in (json.dumps({"code": "class A {}"}), '{"x": 1}', '{"code": "trunc',
                 "class A {}", None, ""):
         assert not _unwrap_code(raw).lstrip().startswith("{"), raw
+
+
+# ── the budget is part of the question [1.59] ────────────────────────────────
+
+def test_a_truncated_response_is_an_error_not_an_empty_class():
+    """Adaptive thinking shares `max_tokens` with the answer, so a hard prompt can spend
+    the whole budget reasoning and return no text. The first single-target validation did
+    exactly that — 8000 completion tokens, empty content — and the artifact became an
+    empty class that every downstream stage accepted in silence.
+
+    Its own error because the fix is configuration, not a retry: the same prompt on the
+    same budget produces the same nothing."""
+    from src.llm import TruncatedResponse, _is_transient
+
+    assert not _is_transient(TruncatedResponse("x")), "retrying cannot help"
+
+
+def test_the_budget_is_in_the_cache_key():
+    """An 8000-token allowance returned nothing where 24000 returns a class, so a reply
+    cached under a smaller budget answers a different question. Raising the limit and
+    replaying the truncated result is a confusing way to conclude a fix did not work —
+    which is what happened, twice."""
+    import inspect
+
+    from src import llm
+
+    src = inspect.getsource(llm.call_llm)
+    assert "budget" in src and "max_tokens}" in src
+
+
+def test_an_empty_answer_is_never_cached():
+    """Caching one makes a single bad response permanent, and every later run inherits it
+    for free."""
+    import inspect
+
+    from src import llm
+
+    src = inspect.getsource(llm.call_llm)
+    i = src.index("_write_cache(cache_dir, key, to_cache)")
+    guard = src[max(0, i - 300):i]
+    assert 'to_cache.get("content")' in guard, "the write is unguarded"

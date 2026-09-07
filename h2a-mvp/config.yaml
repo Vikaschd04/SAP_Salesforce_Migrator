@@ -116,7 +116,9 @@ effort:
 # Output token budgets per stage
 max_tokens:
   comprehend: 800
-  generate: 8000        # large fflib test classes need headroom to avoid truncation
+  generate: 24000       # a class *and* its test, with adaptive thinking sharing the
+                        # same budget. At 8000 an Opus 5 generate spent the entire
+                        # allowance reasoning and returned no text at all. [1.59]
 
 # Behavioral parity: after generation, add test assertions for any comprehended
 # business rule the tests don't yet check (skipped for the mock provider).
