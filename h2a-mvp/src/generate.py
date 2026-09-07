@@ -232,19 +232,21 @@ _DEFAULT_SECTIONS = {
 }
 
 
-def _prompt_sections() -> dict:
-    """Section headings for the system prompt, from the target of this run. [1.56]"""
-    try:
-        from src import pipeline
-        target = pipeline.current_target()
-        if target is not None:
-            return {**_DEFAULT_SECTIONS, **getattr(target, "prompt_sections", {})}
-    except Exception:
-        pass
-    return _DEFAULT_SECTIONS
+def _prompt_sections(sections: dict | None = None) -> dict:
+    """Section headings for the system prompt. [1.56, 1.57]
+
+    Passed in, not looked up. The first version asked `pipeline.current_target()`, which
+    reads a ContextVar that is not set inside the Builder's worker threads — so it
+    silently returned the Salesforce defaults and the fix appeared to do nothing across
+    two paid runs. That is the identical mistake 1.51 fixed in `builders.py`, made again
+    here; the lesson that did not carry was *never resolve run identity from ambient
+    state when the caller already holds it*.
+    """
+    return {**_DEFAULT_SECTIONS, **(sections or {})}
 
 
-def build_system_prompt(mappings: dict, schema: dict | None) -> str:
+def build_system_prompt(mappings: dict, schema: dict | None,
+                        sections: dict | None = None) -> str:
     """
     Build the stable, cacheable system prompt: role + global rules + type table +
     constraints + SObject schema. Identical across every class in a repo, so it is
@@ -263,7 +265,7 @@ def build_system_prompt(mappings: dict, schema: dict | None) -> str:
     # demanded SOQL in ours. A real run resolved the contradiction against us and wrote
     # `public with sharing class ... magemonk_appointment__c` into a Hybris
     # migration. [1.56]
-    sections = _prompt_sections()
+    sections = _prompt_sections(sections)
     parts.append(f"\n== {sections['types']} ==\n" + _format_type_mappings(mappings))
     parts.append("\n== Hard constraints (must always hold) ==\n" + _format_constraints(mappings))
     parts.append(f"\n== {sections['schema']} ==\n" + schema_prompt_block(schema or {}))
@@ -431,6 +433,7 @@ def generate_apex(
     mappings: dict | None = None,
     grounding: str = "",
     class_name: str = "",
+    prompt_sections: dict | None = None,
 ) -> dict:
     """
     Generate the Apex class + test class for one target artifact.
@@ -466,7 +469,7 @@ def generate_apex(
 
     combined_source, combined_comp = _build_source_summary(target["source_classes"], comprehensions)
 
-    system_prompt = build_system_prompt(mappings, schema)
+    system_prompt = build_system_prompt(mappings, schema, prompt_sections)
     template = _load_prompt_template()
     user_prompt = template.format(
         comprehension_json=combined_comp,

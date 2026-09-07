@@ -52,15 +52,47 @@ def _canonical(obj):
     return str(obj)
 
 
-def recipe_hash(provider: str, model: str, schema: dict, mappings: dict) -> str:
+def recipe_hash(provider: str, model: str, schema: dict, mappings: dict,
+                prompts: dict | None = None) -> str:
     """Identity of *how* output is produced. Changing any of it invalidates everything.
 
-    Must be a pure function of its inputs across processes — see `_canonical`."""
+    The prompts belong here and were missing, which cost a run to discover. A migration
+    generated Salesforce Apex on the Hybris pipeline because its system prompt
+    contradicted itself; the prompt was fixed, the next run reused every cached artifact
+    because provider, model, schema and mappings were all unchanged — and replayed the
+    same Apex. The docstring above claimed to cover "how output is produced" while
+    omitting the single largest determinant of it.
+
+    A stale cache that survives the fix for its own staleness is worse than no cache: it
+    makes a corrected system look uncorrected, and the obvious conclusion is that the fix
+    did not work.
+
+    Must be a pure function of its inputs across processes — see `_canonical`.
+    """
     return _md5("|".join([
         f"v{VERSION}", provider or "", model or "",
         _md5(json.dumps(schema or {}, sort_keys=True, default=_canonical)),
         _md5(json.dumps(mappings or {}, sort_keys=True, default=_canonical)),
+        _md5(json.dumps(prompts or {}, sort_keys=True, default=_canonical)),
     ]))
+
+
+def pack_prompts() -> dict:
+    """Every prompt this run will send, by name, for the recipe. [1.57]
+
+    Read through `packs` so it follows the pipeline: two migrations have different
+    prompts, and a recipe that hashed one while running the other would be worse than
+    hashing neither.
+    """
+    from src.packs import prompt as _pack_prompt
+
+    out = {}
+    for name in ("generate_system", "generate", "comprehend", "repair"):
+        try:
+            out[name] = _pack_prompt(name) or ""
+        except Exception:
+            out[name] = ""       # a pack without one is a fact about the pack, not a crash
+    return out
 
 
 def class_hashes(all_classes: list) -> dict:

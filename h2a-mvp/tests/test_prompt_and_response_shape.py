@@ -34,10 +34,24 @@ from src.generate import _extract_field, build_system_prompt, _load_mappings
 
 # ── the prompt says one thing ─────────────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def _no_pipeline_leak():
+    """`runctx` is a ContextVar with no scoping of its own, so a test that pins a pipeline
+    pins it for everything that runs afterwards in the same process. Doing that here broke
+    eight provenance tests that pass in isolation — the pollution, not the code."""
+    import src.runctx as R
+
+    before = R._pipeline_id.get()
+    yield
+    R._pipeline_id.set(before)
+
+
 @pytest.fixture
-def hybris_prompt(monkeypatch):
-    runctx.set_overrides(pipeline_id="adobe->hybris")
-    return build_system_prompt(_load_mappings(), {})
+def hybris_prompt():
+    """Sections passed explicitly — which is the contract now, and the point of 1.57."""
+    from src.adapters.hybris_target import ADAPTER
+
+    return build_system_prompt(_load_mappings(), {}, ADAPTER.prompt_sections)
 
 
 def test_a_hybris_prompt_never_asks_for_sobjects(hybris_prompt):
@@ -60,8 +74,9 @@ def test_the_type_mapping_heading_names_the_real_languages(hybris_prompt):
 def test_the_salesforce_prompt_is_unchanged():
     """That pipeline ships, and its baseline is byte-identical — the headings it had are
     the headings it keeps."""
-    runctx.set_overrides(pipeline_id="hybris->salesforce")
-    sp = build_system_prompt(_load_mappings(), {})
+    from src.adapters.salesforce_target import ADAPTER
+
+    sp = build_system_prompt(_load_mappings(), {}, ADAPTER.prompt_sections)
     assert "Java -> Salesforce type mappings" in sp
     assert "Target SObject schema" in sp
 
@@ -101,3 +116,66 @@ def test_no_shape_ever_returns_something_beginning_with_a_brace():
 def test_plain_and_fenced_responses_still_work():
     assert _extract_field("class A {}", "main_class") == "class A {}"
     assert _extract_field("```java\nclass A {}\n```", "main_class") == "class A {}"
+
+
+# ── the fix has to reach the worker thread [1.57] ────────────────────────────
+
+def test_the_sections_are_passed_in_not_looked_up():
+    """The first version of this fix asked `pipeline.current_target()`, which reads a
+    ContextVar that is not set inside the Builder's worker threads. It silently returned
+    the Salesforce defaults, so two paid runs produced Apex again and looked as though
+    the fix had done nothing.
+
+    1.51 fixed this exact mistake in `builders.py` and the lesson did not carry: never
+    resolve run identity from ambient state when the caller already holds it.
+    """
+    import inspect
+
+    from src.generate import _prompt_sections
+
+    src = inspect.getsource(_prompt_sections)
+    assert "current_target" not in src.split('"""')[2], "resolved from ambient state again"
+
+
+def test_the_builder_hands_them_over():
+    import inspect
+
+    from src.agentic import builders
+
+    assert "prompt_sections=" in inspect.getsource(builders.BuilderAgent.build)
+
+
+def test_a_target_without_sections_keeps_the_historical_headings():
+    """The v1 path pins no pipeline and is Salesforce by construction."""
+    from src.generate import build_system_prompt, _load_mappings
+
+    sp = build_system_prompt(_load_mappings(), {}, None)
+    assert "Target SObject schema" in sp
+
+
+# ── a prompt fix must invalidate what the old prompt produced [1.57] ─────────
+
+def test_the_recipe_covers_the_prompts():
+    """`recipe_hash` claimed to be the "identity of how output is produced" and omitted
+    the prompts. So the prompt was fixed, every cached artifact stayed valid — provider,
+    model, schema and mappings were unchanged — and the next run replayed the same Apex.
+    A stale cache that survives the fix for its own staleness makes a corrected system
+    look uncorrected."""
+    from src.agentic.incremental import recipe_hash
+
+    base = dict(provider="anthropic", model="claude-opus-5", schema={}, mappings={})
+    a = recipe_hash(**base, prompts={"generate_system": "be a Hybris engineer"})
+    b = recipe_hash(**base, prompts={"generate_system": "be a Salesforce engineer"})
+    assert a != b
+
+
+def test_the_recipe_reads_the_running_pipelines_prompts():
+    """Two migrations have different prompts; hashing one while running the other would
+    be worse than hashing neither."""
+    from src import runctx
+    from src.agentic.incremental import pack_prompts
+
+    runctx.set_overrides(pipeline_id="adobe->hybris")
+    got = pack_prompts()
+    assert "generate_system" in got and got["generate_system"]
+    assert "Hybris" in got["generate_system"]

@@ -471,7 +471,15 @@ def _log_call(stage: str, provider: str, model: str, key: str, *, cached: bool,
 
 
 def _cache_key(stage: str, model: str, prompt: str) -> str:
-    """SHA-256 cache key from stage + model + prompt (kept for API stability)."""
+    """SHA-256 cache key from stage + model + prompt (kept for API stability).
+
+    `prompt` is the *combined* prompt the caller assembles — system, user and schema — so
+    the system half is covered even though it has no parameter of its own here. Worth
+    saying: this signature reads as though a changed system prompt would keep serving
+    stale answers, which would matter enormously (a run once generated Apex on the Hybris
+    pipeline because of a system-prompt defect, and a cache blind to that would have
+    replayed it after the fix). It does not; the caller folds it in. [1.57]
+    """
     raw = f"{stage}|{model}|{prompt}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 

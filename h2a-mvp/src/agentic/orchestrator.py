@@ -35,7 +35,7 @@ from src import ir
 from src.signature_registry import SignatureRegistry
 from src.llm import (reset_accounting, get_accounting, _load_config, _get_provider,
                      _get_model, reset_call_log, get_call_log, check_fatal)
-from src.agentic.incremental import (recipe_hash, class_hashes, target_fingerprint,
+from src.agentic.incremental import (pack_prompts, recipe_hash, class_hashes, target_fingerprint,
                                      load_state, save_state, artifact_to_cache,
                                      artifact_from_cache)
 
@@ -840,7 +840,10 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     inc_enabled = _incremental_enabled(config)
     _mappings = _load_mappings()
     _provider = _get_provider(config)
-    _recipe = recipe_hash(_provider, _get_model(config, _provider), bb.schema, _mappings)
+    # Prompts included: fixing one must invalidate the artifacts it produced, or the
+    # run after a prompt fix replays the output the fix was for. [1.57]
+    _recipe = recipe_hash(_provider, _get_model(config, _provider), bb.schema,
+                          _mappings, pack_prompts())
     _hashes = class_hashes(bb.all_classes)
     # State lives with the output by default (CLI/extension reuse the same folder), but a
     # caller with per-run output dirs (the web app keeps run history) can point it at a
