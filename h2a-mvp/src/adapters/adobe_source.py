@@ -151,6 +151,14 @@ class AdobeCommerceSource:
 
         php = _find(base, "*.php", limit=5000)
         project["php_files"] = len(php)
+        # Counted, because the warning below reads it. It was only ever *read* — never
+        # written by anything — so `not project.get("db_schema_files")` was true for
+        # every project ever scanned, and every Magento module with code was told no
+        # data model could be derived while its `db_schema.xml` sat there being parsed
+        # correctly two stages later. A message that cannot vary is not a finding; it is
+        # decoration that looks like one. [1.65]
+        from src.adapters.magento_config import _files as _cfg_files
+        project["db_schema_files"] = len(_cfg_files(base, "db_schema.xml"))
 
         # Credentials live in app/etc/env.php in every Magento install, so this is not a
         # hypothetical: it is reported before anything is uploaded anywhere, which is the
