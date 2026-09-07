@@ -30,7 +30,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import sys
 from pathlib import Path
 
@@ -117,9 +119,15 @@ def capture(out_dir: Path) -> dict[str, str]:
 def run_reference(out_dir: Path, *, engine_version: str | None = None,
                   corpus: Path | None = None) -> dict[str, str]:
     """Run a reference migration and capture it. Mock provider — free and offline."""
+    # A cache of its own, thrown away after. The repo's shared cache made this harness
+    # non-deterministic in a way that only showed when something invalidated it: the
+    # reports carrying token counts differ between a cold and a warm run of identical
+    # code, so a baseline saved cold failed every warm check afterwards. [1.51]
+    cache = tempfile.mkdtemp(prefix="h2a-golden-cache-")
     env = {**os.environ,
            "H2A_PROVIDER": "mock",
            "H2A_INCREMENTAL": "false",     # a cached run would not exercise generation
+           "H2A_CACHE_DIR": cache,
            "PYTHONPATH": str(ROOT)}
     if engine_version:
         env["H2A_ENGINE_VERSION"] = engine_version
@@ -127,6 +135,7 @@ def run_reference(out_dir: Path, *, engine_version: str | None = None,
         [sys.executable, "-m", "src.main", "agent-migrate",
          "--input", str(corpus or CORPUS), "--output", str(out_dir)],
         cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=900)
+    shutil.rmtree(cache, ignore_errors=True)
     if r.returncode != 0:
         raise AssertionError(f"reference migration failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
     return capture(out_dir)

@@ -197,8 +197,18 @@ def test_the_budget_is_measured_against_the_model_that_will_receive_it():
     """`generate_apex` never took a model parameter. Referring to one that was not in
     scope raised NameError, the caller treated it as a failed conversion, and the run
     emitted no classes at all — caught by the end-to-end test, not by this file."""
-    assert oversized.model_for_stage("generate") == "claude-opus-4-8"
-    assert oversized.model_for_stage("comprehend") == "claude-haiku-4-5"
+    from src.llm import _load_config
+
+    # Read from config rather than pinned to a model name. What this asserts is that a
+    # stage resolves to *its own tier*; the particular model is a routing decision that
+    # changes, and hardcoding it made a config edit look like a code regression. [1.51]
+    routing = (_load_config().get("agentic") or {}).get("routing") or {}
+    models = routing.get("models") or {}
+    tiers = routing.get("tiers") or {}
+    assert oversized.model_for_stage("generate") == models[tiers.get("generate", "frontier")]
+    assert oversized.model_for_stage("comprehend") == models[tiers.get("comprehend", "cheap")]
+    # …and the two are different tiers, which is the whole point of routing.
+    assert oversized.model_for_stage("generate") != oversized.model_for_stage("comprehend")
 
 
 def test_a_run_level_model_override_wins():
@@ -209,3 +219,40 @@ def test_a_run_level_model_override_wins():
         assert oversized.model_for_stage("generate") == "some-other-model"
     finally:
         runctx._model.reset(token)
+
+
+# ── the harness must not depend on what a previous run left behind [1.51] ─────
+
+def test_the_cache_directory_is_overridable():
+    """The golden harness gives each run a cache of its own. Sharing the repo's made its
+    output depend on whether something had warmed it: the reports carrying token counts
+    differ between a cold and a warm run of *identical code*, so a baseline saved cold
+    failed every warm check afterwards. Changing the model invalidated every entry and
+    turned that latent trap into two failing baselines that looked like a code defect."""
+    import os
+    from pathlib import Path
+
+    from src.llm import _cache_dir
+
+    before = os.environ.get("H2A_CACHE_DIR")
+    try:
+        os.environ["H2A_CACHE_DIR"] = "/tmp/h2a-cache-probe"
+        assert _cache_dir({"cache_dir": "cache/"}) == Path("/tmp/h2a-cache-probe")
+    finally:
+        if before is None:
+            os.environ.pop("H2A_CACHE_DIR", None)
+        else:
+            os.environ["H2A_CACHE_DIR"] = before
+    # Without the override it falls back to config, resolved against the project root —
+    # so compare the tail rather than a bare relative path.
+    assert _cache_dir({"cache_dir": "cache/"}).name == "cache"
+
+
+def test_a_golden_run_is_given_its_own_cache():
+    import inspect
+
+    from tests import golden
+
+    src = inspect.getsource(golden.run_reference)
+    assert "H2A_CACHE_DIR" in src
+    assert "rmtree" in src, "a per-run cache that is never removed is just a slow leak"

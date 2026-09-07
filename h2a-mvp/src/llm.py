@@ -477,7 +477,12 @@ def _cache_key(stage: str, model: str, prompt: str) -> str:
 
 
 def _cache_dir(config: dict) -> Path:
-    d = Path(config.get("cache_dir", "cache/"))
+    # Overridable so a run can be given a cache of its own. The golden harness needs
+    # that: sharing the repo's cache made its output depend on whether a previous run had
+    # warmed it, and the reports that carry token counts then differed between a cold and
+    # a warm run of identical code. Changing the model invalidated every entry and turned
+    # that latent trap into two failing baselines. [1.51]
+    d = Path(os.environ.get("H2A_CACHE_DIR") or config.get("cache_dir", "cache/"))
     if not d.is_absolute():
         d = _PROJECT_ROOT / d
     return d
