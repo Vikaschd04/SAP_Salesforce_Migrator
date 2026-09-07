@@ -33,21 +33,50 @@ from src.schema import schema_prompt_block
 
 
 # Structured-output schema for one generated artifact.
-GENERATION_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "main_class": {"type": "string", "description": "Complete Apex main class source."},
-        "test_class": {"type": "string", "description": "Complete @isTest Apex class source."},
-        "sobject_refs": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Custom objects (X__c) referenced by the main class.",
-        },
-        "mapping_notes": {"type": "string", "description": "Brief notes on mapping decisions."},
-    },
-    "required": ["main_class", "test_class", "mapping_notes"],
-    "additionalProperties": False,
+#: Field descriptions when no target says otherwise — Salesforce, which is what the v1
+#: path produces.
+_SCHEMA_TEXT = {
+    "main_class": "Complete Apex main class source.",
+    "test_class": "Complete @isTest Apex class source.",
+    "refs": "Custom objects (X__c) referenced by the main class.",
 }
+
+
+def generation_schema(descriptions: dict | None = None) -> dict:
+    """The structured-output schema, described in the target's own terms. [1.58]
+
+    This was a module constant saying "Complete Apex main class source" on every
+    pipeline. A field description is the most binding instruction a structured response
+    carries — it states exactly what belongs in that field — so the Adobe→Hybris run had
+    a system prompt insisting on "pure Java, never Apex" and a response schema asking for
+    "Complete Apex main class source" in the same request. It filled the field as
+    described, and $24 of real runs went to Apex before this was found.
+
+    The heading fix in 1.56 was necessary and looked sufficient. It was not, because the
+    schema is not part of the prompt text and was never read while hunting for the
+    contradiction.
+    """
+    d = {**_SCHEMA_TEXT, **(descriptions or {})}
+    return {
+        "type": "object",
+        "properties": {
+            "main_class": {"type": "string", "description": d["main_class"]},
+            "test_class": {"type": "string", "description": d["test_class"]},
+            "sobject_refs": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": d["refs"],
+            },
+            "mapping_notes": {"type": "string",
+                              "description": "Brief notes on mapping decisions."},
+        },
+        "required": ["main_class", "test_class", "mapping_notes"],
+        "additionalProperties": False,
+    }
+
+
+#: Kept for callers that predate `generation_schema`; the v1 path is Salesforce.
+GENERATION_SCHEMA = generation_schema()
 
 _SKIP_LAYERS = {"Model", "Facade"}
 
@@ -423,6 +452,28 @@ def _parse_generation_response(content: str) -> dict:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def _unwrap_code(value) -> str:
+    """Source, even when the model wrapped it in an object of its own design.
+
+    A field declared `"type": "string"` is honoured by returning a *string* — and a JSON
+    document is one. So `{"code": "public class A {}"}` satisfies the schema while being
+    the opposite of what the field is for.
+    """
+    s = _as_str(value).strip()
+    if not s.startswith("{"):
+        return _as_str(value)
+    try:
+        obj = json.loads(s)
+    except Exception:
+        return ""       # a brace-wrapped blob is never source; an empty field is visible
+    if not isinstance(obj, dict):
+        return ""
+    for key in _CODE_KEYS:
+        if isinstance(obj.get(key), str) and obj[key].strip():
+            return obj[key]
+    return ""
+
+
 def generate_apex(
     target: dict,
     comprehensions: dict,
@@ -434,6 +485,7 @@ def generate_apex(
     grounding: str = "",
     class_name: str = "",
     prompt_sections: dict | None = None,
+    schema_text: dict | None = None,
 ) -> dict:
     """
     Generate the Apex class + test class for one target artifact.
@@ -505,13 +557,20 @@ def generate_apex(
         max_tokens=max_tokens,
         offline=offline,
         system_prompt=system_prompt,
-        json_schema=GENERATION_SCHEMA,
+        json_schema=generation_schema(schema_text),
         effort=effort,
     )
 
     parsed = result.get("parsed")
     if not parsed:  # defensive fallback for legacy/marker responses
         parsed = _parse_generation_response(result.get("content", ""))
+    # A structurally valid response can still carry a JSON blob *inside* a field: the
+    # model filled `main_class` with `{"code": "..."}` rather than with source. Unwrapped
+    # here, at the one point every path passes through — 1.56 fixed only the branch that
+    # parses unstructured content, so twelve of twenty artifacts still reached disk as
+    # brace-wrapped JSON with escaped newlines. [1.58]
+    parsed = {**parsed, "main_class": _unwrap_code(parsed.get("main_class")),
+              "test_class": _unwrap_code(parsed.get("test_class"))}
 
     return {
         "target_name": target_name,

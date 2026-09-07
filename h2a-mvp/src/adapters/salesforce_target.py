@@ -26,6 +26,14 @@ class SalesforceTarget:
     #: these objects/fields)". The model resolved the contradiction the way anyone would
     #: — in favour of the concrete instruction — and wrote Apex into a Hybris
     #: migration. [1.56]
+    #: How the response schema describes each field. A description is the most binding
+    #: instruction in a structured request, and these were hardcoded Apex for every
+    #: pipeline. [1.58]
+    schema_text = {
+        "main_class": "Complete Apex main class source.",
+        "test_class": "Complete @isTest Apex class source.",
+        "refs": "Custom objects (X__c) referenced by the main class.",
+    }
     prompt_sections = {
         "types": "Java -> Salesforce type mappings",
         "schema": "Target SObject schema (write SOQL only against these objects/fields)",

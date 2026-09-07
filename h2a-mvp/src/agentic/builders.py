@@ -198,7 +198,8 @@ class BuilderAgent:
         gen = generate_apex(target, bb.comprehensions, scoped_sigs,
                             offline=bb.offline, schema=bb.schema, mappings=mappings,
                             grounding=grounding, class_name=ask_for,
-                            prompt_sections=getattr(_t, "prompt_sections", None))
+                            prompt_sections=getattr(_t, "prompt_sections", None),
+                            schema_text=getattr(_t, "schema_text", None))
 
         rules = []
         for c in plan_item.source_classes:

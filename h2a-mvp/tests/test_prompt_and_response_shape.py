@@ -179,3 +179,79 @@ def test_the_recipe_reads_the_running_pipelines_prompts():
     got = pack_prompts()
     assert "generate_system" in got and got["generate_system"]
     assert "Hybris" in got["generate_system"]
+
+
+# ── the schema is an instruction too [1.58] ──────────────────────────────────
+
+def test_the_hybris_schema_asks_for_java():
+    """The last place the contradiction hid, and the most binding of all. A field
+    description states exactly what belongs in that field, and this one said "Complete
+    Apex main class source" on every pipeline — so a request could insist on "pure Java,
+    never Apex" in its system prompt and ask for Apex in its response format. The model
+    filled the field as described. $24 of real runs went to Apex before this was found,
+    because the schema is not prompt text and nobody reads it while hunting a prompt."""
+    from src.adapters.hybris_target import ADAPTER
+    from src.generate import generation_schema
+
+    props = generation_schema(ADAPTER.schema_text)["properties"]
+    assert "Apex" not in props["main_class"]["description"] or \
+        "Never Apex" in props["main_class"]["description"]
+    assert "Java" in props["main_class"]["description"]
+    assert "JUnit" in props["test_class"]["description"]
+    assert "__c" not in props["sobject_refs"]["description"]
+
+
+def test_the_salesforce_schema_is_unchanged():
+    from src.adapters.salesforce_target import ADAPTER
+    from src.generate import generation_schema
+
+    props = generation_schema(ADAPTER.schema_text)["properties"]
+    assert props["main_class"]["description"] == "Complete Apex main class source."
+
+
+def test_the_builder_passes_the_schema_text():
+    import inspect
+
+    from src.agentic import builders
+
+    assert "schema_text=" in inspect.getsource(builders.BuilderAgent.build)
+
+
+# ── a valid string can still be the wrong thing ──────────────────────────────
+
+def test_a_json_blob_inside_a_string_field_is_unwrapped():
+    """`"type": "string"` is satisfied by a JSON *document*, so the model can fill
+    `main_class` with `{"code": "..."}` and be structurally correct. 1.56 fixed only the
+    unstructured branch, so twelve of twenty artifacts still reached disk brace-wrapped,
+    escaped newlines intact, and were merged into `.java` files."""
+    import json
+
+    from src.generate import _unwrap_code
+
+    assert _unwrap_code(json.dumps({"code": "public class A {}"})) == "public class A {}"
+
+
+def test_plain_source_is_untouched():
+    from src.generate import _unwrap_code
+
+    assert _unwrap_code("public class A {}") == "public class A {}"
+
+
+def test_an_unrecognised_object_yields_nothing_not_the_blob():
+    import json
+
+    from src.generate import _unwrap_code
+
+    assert _unwrap_code(json.dumps({"surprise": "x"})) == ""
+    assert _unwrap_code('{"code": "truncated') == ""
+
+
+def test_no_generated_class_ever_starts_with_a_brace():
+    """The single property that would have caught it in either shape."""
+    import json
+
+    from src.generate import _unwrap_code
+
+    for raw in (json.dumps({"code": "class A {}"}), '{"x": 1}', '{"code": "trunc',
+                "class A {}", None, ""):
+        assert not _unwrap_code(raw).lstrip().startswith("{"), raw

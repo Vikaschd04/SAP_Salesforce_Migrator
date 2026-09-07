@@ -64,6 +64,15 @@ class HybrisTarget:
     #: See `SalesforceTarget.prompt_sections`. This pipeline's target has item types and
     #: FlexibleSearch, not SObjects and SOQL, and saying so is the difference between a
     #: prompt that contradicts itself and one that does not. [1.56]
+    #: See `SalesforceTarget.schema_text`. This target's artifacts are Java classes and
+    #: JUnit tests, and saying "Apex" here asked for Apex however firmly the system
+    #: prompt forbade it. [1.58]
+    schema_text = {
+        "main_class": "Complete Java class source for a SAP Hybris extension. "
+                      "Never Apex: no SOQL, no `with sharing`, no `__c` suffixes.",
+        "test_class": "Complete JUnit test class source (de.hybris.platform tests).",
+        "refs": "Item types from items.xml referenced by the main class.",
+    }
     prompt_sections = {
         "types": "PHP -> Java type mappings",
         "schema": "Item types declared in items.xml (query these with FlexibleSearch)",
