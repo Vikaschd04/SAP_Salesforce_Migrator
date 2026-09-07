@@ -161,9 +161,26 @@ class BuilderAgent:
                 **({"label": f"{_platform} reference (retrieved — use these facts, "
                              "don't invent APIs)"} if _platform else {}))
 
+        # What the emitter is about to write. The merge is keyed by method name, and for
+        # three runs it matched almost nothing because the model had never been told what
+        # to call anything — a job came back with `execute`, a listener with `perform`.
+        # Good logic, discarded on arrival for wearing the wrong name. The emitter knew
+        # the answer the whole time. [1.51]
+        contract = ""
+        _t = _target_of(bb)
+        if _t is not None and hasattr(_t, "contract_for"):
+            wanted = {c.get("class_name", "") for c in plan_item.source_classes}
+            units = [u for u in (getattr(bb.source_model, "units", None) or [])
+                     if getattr(u, "name", "") in wanted]
+            try:
+                contract = _t.contract_for(plan_item, units)
+            except Exception:
+                contract = ""      # a prompt improvement must never fail a build
+
         # Queries this target's own source contains, already translated. Derived, not
         # generated — and a query that can be derived should never be generated. [1.23b]
-        for block in (_derived_queries(plan_item.source_classes),
+        for block in (contract,
+                      _derived_queries(plan_item.source_classes),
                       _transaction_shapes(plan_item.source_classes),
                       _rest_shapes(plan_item.source_classes),
                       _data_model_notes(bb)):

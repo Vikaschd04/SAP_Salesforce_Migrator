@@ -48,6 +48,19 @@ class HybrisTarget:
     #: See `SalesforceTarget.retrieval_terms`. These name what the Adobe→Hybris
     #: pack actually documents: the type system, the query language, the two hook
     #: mechanisms and the scheduler. [1.48]
+    def contract_for(self, plan_item, source_units: list) -> str:
+        """What the emitter will write for this target, for the Builder's prompt.
+
+        On the adapter because it is knowledge about *this platform's* class shapes,
+        and the Builder must stay ignorant of which platform it is building for.
+        [1.51]
+        """
+        methods = []
+        for u in source_units or []:
+            methods += list(getattr(u, "methods", None) or [])
+        return target_contract(getattr(plan_item, "kind", ""),
+                               getattr(plan_item, "target_name", ""), methods)
+
     retrieval_terms = ("hybris service layer spring bean flexiblesearch interceptor "
                        "decorator cronjob performable items.xml model impex")
 
@@ -241,3 +254,80 @@ class HybrisTarget:
         raise NotImplementedYet("Bridging reshaped calls onto Java", "3.11")
 
 ADAPTER = HybrisTarget()
+
+
+def target_contract(kind: str, target_name: str, source_methods: list) -> str:
+    """The class and methods the emitter will write, told to the Builder. [1.51]
+
+    The merge that lands generated logic in the emitted file is keyed by method name, and
+    for three runs it matched almost nothing — because nobody had told the model what to
+    name anything. It was asked to migrate a PHP class and left to guess the target's
+    shape, so a job came back with `execute`, a listener with `perform`, an interceptor
+    with `onValidate` where the emitter had derived `onPrepare`. Real logic, written well,
+    discarded on arrival for wearing the wrong name.
+
+    Guessing was never the model's job. The emitter *knows* the answer — it is about to
+    write the file — and had simply never said so. Everything below is derived from the
+    same helpers the emitters call, so the contract cannot drift from what is emitted.
+    """
+    from src.adapters import hybris_hooks
+    from src.adapters.hybris_plan import (DECORATOR, EVENT_LISTENER, INTERCEPTOR, JOB,
+                                          SERVICE)
+    from src.adapters.hybris_service import _camel
+
+    names = [getattr(m, "name", "") for m in (source_methods or [])
+             if getattr(m, "name", "")]
+
+    if kind == JOB:
+        body = [f"- Write `public class {target_name} extends "
+                "AbstractJobPerformable<CronJobModel>`.",
+                "- Put the logic in `public PerformResult perform(final CronJobModel "
+                "cronJob)`. That is the platform's entry point and the only method that "
+                "runs; a method named after the PHP one will never be called.",
+                "- Return `new PerformResult(CronJobResult.SUCCESS, "
+                "CronJobStatus.FINISHED)` on success."]
+    elif kind == EVENT_LISTENER:
+        body = [f"- Write `public class {target_name} extends AbstractEventListener<E>`, "
+                "where `E` is the event type.",
+                "- Put the logic in `protected void onEvent(final E event)`. That is the "
+                "platform's entry point — a method named after the PHP observer will "
+                "never be called."]
+    elif kind == INTERCEPTOR:
+        # Derived by the same function the emitter uses, from the same method names, so
+        # the contract cannot name a hook the emitted class does not declare.
+        shim = type("U", (), {"methods": list(source_methods or [])})()
+        hook = hybris_hooks.interceptor_hook(shim)
+        kindname = hybris_hooks._interceptor_shape(shim)[0]
+        body = [f"- Write `public class {target_name} implements {kindname}`.",
+                f"- Put the logic in `public void {hook}(final Object model, final "
+                "InterceptorContext ctx) throws InterceptorException`.",
+                f"- Use `{hook}` and no other hook. Which one this is was derived from "
+                "the plugin's own prefix; moving logic to a different hook changes when "
+                "it runs and whether it can reject the model."]
+    elif kind == DECORATOR:
+        emitted = [hybris_hooks.wrapped_method(n) for n in names]
+        body = [f"- Write `public class {target_name}`.",
+                "- One method per plugin method, named exactly: "
+                + (", ".join(f"`{e}`" for e in emitted) or "(none)") + ".",
+                "- Each takes `(final Object... args)` and returns `Object`."]
+    elif kind == SERVICE:
+        emitted = [_camel(n) for n in names]
+        body = [f"- Write the **implementation**, `public class {target_name}`. The "
+                "interface is derived from the source and you do not need to write it.",
+                "- Implement exactly these methods: "
+                + (", ".join(f"`{e}`" for e in emitted) or "(none)") + ".",
+                "- Keep the parameter order; the types are fixed by the interface."]
+    else:
+        return ""
+
+    return "\n".join([
+        "## The class this becomes",
+        "",
+        "The migration writes this file and merges your method bodies into it **by "
+        "method name**. A body under a name that is not listed here is discarded — not "
+        "because it is wrong, but because there is nowhere for it to go.",
+        "", *body,
+        "",
+        "Anything you cannot migrate faithfully: say so in a comment and leave the "
+        "method unfinished. An honest gap is reviewable; an invented one is not.",
+    ])
