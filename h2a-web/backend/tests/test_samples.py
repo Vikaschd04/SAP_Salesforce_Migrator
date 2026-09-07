@@ -124,3 +124,27 @@ def test_the_answer_is_still_a_boolean_never_the_key(monkeypatch):
     got = keyvault.server_fallbacks()
     assert all(v is True for v in got.values())
     assert "sk-" not in str(got)
+
+
+# ── a migration's output is not a migration's input [1.60] ───────────────────
+
+def test_generated_output_directories_are_not_offered(samples):
+    """`Testing/out-appointment` is a *result* — and a valid Hybris codebase, so detection
+    identified it and offered it as something to migrate. Offering someone yesterday's
+    output as today's input is the kind of nonsense a client notices immediately."""
+    for s in samples["samples"]:
+        assert not s["path"].split("/")[-1].startswith(("out-", "out_")), s["path"]
+
+
+def test_the_small_demo_slice_is_offered(samples):
+    """A 20-target module is the wrong thing to run in front of an audience. The slice is
+    real, unmodified third-party code and exercises every part of the pipeline once."""
+    paths = {s["path"] for s in samples["samples"]}
+    assert "Testing/appointment-demo" in paths
+    assert "Testing/appointment-magento" in paths, "the full module stays, for coverage"
+
+
+def test_whether_the_shared_key_may_be_spent_is_stated(samples):
+    """"No key configured" means "add one" or "you cannot run this" depending on this,
+    and the cockpit cannot tell the difference without being told."""
+    assert isinstance(samples["server_allowed"], bool)

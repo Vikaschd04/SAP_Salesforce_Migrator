@@ -858,6 +858,13 @@ async def api_samples():
     for d in sorted((REPO_ROOT / "Testing").glob("*/")):
         if not d.is_dir():
             continue
+        # A migration's *output* is a valid project of the target platform, so detection
+        # happily identifies `out-appointment` as a Hybris codebase and offers it as
+        # something to migrate. Offering someone yesterday's output as today's input is
+        # the kind of nonsense a client notices immediately, and `out-*` is already the
+        # repository's convention for generated trees — `.gitignore` uses it. [1.60]
+        if d.name.startswith(("out-", "out_")):
+            continue
         try:
             ident = _pipeline.identify(str(d))
         except Exception:
@@ -884,6 +891,9 @@ async def api_samples():
     # The shipped migration first: it is the one whose output can be verified.
     out.sort(key=lambda s: (not s["shipped"], s["path"]))
     return {"samples": out,
+            # Whether a run may spend the deployment's own key, which decides whether
+            # "no key configured" means "add one" or "you cannot run this". [1.60]
+            "server_allowed": keyvault.server_key_allowed(),
             # Whether a dry run can actually call a model, so the UI can say so up front
             # instead of letting someone start a run that will fall back to the mock.
             "providers": keyvault.server_fallbacks(),

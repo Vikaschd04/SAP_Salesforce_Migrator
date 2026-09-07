@@ -1,0 +1,43 @@
+{
+    "name": "mage-monk/module-appoinment",
+    "description": "Book an appointment",
+    "version": "1.0.4",
+    "require": {
+        "php": "^8.2",
+        "mage-monk/module-base": "^1.0.2"
+    },
+    "keywords": [
+        "magento 2",
+        "Book an appointment",
+        "Adobe Commerce - Magento",
+        "mage-monk"
+    ],
+    "authors": [
+        {
+            "name": "Prince Kumar",
+            "email": "prince.lpu1991@gmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "repositories": [
+        {
+            "type": "vcs",
+            "url":  "git@github.com:mage-monk/Appointment.git"
+        }
+    ],
+    "prefer-stable": true,
+    "type": "magento2-module",
+    "license": [
+        "OSL-3.0",
+        "AFL-3.0"
+    ],
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "MageMonk\\Appointment\\": ""
+        }
+    }
+}
+

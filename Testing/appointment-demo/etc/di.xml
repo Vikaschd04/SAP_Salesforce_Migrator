@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../../lib/internal/Magento/Framework/ObjectManager/etc/config.xsd">
+    <type name="Magento\Framework\View\Element\UiComponent\DataProvider\CollectionFactory">
+        <arguments>
+            <argument name="collections" xsi:type="array">
+                <item name="magemonk_appointment_listing_data_source" xsi:type="string">MageMonk\Appointment\Model\ResourceModel\Appointment\Grid\Collection</item>
+            </argument>
+        </arguments>
+    </type>
+    <virtualType name="MageMonk\Appointment\Model\ResourceModel\Appointment\Grid\Collection" type="Magento\Framework\View\Element\UiComponent\DataProvider\SearchResult">
+        <arguments>
+            <argument name="mainTable" xsi:type="string">magemonk_appointment</argument>
+            <argument name="resourceModel" xsi:type="string">MageMonk\Appointment\Model\ResourceModel\Appointment</argument>
+        </arguments>
+    </virtualType>
+    <preference for="MageMonk\Appointment\Api\AppointmentRepositoryInterface" type="MageMonk\Appointment\Model\AppointmentRepository"/>
+    <preference for="MageMonk\Appointment\Api\Data\AppointmentInterface" type="MageMonk\Appointment\Model\Appointment"/>
+    <preference for="MageMonk\Appointment\Api\Data\AppointmentSearchResultInterface" type="MageMonk\Appointment\Model\AppointmentSearchResult"/>
+</config>
