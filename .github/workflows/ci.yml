@@ -1,0 +1,145 @@
+# The suite, on every push and pull request.
+#
+# It exists because a green suite on one laptop is not a guarantee about the repository.
+# On 2026-09-07 a commit reached `main` over three failing tests: the command piped
+# `pytest` into `tail`, the shell reported `tail`'s exit code, and nothing else was
+# looking. This is the thing that looks.
+#
+# Everything here runs on the `mock` provider. No key, no network, no spend — the golden
+# baselines are deterministic by design, and since 1.51 each reference run gets its own
+# prompt cache so a warm runner and a cold one produce the same bytes.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A newer push supersedes an older one on the same branch; there is nothing to learn
+  # from a run against code that has already been replaced.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  H2A_PROVIDER: mock          # belt and braces: the tests set it too
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  engine:
+    name: engine (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false        # one version failing should not hide the other's result
+      matrix:
+        python: ["3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: h2a-mvp/requirements.txt
+
+      # Three suites check generated Java against a real compiler, and they *skip*
+      # rather than fail when javac is missing. A runner without a JDK would report
+      # green while proving nothing about the rung the Adobe pipeline claims.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install
+        working-directory: h2a-mvp
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Confirm the compiler is really here
+        run: javac -version
+
+      - name: Tests
+        working-directory: h2a-mvp
+        env:
+          PYTHONPATH: .
+        run: pytest tests -q
+
+      # A skip is not a pass. The compile-rung tests are the only evidence that
+      # generated Java is valid, so a run where they quietly vanished is a run that
+      # proved less than it appears to.
+      - name: No test skipped silently
+        working-directory: h2a-mvp
+        env:
+          PYTHONPATH: .
+        run: |
+          pytest tests -q -rs 2>&1 | tee out.txt
+          if grep -qE "^SKIPPED|[0-9]+ skipped" out.txt; then
+            echo "::warning::tests were skipped — check the reasons above"
+            grep -E "^SKIPPED" out.txt || true
+          fi
+
+  backend:
+    name: web backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r h2a-mvp/requirements.txt -r h2a-web/backend/requirements.txt
+      - name: Tests
+        working-directory: h2a-web/backend
+        env:
+          PYTHONPATH: .:../../h2a-mvp
+        run: pytest tests -q
+
+  cockpit:
+    name: cockpit (typecheck + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: h2a-web/web/package-lock.json
+      - name: Install
+        working-directory: h2a-web/web
+        run: npm ci
+      # Typecheck separately from build: `vite build` does not fail on type errors, so a
+      # green build says nothing about types.
+      - name: Typecheck
+        working-directory: h2a-web/web
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Build
+        working-directory: h2a-web/web
+        run: npm run build
+
+  secrets:
+    name: no credential in the tree
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The engine already knows what a leaked key looks like — it scans customers'
+      # codebases for exactly this. Pointing it at our own tree costs nothing and closes
+      # the gap that let a live gateway key reach a public remote in a test fixture.
+      - name: Scan tracked files with our own detector
+        run: python scripts/scan_secrets.py

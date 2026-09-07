@@ -4,6 +4,8 @@ The isolation tests matter most: a migration contains the customer's uploaded so
 code, so one tenant reading another's run is the worst failure this product can have.
 Those are asserted at the HTTP boundary, because that is where an attacker sits — not
 at the function that the UI happens to call.
+
+This file contains deliberately key-shaped fixtures: allow-secret-fixture.
 """
 
 import importlib

@@ -4,6 +4,8 @@ These are the properties that separate "a demo" from "something two people can u
 so they are asserted rather than assumed. Run with:
 
     cd h2a-web/backend && PYTHONPATH=.:../../h2a-mvp pytest tests -q
+
+This file contains deliberately key-shaped fixtures: allow-secret-fixture.
 """
 
 import importlib

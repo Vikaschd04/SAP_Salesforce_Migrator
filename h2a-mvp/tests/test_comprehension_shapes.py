@@ -12,6 +12,8 @@ generator) assumes strings. Coercing at the boundary fixes all of them at once; 
 
 "Three swappable AI providers" is on the front page of the PRD. It is only as true as the
 narrowest assumption between the model and the report.
+
+This file contains deliberately key-shaped fixtures: allow-secret-fixture.
 """
 
 import pytest
@@ -138,7 +140,7 @@ def _found(text: str) -> list:
 
 
 def test_an_openai_shaped_gateway_key_is_caught():
-    assert "an API key" in _found('token = "sk-voF6eSzBYjc8UD3dz08bFw60AlUOPcrv9Ttp0bY3S0do24kO"')
+    assert "an API key" in _found('token = "sk-Fx7QwZm2Kd9Rb4Tn6VpL8sHc3JyE5aUgW1oNiXvB0rMt"')
 
 
 def test_the_more_specific_names_still_win():
