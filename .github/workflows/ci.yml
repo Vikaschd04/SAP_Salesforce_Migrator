@@ -66,11 +66,26 @@ jobs:
         working-directory: h2a-mvp
         env:
           PYTHONPATH: .
-        # Captured as well as printed. Job logs need admin rights to download, so on a
-        # public repository a failure is otherwise readable only in the browser — and
-        # "exit code 1" is all the API will tell you. An artifact anyone can fetch turns
-        # a red tick into something diagnosable. [1.55]
-        run: pytest tests -q -rA 2>&1 | tee pytest-output.txt
+        # `pipefail` is not the default in Actions' bash, so `pytest | tee` reports
+        # *tee's* status and a failing suite goes green. That is the exact mistake this
+        # workflow exists to catch, and it slipped in here the moment output was piped
+        # anywhere. Asserted below rather than trusted. [1.55]
+        run: |
+          set -o pipefail
+          pytest tests -q 2>&1 | tee pytest-output.txt
+
+      # Job logs need admin rights to download and artifacts need a token, so on a public
+      # repository a failure is otherwise "exit code 1" and nothing else. Annotations are
+      # readable without either, so the failing lines are re-emitted as annotations —
+      # which is the difference between a red tick and something diagnosable.
+      - name: Say what failed, where the API can read it
+        if: failure()
+        working-directory: h2a-mvp
+        run: |
+          grep -E "^(FAILED|ERROR)" pytest-output.txt | while read -r line; do
+            echo "::error::$line"
+          done
+          echo "::error::$(tail -1 pytest-output.txt)"
 
       - name: Keep the output whatever happened
         if: always()
@@ -88,6 +103,7 @@ jobs:
         env:
           PYTHONPATH: .
         run: |
+          set -o pipefail
           pytest tests -q -rs 2>&1 | tee out.txt
           if grep -qE "^SKIPPED|[0-9]+ skipped" out.txt; then
             echo "::warning::tests were skipped — check the reasons above"
