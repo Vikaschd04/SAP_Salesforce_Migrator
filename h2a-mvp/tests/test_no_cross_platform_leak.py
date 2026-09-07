@@ -128,3 +128,67 @@ def test_a_deliberate_comparison_is_allowed():
     assert not _offending(
         "carried over from the Hybris→Salesforce pair; NOT measured on PHP→Java",
         VOCABULARY["salesforce"])
+
+
+# ── absence has to survive the crossing into JavaScript [1.64] ───────────────
+
+@pytest.mark.slow
+def test_a_target_with_no_org_sends_no_org_data():
+    """The first review gate on an Adobe→Hybris run said:
+
+        Target org not inspected — . This migration is planned against the source
+        alone; connect an org with `sf org login web` to reconcile against what it
+        already contains.
+
+    SAP Hybris has no orgs, and the engine had skipped the check correctly since 1.33.
+    The Blackboard's default for `orgfit` is `{}`, and an empty dict is falsy in Python
+    and **truthy** in JavaScript — so the gate sent "no org data" and the cockpit read
+    "an org object with no fields". The dangling `— .` is the missing `reason`.
+
+    Checked at the *gate payload*, because an unsupervised run builds no gates and
+    looking at the wrong one is how this was first misdiagnosed as a stale deploy.
+    """
+    import tempfile
+
+    from src.agentic.orchestrator import run_agentic_migration
+
+    seen = {}
+
+    def gate(name, payload):
+        seen[name] = payload
+        return {"decision": "approve"}
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        run_agentic_migration(str(ROOT / "Testing" / "appointment-demo"),
+                              tempfile.mkdtemp(), offline=True, gate=gate)
+
+    assert "discovery" in seen, "no discovery gate was built"
+    assert seen["discovery"].get("orgfit") is None, (
+        "an empty container reads as presence in the browser")
+
+
+@pytest.mark.slow
+def test_no_gate_field_is_an_empty_container():
+    """The general form. Any `{}` or `[]` on this wire is a Python author meaning
+    "nothing" and a TypeScript reader seeing "something" — every one is a rendered panel
+    with no content in it, waiting to be found by a user rather than a test."""
+    import tempfile
+
+    from src.agentic.orchestrator import run_agentic_migration
+
+    seen = {}
+
+    def gate(name, payload):
+        seen[name] = payload
+        return {"decision": "approve"}
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        run_agentic_migration(str(ROOT / "Testing" / "appointment-demo"),
+                              tempfile.mkdtemp(), offline=True, gate=gate)
+
+    # `processes` is exempt: its reader guards on `.length`, so an empty list is read as
+    # emptiness rather than presence. Listed by name so the exemption is a decision.
+    guarded = {"processes"}
+    empties = [f"{g}.{k}" for g, p in seen.items() for k, v in p.items()
+               if k not in guarded and (v == {} or v == [])]
+    assert not empties, f"empty containers cross the wire as truthy: {empties}"

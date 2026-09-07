@@ -11,7 +11,11 @@ export interface OrgFitData {
 }
 
 export default function OrgFit({ o }: { o: OrgFitData | null }) {
-  if (!o) return null;
+  // `!o` is not enough. An empty object is falsy in Python and truthy here, so the
+  // absence of org data crossed the wire as `{}` and rendered as "Target org not
+  // inspected — ." on a target that has no orgs at all. Fixed on the sending side too;
+  // both, because the next thing to send `{}` will not be the same code. [1.64]
+  if (!o || o.connected === undefined) return null;
 
   if (!o.connected) {
     return (

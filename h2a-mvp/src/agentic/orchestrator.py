@@ -227,7 +227,13 @@ def _discovery_payload(bb) -> dict:
         # What we established about the codebase before spending anything on it.
         "preflight": getattr(bb, "preflight", None),
         "radar": getattr(bb, "radar", None),
-        "orgfit": getattr(bb, "orgfit", None),
+        # `or None`, because the Blackboard's default is `{}` and an empty dict is
+        # falsy in Python and *truthy* in JavaScript. The gate was sending "no org
+        # data" and the cockpit was reading "an org object with no fields" — so an
+        # Adobe→Hybris run, which has no org to inspect, showed "Target org not
+        # inspected — ." with the reason dangling after the dash. A falsy value
+        # that changes meaning at a language boundary is worth spelling out. [1.64]
+        "orgfit": getattr(bb, "orgfit", None) or None,
         "forecast": getattr(bb, "forecast", None),
     }
 
