@@ -177,3 +177,55 @@ def test_alignment_follows_provenance():
     from src import alignment
 
     assert "map_artifact" in inspect.getsource(alignment.build_alignment)
+
+
+# ── the forecast prices the run that will actually happen [1.51] ─────────────
+
+def test_the_forecast_prices_the_model_each_stage_will_receive():
+    """`forecast` re-derived the model from a two-tier `{cheap, frontier}` map and put
+    comprehension on the cheap one. That was a second copy of the router's decision, and
+    the two disagreed the moment a third tier appeared: comprehension moved to Sonnet and
+    the forecast went on quoting Haiku. It under-quoted — the direction that matters when
+    the number exists so someone can approve a spend."""
+    from src.agentic.router import route_model
+    from src.forecast import _model_for
+    from src.llm import _load_config
+
+    cfg = _load_config()
+    for stage in ("comprehend", "plan", "generate", "critic", "repair"):
+        assert _model_for(cfg, stage) == route_model(cfg, stage), stage
+
+
+def test_with_routing_off_every_stage_prices_the_default_model():
+    from src.forecast import _model_for
+
+    cfg = {"model": "claude-opus-5", "agentic": {"routing": {"enabled": False}}}
+    assert {_model_for(cfg, s) for s in ("comprehend", "generate")} == {"claude-opus-5"}
+
+
+def test_the_assumption_line_names_what_each_stage_runs_on():
+    """It is what a reader checks the number against, so it has to describe the run —
+    'comprehension and planning on <cheap>' stopped being true and kept being printed."""
+    from src.forecast import forecast
+    from src.llm import _load_config
+
+    cfg = _load_config()
+    f = forecast([{"class_name": "C", "source": "class C { void a() {} }", "layer": "Service"}],
+                 targets=1, config=cfg, provider="anthropic")
+    line = next(a for a in f["assumptions"] if a.startswith("Routing"))
+    for stage in ("comprehend", "plan", "generate"):
+        assert stage in line
+    assert "claude-sonnet-5" in line and "claude-opus-5" in line
+
+
+def test_every_forecast_stage_names_a_priced_model():
+    """An unpriced model silently contributes nothing to the total, so a forecast that
+    quotes one is quietly wrong rather than loudly unknown."""
+    from src import pricing
+    from src.forecast import forecast
+    from src.llm import _load_config
+
+    f = forecast([{"class_name": "C", "source": "class C { void a() {} }", "layer": "Service"}],
+                 targets=1, config=_load_config(), provider="anthropic")
+    for s in f["stages"]:
+        assert pricing.cost_of(s["model"], prompt_tokens=1000) is not None, s["model"]
