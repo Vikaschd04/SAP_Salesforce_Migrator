@@ -269,6 +269,13 @@ class NeedsKey(HTTPException):
                                "message": detail})
 
 
+def _provider_label(provider: str) -> str:
+    """`anthropic` → `Anthropic`. The refusal is read by a person, and "add a anthropic
+    key" is the sort of sentence that makes software look unfinished. [1.60]"""
+    return {"anthropic": "Anthropic", "unorouter": "Unorouter"}.get(
+        provider, (provider or "").capitalize())
+
+
 def _credential_for(provider: str, uid: str | None, per_run: str) -> tuple:
     """The one credential this run will use, and where it came from. [1.50]
 
@@ -296,15 +303,18 @@ def _credential_for(provider: str, uid: str | None, per_run: str) -> tuple:
         if keyvault.server_fallbacks().get(provider):
             return None, "the server's shared key"
         raise NeedsKey(provider, f"This deployment allows its shared key, but has none "
-                                 f"configured for {provider}. Add your own to continue.")
+                                 f"configured for {_provider_label(provider)}. Add your "
+                                 "own to continue.")
 
     if not uid:
-        raise NeedsKey(provider, f"Sign in and add a {provider} key to run with it.")
+        raise NeedsKey(provider, f"Sign in and add an {_provider_label(provider)} key, or "
+                                 "supply one for this run.")
     if not keyvault.available():
-        raise NeedsKey(provider, f"A {provider} key is needed for this run. Key storage "
+        raise NeedsKey(provider, f"An {_provider_label(provider)} key is needed. Key storage "
                                  f"is off on this server ({keyvault.why_unavailable()}), "
                                  f"so supply one for this run only.")
-    raise NeedsKey(provider, f"A {provider} key is needed. Add one for this run, or save "
+    raise NeedsKey(provider, f"An {_provider_label(provider)} key is needed. Add one for "
+                             "this run, or save "
                              f"it to your account to reuse it.")
 
 
