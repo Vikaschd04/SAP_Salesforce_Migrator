@@ -79,6 +79,30 @@ class HybrisTarget:
     }
     retrieval_terms = ("hybris service layer spring bean flexiblesearch interceptor "
                        "decorator cronjob performable items.xml model impex")
+    #: See `SalesforceTarget.code_extension`.
+    code_extension = ".java"
+    #: See `SalesforceTarget.output_globs`. An extension is assembled under
+    #: `hybris/bin/custom/<extension>/src/...`, which `emit` owns.
+    output_globs = ("hybris/bin/custom/**/*.java",)
+    #: See `SalesforceTarget.strengthens_tests`. There is no JUnit equivalent of that
+    #: strengthener yet, and an Apex one is worse than none: it would spend real money to
+    #: produce tests this platform cannot run. Declared False rather than left undefined
+    #: so the skip is a decision with a reason, and the run says so out loud.
+    strengthens_tests = False
+    #: See `SalesforceTarget.review_criteria`. These are the things that actually go
+    #: wrong in a generated SAP Commerce extension — the ones a compiler would catch are
+    #: `java_static_check`'s job, so the model is asked about the ones it would not.
+    review_criteria = (
+        "  2. PLATFORM — extends the right platform base class, uses the injected\n"
+        "     ModelService/FlexibleSearchService rather than constructing them, and\n"
+        "     touches no Salesforce construct (no SOQL, no `with sharing`, no `__c`)\n"
+        "  3. SERVICE LAYER — the service holds logic and the DAO holds queries; Spring\n"
+        "     dependencies are injected, not looked up; the class is stateless\n"
+        "  4. QUERIES — no FlexibleSearch inside a loop, results are bounded, and every\n"
+        "     itemtype and attribute named is one items.xml actually declares")
+    #: See `SalesforceTarget.review_terms`.
+    review_terms = ("flexiblesearch modelservice service layer spring injection "
+                    "interceptor decorator transaction review")
 
     #: Nothing to query before generating — an extension is built from source. [1.33]
     has_org = False
@@ -213,11 +237,47 @@ class HybrisTarget:
 
         The strongest check available without a licensed platform, and it says so: a type
         mismatch or a missing override needs real type checking, which is rung 3.11.
+
+        **What counts as resolvable, and why the caller has to say.** A generated class is
+        checked on its own, so its siblings in the same migration are invisible to it —
+        `AcmeLoyaltyServiceTest` names `AcmeLoyaltyService`, which this run emits and no
+        classpath here knows about. `emitted_types` is how the caller supplies that, and
+        for three items nothing ever did: every call site passed `(code, filename, schema)`
+        and let `config` default to `{}`. The result was one fabricated
+        `unresolved_type` ERROR per test class, which the Critic escalated into a
+        frontier-model repair round against a type that was never missing, and which left
+        every artifact `needs_review`. It was invisible only because the *other* defect —
+        the pipeline id not reaching worker threads — meant the Apex validator ran here
+        instead. [4.6]
+
+        Model types are derived from `schema` rather than asked for: this target's schema
+        *is* the items.xml type set, so `{code}Model` is already known from a parameter the
+        protocol passes on every call. `items_xml` stays accepted for the emit-time caller
+        that has the real file.
+
+        Deliberately a *superset* where it is uncertain — a service target `PricingService`
+        is emitted as both the interface and `DefaultPricingService`, and this cannot see
+        which the emitter chose. Over-including risks missing a genuinely absent type;
+        under-including invents errors about types that are right there. The authoritative
+        answer is `check_tree`, which reads the whole emitted extension after it is
+        written and has no need to guess — so the permissive choice here is covered, and
+        the strict one would not be.
         """
         from src.adapters.java_static_check import check
-        return check(code, filename,
-                     emitted=(config or {}).get("emitted_types"),
-                     items_xml=(config or {}).get("items_xml", ""))
+
+        cfg = config or {}
+        emitted = set(cfg.get("emitted_types") or set())
+        for name in (cfg.get("planned_targets") or []):
+            if not name:
+                continue
+            emitted.add(name)
+            emitted.add(f"Default{name}")
+        for spec in (schema or {}).values():
+            code_name = (spec or {}).get("code") if isinstance(spec, dict) else ""
+            if code_name:
+                emitted.add(f"{code_name}Model")
+        return check(code, filename, emitted=emitted,
+                     items_xml=cfg.get("items_xml", ""))
 
     def verify(self, request, config: dict, log=print) -> dict:
         """No oracle yet. Reports that plainly rather than claiming a clean verification."""

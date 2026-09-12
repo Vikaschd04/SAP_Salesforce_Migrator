@@ -77,7 +77,7 @@ def profile_for(pipeline_id: str = "") -> Profile:
     try:
         _pl.ensure_registered()
         pid = pipeline_id or runctx.pipeline_id() or ""
-        p = _pl.get(pid) if pid else _pl.default_pipeline()
+        p = _pl.get(pid) if pid else _pl.active_or_shipped()
         return getattr(p, "forecast_profile", None) or DEFAULT_PROFILE
     except Exception:
         return DEFAULT_PROFILE

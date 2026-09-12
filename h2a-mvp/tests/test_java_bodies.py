@@ -749,28 +749,44 @@ def test_the_grounding_heading_names_the_platform_it_came_from():
     assert '_platform} reference' in src
 
 
-def test_the_terms_are_read_from_the_blackboard_not_the_context_var():
-    """`pipeline.current_target()` reads `runctx`, which is unset on the v1 path — where
-    the Builder still runs. Taking the target from there dropped the terms entirely and
-    silently shrank the shipped migration's prompt by ~500 tokens a call. The golden
-    baseline caught it; this keeps it caught.
+def test_the_terms_are_read_from_the_running_pipeline():
+    """The Builder's retrieval terms come from the target of the migration being run.
 
-    Asserted by behaviour with `runctx` deliberately empty, rather than by reading the
-    source — the first version of this test matched the word in the docstring.
+    This test used to assert the *workaround*: that `_target_of` read the Blackboard
+    rather than `runctx`, because `runctx` was unset on the v1 path and did not survive
+    the worker threads the Builder runs on. Both causes are now fixed — every run pins its
+    identity on both engine paths and `propagate` carries it — so the invariant worth
+    holding is the one that was always meant: the terms belong to the pipeline that is
+    running, and they survive the thread boundary where they used to be lost. [4.6]
     """
     from src import runctx
     from src.agentic.builders import _target_of
+    from src.agentic.orchestrator import _map_parallel
 
-    assert runctx.pipeline_id() is None, "this test is meaningless with one pinned"
-    got = _target_of(type("BB", (), {"pipeline_id": "adobe->hybris"})())
+    runctx.set_overrides(pipeline_id="adobe->hybris")
+    got = _target_of(None)
     assert got is not None and got.code_language == "Java"
+
+    # The path that actually matters: the Builder runs on a pool worker.
+    def probe(_):
+        t = _target_of(None)
+        return getattr(t, "code_language", None), getattr(t, "retrieval_terms", "")
+
+    for lang, terms in _map_parallel(probe, [1, 2], 2):
+        assert lang == "Java"
+        assert "apex" not in terms
 
 
 def test_a_run_with_no_pipeline_keeps_the_historical_terms():
-    """Falling back to nothing is what broke the baseline. The v1 path pins no pipeline
-    and still needs a query."""
+    """Falling back to nothing is what broke the baseline — outside a run there is still
+    a query to send, and it is the shipped pipeline's.
+
+    Reachable now only outside a run: a run pins its pipeline before the Builder exists.
+    """
+    from src import runctx
     from src.agentic.builders import _LEGACY_TERMS, _target_of
 
+    runctx._pipeline_id.set(None)
     assert _target_of(None) is None
-    assert _target_of(type("BB", (), {"pipeline_id": ""})()) is None
+    assert _LEGACY_TERMS.startswith("apex fflib")
     assert "apex fflib governor limits" in _LEGACY_TERMS

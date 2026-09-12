@@ -232,6 +232,32 @@ async def create_run(
         # and the payload carries which so the cockpit can say so.
         raise HTTPException(422, {"message": ident["summary"], "preflight": report,
                                   "identification": ident})
+    else:
+        # Runnable, and the caller named nothing. `identify` has just worked out which
+        # migration this codebase is for, so record it now rather than letting the run
+        # carry no identity until the engine re-derives it.
+        #
+        # Without this the run is created with `pipeline=""`, and everything the backend
+        # says about it before the engine emits its first event — the run listing, the
+        # summary a reload reads, the vocabulary every screen renders from — falls back
+        # to the shipped pair. An Adobe→Hybris run was described as Salesforce until it
+        # started, and in the run list afterwards. [4.6]
+        _runnable = [o for o in (ident.get("pipelines") or []) if o.get("implemented")]
+        if len(_runnable) == 1:
+            chosen = _runnable[0]["id"]
+
+    # The linear engine is the v1 path: it calls the Hybris ingest, the Apex generator
+    # and the Salesforce writer by name. Offered beside "agentic" with no restriction, it
+    # would accept an Adobe Commerce project, find 0 Java classes in a tree full of PHP,
+    # and write a clean report over an empty output. The engine refuses this too — this
+    # is the same refusal moved to where the person can still change their answer. [4.6]
+    if engine == "linear" and chosen and chosen != _pipeline.default_pipeline().id:
+        raise HTTPException(422, {
+            "message": (f"The linear engine runs "
+                        f"{_pipeline.default_pipeline().label} only. "
+                        f"Choose the agentic engine to run "
+                        f"{_pipeline.get(chosen).label}."),
+            "preflight": report, "identification": ident})
 
     user = getattr(request.state, "user", None)
     uid = (user or {}).get("id")

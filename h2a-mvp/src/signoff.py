@@ -80,7 +80,7 @@ def build_signoff(bb, *, accounting: dict | None = None, cost: dict | None = Non
     from src import pipeline as _pl
     try:
         _pl.ensure_registered()
-        _t = _pl.current_target() or _pl.default_pipeline().target
+        _t = _pl.active_or_shipped().target
         # The label is descriptive — "Salesforce (Apex · LWC · metadata)".
         # A claim wants the platform's name, not its contents.
         _platform, _language = _t.label.split(" (")[0], _t.code_language
@@ -166,11 +166,10 @@ def _pipeline_record() -> dict:
     on every commit, so recording which one ran would state a difference that does not
     exist — and it broke that very test, since the two runs then differed by this field.
     """
-    from src import pipeline, runctx
+    from src import pipeline
     try:
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         return {"id": p.id, "source": p.source_platform, "target": p.target_platform}
     except Exception:
         return {"id": "", "source": "", "target": ""}
@@ -184,11 +183,10 @@ def _languages() -> tuple:
     A report that names the wrong platform is not a cosmetic problem: it is the clearest
     signal a reader has that the tool knows what it just did.
     """
-    from src import pipeline, runctx
+    from src import pipeline
     try:
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         return (getattr(p.source, "code_language", "source"),
                 getattr(p.target, "code_language", "target"))
     except Exception:

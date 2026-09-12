@@ -40,10 +40,9 @@ def _target_language() -> str:
     """The language this run actually emits. Hardcoded "Apex" labelled every artifact in
     a run that writes Java. [1.39]"""
     try:
-        from src import pipeline, runctx
+        from src import pipeline
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         return getattr(p.target, "code_language", "Target")
     except Exception:
         return "Target"

@@ -245,6 +245,23 @@ class Blackboard:
         except Exception:
             return ".cls"
 
+    def validation_context(self) -> dict:
+        """Facts about *this run* that a target's objective validator needs. [4.6]
+
+        Neutral on purpose: the names this migration plans to produce, and nothing about
+        what any platform calls them. Salesforce's validator ignores it; the Hybris one
+        turns `planned_targets` into the class names it expects to resolve. A validator
+        that has to be told what the run is building belongs to the platform, and a
+        Blackboard that knows what Hybris calls a service implementation does not.
+
+        Added because every agent called `validate_artifact(code, filename, schema)` with
+        `config` left to default, so the one platform that reads it never received it —
+        and reported a type the run was actively generating as missing.
+        """
+        names = {getattr(p, "target_name", "") for p in (self.plan or [])}
+        names |= {getattr(a, "target_name", "") for a in (self.artifacts or [])}
+        return {"planned_targets": sorted(n for n in names if n)}
+
     def data_model_target(self) -> str:
         """Where this target keeps its data model, in that platform's own words. [1.35]"""
         try:

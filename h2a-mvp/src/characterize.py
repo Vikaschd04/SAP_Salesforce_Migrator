@@ -47,21 +47,15 @@ from __future__ import annotations
 
 def _source():
     """The running pipeline's source adapter — or the shipped one outside a run."""
-    from src import pipeline, runctx
+    from src import pipeline
     pipeline.ensure_registered()
-    pid = runctx.pipeline_id()
-    return (pipeline.get(pid) if pid else pipeline.default_pipeline()).source
+    return pipeline.active_or_shipped().source
 
 
 def _target():
     """The running pipeline's target adapter — or the shipped one outside a run."""
     from src import pipeline
-    t = pipeline.current_target()
-    if t is not None:
-        return t
-    from src import pipeline as p
-    p.ensure_registered()
-    return p.default_pipeline().target
+    return pipeline.active_or_shipped().target
 
 
 def behavior_id(test_class: str, test_method: str, n: int) -> str:

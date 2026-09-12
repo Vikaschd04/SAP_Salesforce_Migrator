@@ -25,11 +25,10 @@ def _derived_queries(source_classes: list) -> str:
     """
     try:
         from src.adapters.hybris_flexsearch import grounding_for
-        from src import pipeline, runctx
+        from src import pipeline
 
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         if p.source_platform != "hybris":
             return ""
         return grounding_for([c.get("source", "") for c in (source_classes or [])])
@@ -45,12 +44,11 @@ def _transaction_shapes(source_classes: list) -> str:
     and the second is the common shape.
     """
     try:
-        from src import pipeline, runctx
+        from src import pipeline
         from src.adapters.java_transactions import grounding_for
 
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         if p.source_platform != "hybris":
             return ""
         return grounding_for([c.get("source", "") for c in (source_classes or [])])
@@ -64,8 +62,19 @@ def _data_model_notes(bb) -> str:
     Generated code that quietly picks a value for an unknown enum, or treats a suspected
     foreign key as a number, is a guess wearing the same clothes as a fact. Telling the
     model which calls are open is cheaper than reviewing what it invented.
+
+    Gated on the source platform like the three helpers above it. This was the one Adobe
+    Commerce module reachable from shared code with no gate — inert on the other pipeline
+    only because `bb.modelling` is filled on the Adobe path alone, which is a fact about
+    the orchestrator rather than a decision made here. The symmetry matters more than the
+    behaviour: a reader checking whether Magento logic can reach a Salesforce run should
+    find the answer in the function, not three files away. [4.6]
     """
     try:
+        from src import pipeline
+
+        if pipeline.active_or_shipped().source_platform != "adobe-commerce":
+            return ""
         from src.adapters.magento_modelling import grounding_for
         return grounding_for(getattr(bb, "modelling", None) or [])
     except Exception:
@@ -80,12 +89,11 @@ def _rest_shapes(source_classes: list) -> str:
     becomes a `urlMapping` that never matches, which does.
     """
     try:
-        from src import pipeline, runctx
+        from src import pipeline
         from src.adapters.rest_surface import grounding_for
 
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         if p.source_platform != "hybris":
             return ""
         return grounding_for([c.get("source", "") for c in (source_classes or [])])
@@ -106,28 +114,49 @@ def _angular_gaps(component: dict) -> str:
     return grounding_for(component)
 
 
-#: What the Builder searched for before the target was asked. Kept as the fallback for
-#: the v1 path, which pins no pipeline — losing these terms silently shrank the shipped
-#: migration's prompt by ~500 tokens a call, which the golden baseline caught. [1.48]
+#: What the Builder searched for before the target was asked. Now only reachable outside
+#: a run, since every run pins a pipeline and every target declares its own terms —
+#: losing these silently shrank the shipped migration's prompt by ~500 tokens a call,
+#: which the golden baseline caught. [1.48]
 _LEGACY_TERMS = "apex fflib governor limits SOQL DML security bulkification testing"
 
 
 def _target_of(bb):
-    """The target adapter for this run, or None.
+    """The target adapter for this run.
 
-    Taken from the Blackboard rather than `pipeline.current_target()`, which reads
-    `runctx` and returns None on the v1 path — where the Builder still runs, and still
-    needs its terms.
+    Reads the run context, not the Blackboard. It read the Blackboard because
+    `pipeline.current_target()` used to return None on the v1 path — where the Builder
+    still runs and still needs its terms — and because `runctx` did not survive the worker
+    threads the Builder runs on. Both are now fixed: every run pins its identity on both
+    engine paths, and `propagate` carries it. Two notions of "which migration is this",
+    one of which was empty on a live path, is how the fallbacks below came to exist.
+
+    The v1 path is unchanged and checked, not assumed: `salesforce_target`'s
+    `retrieval_terms`, `prompt_sections` and `schema_text` are byte-identical to the
+    defaults this returned None to select, and the golden baseline asserts the shipped
+    prompt is unchanged to the byte. [4.6]
+
+    `bb` is kept in the signature: the caller has it, and a target resolved per-run rather
+    than per-call is the next thing to want here.
     """
-    pid = getattr(bb, "pipeline_id", "")
-    if not pid:
-        return None
     try:
         from src import pipeline
-        pipeline.ensure_registered()
-        return pipeline.get(pid).target
+        return pipeline.active().target
     except Exception:
         return None
+
+
+def _target_extension() -> str:
+    """The running target's source-file extension. [4.6]
+
+    `.cls` outside a run, which is what this was hardcoded to and what the shipped
+    pipeline uses — so the v1 path and the golden baseline are unchanged.
+    """
+    try:
+        from src import pipeline
+        return getattr(pipeline.active().target, "code_extension", ".cls")
+    except Exception:
+        return ".cls"
 
 
 class BuilderAgent:
@@ -219,7 +248,8 @@ class BuilderAgent:
                              "source": c.get("source", "")} for c in plan_item.source_classes],
             status="generated",
         )
-        self._repair_objective(art, bb.schema, max_repair, scoped_sigs, bb.offline, log)
+        self._repair_objective(art, bb.schema, max_repair, scoped_sigs, bb.offline, log,
+                               context=bb.validation_context())
 
         # Completeness policy: a native-product fit never suppresses conversion — the
         # logic is fully built above; here we only flag it for human review.
@@ -258,17 +288,28 @@ class BuilderAgent:
             status="generated",
         )
 
-    def _repair_objective(self, art, schema, max_repair, sigs, offline, log) -> None:
+    def _repair_objective(self, art, schema, max_repair, sigs, offline, log,
+                          *, context: dict | None = None) -> None:
+        """Repair what the target's own objective validator objects to.
+
+        Two things here used to be the shipped pipeline's rather than the running one's,
+        and both cost real money on the other pipeline: the `.cls` extension, and a
+        `context` nobody passed. Without the context the Hybris checker reported this
+        migration's own sibling classes as unresolved types, and this loop then spent up
+        to `max_repair` frontier-model calls per artifact trying to repair them. [4.6]
+        """
+        ext = _target_extension()
+        ctx = context or {}
         for field_name in ("main_class", "test_class"):
             is_test = field_name == "test_class"
-            filename = f"{art.target_name}{'Test' if is_test else ''}.cls"
+            filename = f"{art.target_name}{'Test' if is_test else ''}{ext}"
             code = getattr(art, field_name)
-            issues = validate_artifact(code, filename, schema)
+            issues = validate_artifact(code, filename, schema, ctx)
             attempt = 1
             while issues and attempt <= max_repair:
                 repaired = repair(code, issues, attempt=attempt, offline=offline,
                                   signatures=sigs, schema=schema)
-                new_issues = validate_artifact(repaired, filename, schema)
+                new_issues = validate_artifact(repaired, filename, schema, ctx)
                 if not new_issues or len(new_issues) < len(issues):
                     code, issues = repaired, new_issues
                 attempt += 1

@@ -127,8 +127,7 @@ def split_source(source: str, model: str, max_output: int) -> list:
     try:
         from src import pipeline, runctx
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        src_adapter = (pipeline.get(pid) if pid else pipeline.default_pipeline()).source
+        src_adapter = pipeline.active_or_shipped().source
         methods = sorted(src_adapter.symbols(source) or [],
                          key=lambda m: m.get("line_start", 0))
     except Exception:

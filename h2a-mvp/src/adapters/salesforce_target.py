@@ -40,6 +40,39 @@ class SalesforceTarget:
     }
     retrieval_terms = ("apex fflib governor limits SOQL DML security bulkification "
                        "testing")
+    #: This platform's source-file extension. The agents hardcoded `.cls` for both
+    #: pipelines, so a Hybris run reported its findings against `PricingService.cls`.
+    code_extension = ".cls"
+    #: Globs matching the code this target writes, relative to the output directory.
+    #: Shared code that needs to know "has anything been generated here already?" — the
+    #: checkpoint's resume warning, for one — hardcoded `force-app/**/*.cls`, so the
+    #: warning could never fire for a run that writes a SAP Commerce extension. [4.6]
+    output_globs = ("force-app/**/*.cls",)
+    #: Can this target's generated tests be strengthened in place after the run?
+    #:
+    #: `parity.close_parity_gaps` rewrites a test class to assert the business rules it
+    #: does not yet cover, and both halves of it are Salesforce's: the prompt asks for an
+    #: `@isTest` class using `Test.startTest()`, and the result is written to
+    #: `force-app/main/default/classes`. It ran on *both* pipelines whenever a real
+    #: provider was in use — so a real Adobe→Hybris run spent frontier-tier calls turning
+    #: JUnit tests into Apex, found no `force-app` to write them to, and kept them in
+    #: memory anyway, where the reports and the final validation then described them.
+    #: Never seen in tests, because the stage is skipped under `mock`. [4.6]
+    strengthens_tests = True
+    #: What an adversarial reviewer should look for, in this platform's own terms.
+    #:
+    #: The Critic's review prompt was hardcoded Salesforce and ran on *both* pipelines —
+    #: so every generated Java class in an Adobe→Hybris run was reviewed as "generated
+    #: Apex", against fflib layering, FLS via `Security.stripInaccessible`, `with sharing`
+    #: and governor limits. None of those exist on the target it was actually building
+    #: for, and the findings drove a real repair loop. The Builder's prompt was given to
+    #: the target in 1.48 and 1.56; the Critic's was missed. [4.6]
+    review_criteria = (
+        "  2. SECURITY — FLS via Security.stripInaccessible, correct 'with sharing'\n"
+        "  3. FFLIB — Selector owns SOQL, Service stateless/bulkified, Controller thin\n"
+        "  4. GOVERNOR — no SOQL/DML in loops, bulk-safe collections")
+    #: Retrieval terms for the Critic specifically — it is reviewing, not generating.
+    review_terms = ("security FLS sharing governor limits bulkification fflib review")
 
     #: An org can be queried before generating, and its contents can collide with the
     #: plan. See `orgfit`. [1.33]

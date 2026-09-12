@@ -39,11 +39,10 @@ def _languages() -> tuple:
     report that names the wrong platform is not cosmetic: it is the clearest signal a
     reader has about whether the tool knows what it just did.
     """
-    from src import pipeline, runctx
+    from src import pipeline
     try:
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         return (getattr(p.source, "code_language", "source"),
                 getattr(p.target, "code_language", "target"))
     except Exception:
@@ -58,21 +57,16 @@ def _source_symbols(text: str) -> list[dict]:
     Java-shaped regex returns one method in six: it does not fail, it under-reports — in
     the module whose entire output is how much of the source can be accounted for.
     """
-    from src import pipeline, runctx
+    from src import pipeline
     pipeline.ensure_registered()
-    pid = runctx.pipeline_id()
-    src = (pipeline.get(pid) if pid else pipeline.default_pipeline()).source
+    src = pipeline.active_or_shipped().source
     return src.symbols(text)
 
 
 def _target_symbols(text: str) -> list[dict]:
     """Methods in the *generated* code, located by the target platform's own reader."""
     from src import pipeline
-    target = pipeline.current_target()
-    if target is None:
-        pipeline.ensure_registered()
-        target = pipeline.default_pipeline().target
-    return target.symbols(text)
+    return pipeline.active_or_shipped().target.symbols(text)
 
 
 def _norm(name: str) -> str:

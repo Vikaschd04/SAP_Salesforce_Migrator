@@ -95,6 +95,13 @@ class Run:
             self.events.append(ev)
             if ev.get("type") == "run_complete":
                 self.result = ev
+            elif ev.get("type") == "pipeline" and ev.get("id"):
+                # The engine has resolved which migration this actually is. That is the
+                # authority — it is the pipeline that ran — so adopting it keeps
+                # `summary()` (the run list, a reload, the stored record) agreeing with
+                # the run, rather than describing whatever was selected beforehand or the
+                # shipped pair when nothing was. [4.6]
+                self.pipeline = ev["id"]
             self._cond.notify_all()
 
     _HEARTBEAT_SECONDS = 10   # < typical corporate-proxy/load-balancer idle timeout (~15-30s)

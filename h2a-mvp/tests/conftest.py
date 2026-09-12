@@ -20,14 +20,10 @@ import pytest
 def _isolate_run_context():
     from src import runctx
 
-    saved = {name: var.get() for name, var in (
-        ("provider", runctx._provider), ("model", runctx._model),
-        ("api_key", runctx._api_key), ("cost_cap", runctx._cost_cap),
-        ("pipeline", runctx._pipeline_id),
-    )}
+    # Driven off `runctx._VARS` rather than a hand-written list, for the same reason
+    # `propagate` now is: a per-run variable added later would otherwise leak between
+    # tests until someone remembered to add it here. [4.6]
+    saved = [(var, var.get()) for var in runctx._VARS]
     yield
-    runctx._provider.set(saved["provider"])
-    runctx._model.set(saved["model"])
-    runctx._api_key.set(saved["api_key"])
-    runctx._cost_cap.set(saved["cost_cap"])
-    runctx._pipeline_id.set(saved["pipeline"])
+    for var, value in saved:
+        var.set(value)

@@ -17,10 +17,9 @@ def _pipeline_words() -> dict:
     cosmetic problem: it is the first thing a stakeholder reads.
     """
     try:
-        from src import pipeline, runctx
+        from src import pipeline
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         src_lang = getattr(p.source, "code_language", "code")
         tgt_lang = getattr(p.target, "code_language", "code")
         return {
