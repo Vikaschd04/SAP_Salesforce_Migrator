@@ -310,7 +310,13 @@ def build_interceptor(unit, package: str, wiring: dict | None = None,
     # `onPrepare` and the model wrote `onValidate`. Those are different hooks with
     # different semantics, and moving a body between them would put a wrong body under a
     # right name — so a mismatch merges nothing and keeps the TODO. [1.48]
-    merge = java_bodies.plan_merge(generated_class, {hook: [hook]})
+    # The signature below is the *platform's*, not the source method's — so a
+    # generated body written against its own parameter names lands under names it
+    # never declared. Stated to the merge so a body that does not fit is refused with
+    # a reason rather than written into a file that cannot compile. [4.7]
+    merge = java_bodies.plan_merge(
+        generated_class, {hook: [hook]},
+        contracts={hook: {"params": ["model", "ctx"]}})
     out += ["    @Override",
             f"    public void {hook}(final Object model, final InterceptorContext ctx)",
             "            throws InterceptorException", "    {"]
@@ -418,7 +424,13 @@ def build_event_listener(unit, package: str, event_name: str = "",
             f"public class {name} extends AbstractEventListener<{cls}>", "{", "",
             "    @Override",
             f"    protected void onEvent(final {cls} event)", "    {"]
-    merge = java_bodies.plan_merge(generated_class, {"onEvent": ["onEvent"]})
+    # The signature below is the *platform's*, not the source method's — so a
+    # generated body written against its own parameter names lands under names it
+    # never declared. Stated to the merge so a body that does not fit is refused with
+    # a reason rather than written into a file that cannot compile. [4.7]
+    merge = java_bodies.plan_merge(
+        generated_class, {"onEvent": ["onEvent"]},
+        contracts={"onEvent": {"params": ["event"]}})
     if merge["bodies"]:
         out.append(f"        // Generated from {unit.name}. Reviewed as generated logic,"
                    " not derived — see PROVENANCE.md.")

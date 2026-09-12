@@ -82,7 +82,18 @@ def build_controller(unit, package: str, route: dict, *, generated_class: str = 
     # one Magento install serves one storefront, and one Commerce install serves many.
     sub = "/".join(p for p in path.split("/")[1:] if p)
 
-    merge = java_bodies.plan_merge(generated_class, {method: [method, action, "execute"]})
+    # What this endpoint is about to declare. Stated to the merge rather than left
+    # implicit, because an OCC signature is derived from the *route* — a path variable and
+    # a request parameter — while the Magento `execute()` it came from took no parameters
+    # and returned a rendered page. Those are not the same method, and merging one into
+    # the other produced a controller whose body read `records` under a signature
+    # declaring `baseSiteId, code`: `cannot find symbol`, twice, plus a return type that
+    # could not match. The check belongs here because only this emitter knows what it is
+    # about to write. [4.7]
+    merge = java_bodies.plan_merge(
+        generated_class, {method: [method, action, "execute"]},
+        contracts={method: {"params": ["baseSiteId", "code"],
+                            "known": {"dataMapper"}}})
 
     out = [f"package {package}.controllers;", "",
            "import de.hybris.platform.webservicescommons.mapping.DataMapper;",
@@ -134,8 +145,19 @@ def build_controller(unit, package: str, route: dict, *, generated_class: str = 
                    " Reviewed as generated logic, not derived — see PROVENANCE.md.")
         out += java_bodies.indent(merge["bodies"][method])
     else:
-        out += [f"        // TODO migrate: {getattr(unit, 'name', '')}::{action}",
-                "        throw new UnsupportedOperationException(",
+        out += [f"        // TODO migrate: {getattr(unit, 'name', '')}::{action}"]
+        # A body that was written and then refused is a different situation from one that
+        # was never written, and the reviewer is the person who can act on the difference:
+        # there is logic to look at, in the run's own record, and a reason it is not here.
+        # Dropping it silently makes a refused body indistinguishable from an absent one.
+        why = merge["rejected"].get(method)
+        if why:
+            out += [f"        // A body WAS generated for this endpoint and was not used:",
+                    f"        // {why}.",
+                    "        // It is preserved in the run's artifact record — review it "
+                    "there before",
+                    "        // writing this method, rather than starting from nothing."]
+        out += ["        throw new UnsupportedOperationException(",
                 f'                "Not migrated yet: {path}");']
     out.append("    }")
 

@@ -275,7 +275,115 @@ def rename_params(signature: str, names: list) -> str:
     return f"{head}({', '.join(relabelled)}){tail}"
 
 
-def plan_merge(generated_class: str, wanted: dict) -> dict:
+# ── is a lifted fragment safe to emit? ────────────────────────────────────────
+#
+# Everything below exists because the merge above will splice whatever it finds. On the
+# first real Adobe→Hybris run that produced a controller holding a raw JSON blob — which
+# contained a complete *Salesforce Apex class* — written into a `.java` file as a
+# "generated helper", and a method body referencing `records` under a signature declaring
+# `baseSiteId, code`. Neither file could compile.
+#
+# Two different failures, and they want different checks:
+#
+#   **It is not Java.** `helpers()` matches `private void assertReadable() {` wherever it
+#   appears — including inside a JSON string holding escaped Apex — and `_balanced_body`
+#   then happily brace-matches its way through it. A parse check settles this outright.
+#
+#   **It is Java, but not for this signature.** A Magento controller's `execute()` takes
+#   no parameters and returns a rendered page; the OCC endpoint it becomes takes
+#   `(baseSiteId, code)` and returns a DTO. `plan_merge` already warns that "where the two
+#   genuinely disagree the merge must not happen" — this is how that gets enforced rather
+#   than hoped for.
+#
+# Deliberately biased toward *accepting*. A false rejection throws away logic a model was
+# paid to write; a false acceptance is caught by `hybris_stubs.compile_tree`, which runs a
+# real `javac` over the emitted extension. Rejecting is the expensive direction, so only
+# unambiguous evidence rejects. [4.7]
+
+
+def _wrap(body: str, params=()) -> str:
+    """A lifted body is a fragment; javalang parses compilation units. Give it one."""
+    args = ", ".join(f"Object {p}" for p in params)
+    return "class ParseProbe { void probe(%s) {\n%s\n} }" % (args, body or "")
+
+
+def parses(body: str, *, params=()) -> bool:
+    """Does this fragment parse as Java?"""
+    import javalang
+
+    try:
+        javalang.parse.parse(_wrap(body, params))
+        return True
+    except Exception:
+        return False
+
+
+def method_parses(source: str) -> bool:
+    """Does this whole method declaration parse as Java?"""
+    import javalang
+
+    try:
+        javalang.parse.parse("class ParseProbe {\n%s\n}" % (source or ""))
+        return True
+    except Exception:
+        return False
+
+
+def undefined_names(body: str, *, params=(), known=()) -> list:
+    """Lowercase identifiers the body reads but nothing in scope declares.
+
+    Lowercase only, and unqualified only, because those are the ones Java convention says
+    are variables. `Collections.emptyList()` and a `RATE` constant are type and field
+    references that `java_static_check` and the compiler resolve against a real classpath;
+    guessing about them here would reject good bodies for no gain.
+    """
+    import javalang
+
+    try:
+        tree = javalang.parse.parse(_wrap(body, params))
+    except Exception:
+        return []                      # a body that will not parse is rejected elsewhere
+
+    declared = set(params) | set(known)
+    for _, n in tree.filter(javalang.tree.LocalVariableDeclaration):
+        for d in n.declarators:
+            declared.add(d.name)
+    for _, n in tree.filter(javalang.tree.TryResource):
+        declared.add(n.name)
+    for _, n in tree.filter(javalang.tree.CatchClauseParameter):
+        declared.add(n.name)
+    for _, n in tree.filter(javalang.tree.FormalParameter):
+        declared.add(n.name)
+
+    used = {n.member for _, n in tree.filter(javalang.tree.MemberReference)}
+    used |= {n.qualifier for _, n in tree.filter(javalang.tree.MethodInvocation)
+             if n.qualifier}
+
+    return sorted(n for n in used - declared
+                  if n and "." not in n and n[:1].islower())
+
+
+def fits(body: str, *, params=(), known=()) -> str:
+    """`""` if this body can be emitted under that signature, else why not.
+
+    The string is a reason meant for a person reading the generated file, because that is
+    where it ends up: a body that is dropped silently looks like a body that was never
+    written.
+    """
+    if not (body or "").strip():
+        return "the generated body was empty"
+    if not parses(body, params=params):
+        return ("the generated body is not valid Java — it was discarded rather than "
+                "written into a file that cannot compile")
+    missing = undefined_names(body, params=params, known=known)
+    if missing:
+        return ("the generated body was written for a different signature: it reads "
+                + ", ".join(f"`{m}`" for m in missing[:4])
+                + ", which this method does not declare")
+    return ""
+
+
+def plan_merge(generated_class: str, wanted: dict, *, contracts: dict | None = None) -> dict:
     """What to merge into one emitted class, keyed the way that class names its methods.
 
     `wanted` maps *the name the emitter is about to write* to the candidate names it may
@@ -292,31 +400,76 @@ def plan_merge(generated_class: str, wanted: dict) -> dict:
     `onValidate`. Those are different hooks with different semantics, and moving a body
     from one to the other would be a wrong body under a right name.
 
-    Returns `{bodies, imports, fields, helpers}`, where `bodies` is keyed by the emitted
-    name so a caller can look up exactly what it is about to write.
+    `contracts` is how a caller says what it is about to write: for each emitted method,
+    `{"params": [...], "known": {...}}` — the parameter names the signature declares and
+    the field names the class will have. A body that does not fit is not merged, and the
+    reason comes back in `rejected` so the emitter can put it in the file. Omit it and
+    only the parse check applies, which is what every caller had before. [4.7]
+
+    Returns `{bodies, imports, fields, helpers, rejected}`, where `bodies` is keyed by the
+    emitted name so a caller can look up exactly what it is about to write, and `rejected`
+    maps an emitted name to why its candidate body was refused.
     """
+    empty = {"bodies": {}, "imports": [], "fields": [], "helpers": {}, "rejected": {}}
     text = generated_class or ""
     if not text.strip():
-        return {"bodies": {}, "imports": [], "fields": [], "helpers": {}}
+        return dict(empty)
 
     found = bodies(text)
+    contracts = contracts or {}
+    # Field names the model declared, so a merged body reading its own constant is not
+    # mistaken for one reading a symbol that does not exist. `fields()` returns whole
+    # declarations; the name is the last token before `=` or `;`.
+    own_fields = set()
+    for decl in fields(text):
+        head = decl.split("=")[0].rstrip(";").strip()
+        if head:
+            own_fields.add(head.split()[-1].strip("[]"))
+
     out: dict = {}
+    rejected: dict = {}
     claimed = set()
     for emitted, candidates in (wanted or {}).items():
         for cand in candidates:
             body = found.get(cand)
-            if body is not None and not is_stub(body):
-                out[emitted] = body
-                claimed.add(cand)
-                break
+            if body is None or is_stub(body):
+                continue
+            # No contract means the caller has not said what signature this is going
+            # under, so there is nothing to check it against — only that it is Java.
+            # Applying the signature check with an empty parameter list would reject
+            # every body that reads its own parameters, which is most of them.
+            c = contracts.get(emitted)
+            if c is None:
+                why = ("the generated body is not valid Java — it was discarded rather "
+                       "than written into a file that cannot compile"
+                       if not parses(body) else "")
+            else:
+                why = fits(body, params=c.get("params", ()),
+                           known=set(c.get("known", ())) | own_fields)
+            if why:
+                # Recorded against the *emitted* name, because that is the method a
+                # reader will be looking at when they want to know what happened.
+                rejected.setdefault(emitted, why)
+                continue
+            out[emitted] = body
+            claimed.add(cand)
+            rejected.pop(emitted, None)
+            break
 
     if not out:
         # Nothing merged: the imports and constants belong to logic that is not being
         # used, and carrying them would leave a file of honest stubs importing types
         # nothing in it names.
-        return {"bodies": {}, "imports": [], "fields": [], "helpers": {}}
+        return {**empty, "rejected": rejected}
+
+    # A helper that does not parse is not a helper. `helpers()` matches
+    # `private void x() {` wherever the characters appear — including inside a JSON string
+    # holding escaped code from another platform — and writing that into a `.java` file is
+    # how a run produced an Apex class inside a Java controller. [4.7]
+    kept = {n: s for n, s in helpers(text, skip=claimed).items() if method_parses(s)}
 
     return {"bodies": out,
             "imports": imports(text),
-            "fields": fields(text),
-            "helpers": helpers(text, skip=claimed)}
+            "fields": [f for f in fields(text) if method_parses(f)],
+            "helpers": kept,
+            "rejected": rejected}

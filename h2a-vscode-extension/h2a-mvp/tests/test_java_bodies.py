@@ -682,7 +682,10 @@ def test_nothing_matching_carries_nothing():
         "import java.math.BigDecimal;\npublic class X { private int A = 1;"
         " public void other() { work(); } }",
         {"onEvent": ["onEvent"]})
-    assert got == {"bodies": {}, "imports": [], "fields": [], "helpers": {}}
+    assert got == {"bodies": {}, "imports": [], "fields": [], "helpers": {},
+                   # `rejected` says why a body was refused; nothing *matched* here, so
+                   # there is nothing to refuse and it is empty rather than absent. [4.7]
+                   "rejected": {}}
 
 
 # ── asking for the artifact the emitter actually needs [1.48] ─────────────────

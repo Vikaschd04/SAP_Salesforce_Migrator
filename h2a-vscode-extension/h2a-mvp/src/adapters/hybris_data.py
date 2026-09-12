@@ -135,7 +135,13 @@ def build_job_performable(job, package: str, class_name: str = "",
     # The model is told it is writing a job performable, and it writes `perform` — the
     # platform's name, which is also the one emitted here. [1.48]
     from src.adapters import java_bodies
-    merge = java_bodies.plan_merge(generated_class, {"perform": ["perform"]})
+    # The signature below is the *platform's*, not the source method's — so a
+    # generated body written against its own parameter names lands under names it
+    # never declared. Stated to the merge so a body that does not fit is refused with
+    # a reason rather than written into a file that cannot compile. [4.7]
+    merge = java_bodies.plan_merge(
+        generated_class, {"perform": ["perform"]},
+        contracts={"perform": {"params": ["cronJob"]}})
     if merge["bodies"]:
         body = "\n".join([
             f"        // Generated from {job.implemented_by}. Reviewed as generated"
