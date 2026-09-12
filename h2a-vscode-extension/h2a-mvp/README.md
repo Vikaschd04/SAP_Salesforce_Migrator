@@ -60,7 +60,7 @@ before accepting each artifact), and adds RAG grounding — see
 - **Scoped dependency context**: only signatures from a domain's transitive
   dependencies are injected (not every class generated so far).
 - **Three interchangeable providers** (same prompts, schema, and validation —
-  only the LLM changes): **`anthropic`** (Claude, best quality), **`openrouter`**
+  only the LLM changes): **`anthropic`** (Claude, best quality), **`unorouter`**
   (free/cheap models for dev/testing), **`mock`** (keyless deterministic stub for
   CI/dry-runs, clearly labelled in logs and the report).
 - **Optional real verification + self-healing**: `--verify` dry-run deploys the
@@ -109,24 +109,24 @@ python -m src.main repo-migrate --input <hybris_dir> --output <out_dir> --verify
 ## 5. Configuration (`config.yaml`)
 
 ```yaml
-provider: anthropic          # anthropic | openrouter | mock
+provider: anthropic          # anthropic | unorouter | mock
 model: claude-opus-4-8                       # used when provider=anthropic
-openrouter:                                  # used when provider=openrouter
-  base_url: https://openrouter.ai/api/v1
-  model: qwen/qwen3-coder:free               # any model from openrouter.ai/models
+unorouter:                                   # used when provider=unorouter
+  base_url: https://api.unorouter.com/v1
+  model: codestral-latest:free               # any chat model the gateway lists
 effort:   {comprehend: low, generate: high}  # anthropic only
 max_tokens: {comprehend: 800, generate: 4000}
 max_repair_attempts: 2
 verify: {deploy: false, run_tests: false, target_org: ""}
 ```
 
-Keys: `ANTHROPIC_API_KEY` (anthropic) / `OPENROUTER_API_KEY` (openrouter), in the
+Keys: `ANTHROPIC_API_KEY` (anthropic) / `UNOROUTER_API_KEY` (unorouter), in the
 environment or `.env`. Env overrides: `H2A_PROVIDER`, `H2A_CUSTOM_MODEL`,
 `H2A_INCREMENTAL`.
 
 ```bash
 # switch providers per run without editing config:
-H2A_PROVIDER=openrouter H2A_CUSTOM_MODEL=qwen/qwen3-coder:free \
+H2A_PROVIDER=unorouter H2A_CUSTOM_MODEL=codestral-latest:free \
   python -m src.main repo-migrate --input <dir> --output <dir>
 ```
 

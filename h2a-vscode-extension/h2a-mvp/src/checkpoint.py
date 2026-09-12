@@ -96,11 +96,10 @@ def _pipeline_record() -> dict:
     on every commit, so recording which one ran would state a difference that does not
     exist — and it broke that very test, since the two runs then differed by this field.
     """
-    from src import pipeline, runctx
+    from src import pipeline
     try:
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         return {"id": p.id, "source": p.source_platform, "target": p.target_platform}
     except Exception:
         return {"id": "", "source": "", "target": ""}
@@ -244,7 +243,18 @@ def load(root: str, cid: str, *, on_decision=None) -> tuple:
                         "this state cannot be rebuilt from it.")
 
     out = Path(root)
-    generated = list(out.glob("force-app/**/*.cls")) if out.is_dir() else []
+    # Where this target writes, asked of the target. Hardcoded `force-app/**/*.cls`, this
+    # warning was unreachable on any run that does not emit Salesforce — so a resume over
+    # a directory already holding a generated SAP Commerce extension said nothing. [4.6]
+    generated = []
+    if out.is_dir():
+        from src import pipeline as _pl
+        try:
+            _globs = getattr(_pl.active_or_shipped().target, "output_globs", ())
+        except Exception:
+            _globs = ("force-app/**/*.cls",)
+        for _g in _globs:
+            generated += list(out.glob(_g))
     if generated:
         warnings.append(
             f"{len(generated)} generated file(s) are already on disk and belong to "

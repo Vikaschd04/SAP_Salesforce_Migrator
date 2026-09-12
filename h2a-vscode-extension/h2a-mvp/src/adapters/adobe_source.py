@@ -98,6 +98,28 @@ def _preflight_summary(project: dict) -> str:
     return "Adobe Commerce (Magento 2) project — " + ", ".join(bits) + "."
 
 
+def _skip_reason(unit) -> str:
+    """Why this file carries nothing to migrate, in terms of what it actually contains.
+
+    Specific rather than generic: "not migratable" tells a reviewer nothing they could
+    check, while naming the construct lets them disagree. A file this is wrong about is a
+    file whose reason will not match it.
+    """
+    src = (getattr(unit, "source", "") or "")
+    name = (getattr(unit, "file", "") or getattr(unit, "name", "") or "").split("/")[-1]
+
+    if "ComponentRegistrar::register" in src:
+        return ("registers the module with Magento's component registry — a build-time "
+                "declaration, not behaviour. The target declares its extension in "
+                "`extensioninfo.xml`, which this migration writes.")
+    if re.search(r"^\s*return\s*\[", src, re.M):
+        return (f"`{name}` returns a configuration array and declares no class, so there "
+                "is no logic to carry across — only values, which belong to whatever "
+                "reads them.")
+    return (f"`{name}` declares no class or function, so there is no behaviour to "
+            "migrate. Listed rather than dropped, so the file is accounted for.")
+
+
 class AdobeCommerceSource:
     platform = "adobe-commerce"
     label = "Adobe Commerce (Magento 2 · PHP)"
@@ -151,6 +173,14 @@ class AdobeCommerceSource:
 
         php = _find(base, "*.php", limit=5000)
         project["php_files"] = len(php)
+        # Counted, because the warning below reads it. It was only ever *read* — never
+        # written by anything — so `not project.get("db_schema_files")` was true for
+        # every project ever scanned, and every Magento module with code was told no
+        # data model could be derived while its `db_schema.xml` sat there being parsed
+        # correctly two stages later. A message that cannot vary is not a finding; it is
+        # decoration that looks like one. [1.65]
+        from src.adapters.magento_config import _files as _cfg_files
+        project["db_schema_files"] = len(_cfg_files(base, "db_schema.xml"))
 
         # Credentials live in app/etc/env.php in every Magento install, so this is not a
         # hypothetical: it is reported before anything is uploaded anywhere, which is the
@@ -308,7 +338,15 @@ class AdobeCommerceSource:
         unreadable = [u for u in all_units if u.unreadable]
         # A PHP file with no class — registration.php, a config array. Not migratable and
         # not lost: it gets a row saying which it is.
+        #
+        # As dicts carrying the reason, which `SourceModel.to_ingest` accepts alongside
+        # units. The gate's heading promises "skipped, with reasons" and this list had no
+        # reason on it, so a reviewer was shown "registration —" with the sentence missing
+        # after the dash. Saying *why* is the entire value of listing a skip; without it
+        # the row is an accusation with no evidence. [1.66]
         skipped = [u for u in all_units if u.layer == "Script" and not u.unreadable]
+        for u in skipped:
+            u.reason = _skip_reason(u)
 
         di = magento_config.read_di(root)
         magento_config.classify_plugins(root, di["plugins"])
@@ -349,6 +387,11 @@ class AdobeCommerceSource:
                 # because it is how the PHP is *reached* — and that is the first thing a
                 # migration loses.
                 "di": di,
+                # A controller's URL is assembled from `etc/*/routes.xml`, the
+                # directory and the class name — none of it is in the class. Every
+                # other `etc/` file was read and this one was not, so controllers
+                # arrived looking like ordinary classes with an `execute()`. [1.53]
+                "routes": magento_config.read_routes(root),
                 "observers": magento_config.read_events(root),
                 "unresolved_types": php_types.unresolved_by_unit(types),
                 "type_resolutions": types["resolutions"],

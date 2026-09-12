@@ -654,10 +654,9 @@ def _platforms() -> tuple:
     not know what it just did. [1.39]
     """
     try:
-        from src import pipeline, runctx
+        from src import pipeline
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         return (p.source.label.split(" (")[0], getattr(p.source, "code_language", "code"),
                 p.target.label.split(" (")[0], getattr(p.target, "code_language", "code"))
     except Exception:

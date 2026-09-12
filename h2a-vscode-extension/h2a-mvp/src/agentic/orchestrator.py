@@ -16,6 +16,7 @@ Planner and Critic degrade to deterministic behavior and the whole run is keyles
 from __future__ import annotations
 
 import os
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -34,7 +35,7 @@ from src import ir
 from src.signature_registry import SignatureRegistry
 from src.llm import (reset_accounting, get_accounting, _load_config, _get_provider,
                      _get_model, reset_call_log, get_call_log, check_fatal)
-from src.agentic.incremental import (recipe_hash, class_hashes, target_fingerprint,
+from src.agentic.incremental import (pack_prompts, recipe_hash, class_hashes, target_fingerprint,
                                      load_state, save_state, artifact_to_cache,
                                      artifact_from_cache)
 
@@ -226,7 +227,13 @@ def _discovery_payload(bb) -> dict:
         # What we established about the codebase before spending anything on it.
         "preflight": getattr(bb, "preflight", None),
         "radar": getattr(bb, "radar", None),
-        "orgfit": getattr(bb, "orgfit", None),
+        # `or None`, because the Blackboard's default is `{}` and an empty dict is
+        # falsy in Python and *truthy* in JavaScript. The gate was sending "no org
+        # data" and the cockpit was reading "an org object with no fields" — so an
+        # Adobe→Hybris run, which has no org to inspect, showed "Target org not
+        # inspected — ." with the reason dangling after the dash. A falsy value
+        # that changes meaning at a language boundary is worth spelling out. [1.64]
+        "orgfit": getattr(bb, "orgfit", None) or None,
         "forecast": getattr(bb, "forecast", None),
     }
 
@@ -251,18 +258,44 @@ def _concurrency(config: dict) -> int:
     return max(1, min(n, 32))
 
 
-def _map_parallel(fn, items: list, workers: int) -> list:
+def _map_parallel(fn, items: list, workers: int, *, on_done=None) -> list:
     """Run fn over items, returning results in the SAME order as `items` regardless of
     completion order — so downstream merging stays deterministic and a parallel run
     produces byte-identical output to a sequential one. Falls back to a plain loop at
-    workers<=1 or a single item."""
-    if workers <= 1 or len(items) <= 1:
-        return [fn(x) for x in items]
+    workers<=1 or a single item.
+
+    `on_done(finished, total)` fires as each item lands, for stages that would otherwise
+    print nothing between their heading and their end. Progress only — it must not affect
+    what is returned, and the ordering guarantee above is unchanged. [1.48]
+    """
+    total = len(items)
+    done = [0]
+    lock = threading.Lock()
+
+    def _tick():
+        if on_done is None:
+            return
+        with lock:                      # workers call this concurrently
+            done[0] += 1
+            n = done[0]
+        try:
+            on_done(n, total)
+        except Exception:
+            pass                        # progress reporting must never fail a run
+
+    def _wrapped(x):
+        try:
+            return fn(x)
+        finally:
+            _tick()
+
+    if workers <= 1 or total <= 1:
+        return [_wrapped(x) for x in items]
     # Pool workers do not inherit the caller's context, so per-run overrides
     # (provider/model) would be invisible to every parallel LLM call without this.
     from src.runctx import propagate
-    with ThreadPoolExecutor(max_workers=min(workers, len(items))) as pool:
-        return list(pool.map(propagate(fn), items))
+    with ThreadPoolExecutor(max_workers=min(workers, total)) as pool:
+        return list(pool.map(propagate(_wrapped), items))
 
 
 def _domain_levels(schedule: list, adjacency: dict) -> tuple:
@@ -643,18 +676,54 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # Angular components — there is nothing to migrate", about a codebase full of PHP.
     # The pipeline worked; only the default routing did not, which is the kind of defect
     # that survives a green suite and a hand-run demo. [1.35]
-    _only_v1_can_run = resolve(input_dir).id == default_pipeline().id
+    #
+    # What the *user* chose, which outranks what the filesystem looks like. The cockpit
+    # and the CLI both pin the selection on `runctx` before calling in, and this used to
+    # ignore it entirely — `resolve(input_dir)` re-detected from disk, so a person who
+    # selected one migration and uploaded a codebase that detected as the other silently
+    # got the other one. Detection is the *fallback* for an unqualified run, not the
+    # authority over an explicit choice. [4.6]
+    from src import runctx as _runctx
+    _selected = _runctx.pipeline_id() or ""
+    _chosen = resolve(input_dir, _selected)
+    _only_v1_can_run = _chosen.id == default_pipeline().id
     if v2_enabled(config) or not _only_v1_can_run:
         # Refuse before reading a file or spending a token. A scaffolded pipeline would
         # otherwise walk every stage, convert nothing, and report a clean ledger over an
         # empty output — success-shaped failure, which is the one outcome this product
         # exists to prevent.
-        _pl = require_runnable(resolve(input_dir))
+        _pl = require_runnable(_chosen)
         bb.pipeline_id = _pl.id
-        # Publish it to the run context so prompts, mappings and RAG resolve to this
-        # pipeline's pack in call sites too deep to be handed the id explicitly.
-        from src.runctx import set_overrides as _set_run_overrides
-        _set_run_overrides(pipeline_id=_pl.id)
+
+        # Tell the cockpit which migration this is, *before* the first gate. The UI has
+        # carried a `pipeline` field since it was written and nothing ever filled it, so
+        # every screen fell back to naming Salesforce — an Adobe→Hybris run was told its
+        # hazards mattered "On Salesforce", in a run emitting Java for SAP Hybris. The
+        # reports were fixed for exactly this in 1.39; the cockpit was not. [1.61]
+        emit("pipeline",
+             id=_pl.id,
+             source=_pl.source.label.split(" (")[0],
+             target=_pl.target.label.split(" (")[0],
+             language=getattr(_pl.target, "code_language", ""),
+             has_oracle=bool(getattr(_pl.target, "has_oracle", False)))
+
+    # Pin the identity of this migration for the whole run and everything it spawns,
+    # on **both** engine paths. Prompts, mappings, RAG, the validators, the symbol
+    # readers and every report resolve through `runctx` at call sites far too deep to be
+    # handed an id, and the absence of one used to mean "the shipped pair" — so any
+    # stage that lost the context silently became a Salesforce stage. Pinning v1
+    # explicitly costs nothing (v1 *is* this pipeline) and turns an unset id from
+    # "probably v1" into "not in a run at all", which is a question with one answer.
+    #
+    # `bb.pipeline_id` is deliberately NOT set here: that flag selects the v2 adapter
+    # *emit route*, and setting it for v1 would change where v1 writes its output. Which
+    # migration this is, and which code path writes it, are two different questions. [4.6]
+    _runctx.set_overrides(pipeline_id=(_pl.id if _pl is not None
+                                       else default_pipeline().id))
+    #: Is this the SAP Hybris → Salesforce migration? `_pl is None` is the v1 route,
+    #: which is that pair by construction. Read by the stages below that are specific to
+    #: it on *both* sides — reading Hybris source and writing Salesforce metadata. [4.6]
+    _is_shipped_pair = _pl is None or _pl.id == default_pipeline().id
 
     # Is there anything here worth migrating? Walking three review gates to discover
     # there was not is a poor use of anyone's time, and with a real provider it is a poor
@@ -813,7 +882,10 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     inc_enabled = _incremental_enabled(config)
     _mappings = _load_mappings()
     _provider = _get_provider(config)
-    _recipe = recipe_hash(_provider, _get_model(config, _provider), bb.schema, _mappings)
+    # Prompts included: fixing one must invalidate the artifacts it produced, or the
+    # run after a prompt fix replays the output the fix was for. [1.57]
+    _recipe = recipe_hash(_provider, _get_model(config, _provider), bb.schema,
+                          _mappings, pack_prompts())
     _hashes = class_hashes(bb.all_classes)
     # State lives with the output by default (CLI/extension reuse the same folder), but a
     # caller with per-run output dirs (the web app keeps run history) can point it at a
@@ -878,7 +950,12 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
         return comprehend_class(cls, offline=offline,
                                 model=route_model(config, f"comprehend_{cls['class_name']}"))
 
-    _results = _map_parallel(_comprehend_one, _fresh, conc)
+    _comprehend_started = time.time()
+    _results = _map_parallel(
+        _comprehend_one, _fresh, conc,
+        on_done=lambda n, total: print(
+            f"    · [{n}/{total}] comprehended"
+            f"  {time.time() - _comprehend_started:.0f}s", flush=True))
     for cls, u in zip(_fresh, _results):
         bb.comprehensions[cls["class_name"]] = u
 
@@ -963,6 +1040,7 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                   f"dependency cycle between {cut['domain']} and {cut['depends_on']}; "
                   f"built {cut['domain']} first, without the other's signatures")
 
+    _total_targets = len(bb.code_plan())
     for level in levels:
         _ck()
         # Snapshot each domain's signature scope BEFORE the level runs. Every dependency
@@ -988,6 +1066,11 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
 
         work = [(d, item) for d, item, _fp, hit in level_items if hit is None]
 
+        # Computed here, on the main thread, and handed to the workers. Reading the
+        # plan and artifact list from inside a worker would read shared state while the
+        # merge loop is mutating it. [4.6]
+        _vctx = bb.validation_context()
+
         def _build_one(pair):
             """Runs on a worker thread: LLM-bound work only. Touches nothing shared —
             it returns a journal of decisions for the main thread to record, so the
@@ -1007,7 +1090,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                 journal.append(("Builder", "generated", f"{art.target_name} ({art.apex_pattern})"))
 
                 if critic_enabled:
-                    findings = critic.review(art, bb.schema, offline=offline, retriever=retriever)
+                    findings = critic.review(art, bb.schema, offline=offline, retriever=retriever,
+                                              context=_vctx)
                     if any(f.get("severity") == "ERROR" for f in findings):
                         n_err = sum(1 for f in findings if f.get("severity") == "ERROR")
                         changed = builder.apply_critic_repair(
@@ -1019,7 +1103,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                                                     if f.get("severity") == "ERROR"}))
                             journal.append(("Builder", "critic_repair",
                                             f"{art.target_name}: repaired {n_err} critic error(s)"))
-                            findings = critic.review(art, bb.schema, offline=offline, retriever=retriever)
+                            findings = critic.review(art, bb.schema, offline=offline, retriever=retriever,
+                                              context=_vctx)
                     remaining = [f for f in findings if f.get("severity") == "ERROR"]
                     art.status = "accepted" if not remaining else "needs_review"
                     journal.append(("Critic", "reviewed",
@@ -1032,7 +1117,20 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                 # going, so one problematic class never aborts the whole repo.
                 return domain, item, None, f"{type(be).__name__}: {be}", journal, []
 
-        results = iter(_map_parallel(_build_one, work, conc))
+        # Phase 0 spent twenty minutes indistinguishable from a hang: the per-artifact
+        # events go to `on_event`, which the CLI does not render, so a terminal saw
+        # nothing between "building" and the end of the stage. A run that is working and
+        # a run that is wedged must not look the same. [1.48]
+        #
+        # Reported from `on_done` rather than from the merge loop below, because
+        # `_map_parallel` finishes the whole level before that loop runs — printing there
+        # emits every line at once, at the end, which is no better than silence.
+        _level_started = time.time()
+        results = iter(_map_parallel(
+            _build_one, work, conc,
+            on_done=lambda n, total: print(
+                f"    · built {n}/{total} in this wave"
+                f"  {time.time() - _level_started:.0f}s", flush=True)))
 
         # ── Merge on this thread, in level order: deterministic and identical to a
         #    sequential run, no matter what order the workers actually finished in.
@@ -1061,6 +1159,9 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                 print(f"    ⚠ {art.target_name}: {len(remaining)} unresolved critic finding(s) → needs_review")
 
             bb.artifacts.append(art)
+            print(f"    · [{len(bb.artifacts)}/{_total_targets}] {art.target_name}"
+                  f" — {art.status}"
+                  + (" (reused)" if hit is not None else ""), flush=True)
             # Remember this result keyed by its fingerprint so the next run can reuse it.
             _artifact_state[art.target_name] = {"h": fp, "a": artifact_to_cache(art)}
             try:
@@ -1116,7 +1217,8 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                 scoped = registry.get_signatures_for_domains(_transitive_deps(bb.adjacency, dom))
                 builder.rework(a, note, bb, scoped)
                 if critic_enabled:
-                    findings = critic.review(a, bb.schema, offline=offline, retriever=retriever)
+                    findings = critic.review(a, bb.schema, offline=offline, retriever=retriever,
+                                              context=bb.validation_context())
                     a.status = ("accepted" if not any(f.get("severity") == "ERROR" for f in findings)
                                 else "needs_review")
                 bb.record("Reviewer", "rework", f"{a.target_name}: {note[:80]}")
@@ -1128,8 +1230,16 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     # ── Reconcile schema + write outputs + metadata ──
     print("  --- Reconcile + Write ---")
     emit("stage", name="reconcile", status="start")
-    # Only Apex artifacts feed schema reconciliation (LWC has no SObject SOQL to check).
-    prelim = {f"{a.target_name}.cls": validate_artifact(a.main_class, f"{a.target_name}.cls", bb.schema)
+    # Only code artifacts feed schema reconciliation (LWC has no SObject SOQL to check).
+    # Keyed and validated under the *target's* extension with the run's own context, for
+    # the same reasons as the Critic's floor: `.cls` named Java files after Salesforce,
+    # and the missing context made the checker report this migration's own classes as
+    # unresolved. Salesforce's reconciler reads these keys, and its extension is
+    # unchanged. [4.6]
+    _ext = bb.target_suffix()
+    _vctx_final = bb.validation_context()
+    prelim = {f"{a.target_name}{_ext}": validate_artifact(
+                  a.main_class, f"{a.target_name}{_ext}", bb.schema, _vctx_final)
               for a in bb.artifacts if not a.is_lwc}
     # Reconciliation reads a target's own evidence that the schema is short a field.
     # Salesforce has that evidence; a target with no compiler does not, and says so
@@ -1214,6 +1324,15 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
 
         bb.emitted_as.update(
             (getattr(_target, "last_emit", None) or {}).get("emitted_as") or {})
+        bb.generated_bodies = list(
+            (getattr(_target, "last_emit", None) or {}).get("generated_bodies") or [])
+        # What the emitter actually wrote, so provenance and alignment measure the file
+        # rather than the model's draft. [1.51]
+        _emitted = (getattr(_target, "last_emit", None) or {}).get("emitted_source") or {}
+        for _a in bb.artifacts:
+            _src = _emitted.get(_a.target_name)
+            if _src:
+                _a.shipped_source = _src
 
         # Attribute each finding to the artifact whose file it is in, so triage can see
         # it. A file the checker rejected belongs to a target that does not build, and
@@ -1283,8 +1402,16 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
                 f"+{len(bb.reconciliation.get('added_fields', []))} evidenced field(s)")
 
     # ── ImpEx data migration (Phase 2) ──
-    from src.impex import translate_impex_dir
-    impex = translate_impex_dir(input_dir, output_dir)   # runs after metadata so ext-id fields are patched
+    #
+    # Both halves of this stage belong to one pair: it reads SAP Hybris `.impex` files
+    # from the source and writes Salesforce CSV plus external-id patches into
+    # `force-app/main/default/objects`. It ran on every pipeline, so an Adobe Commerce
+    # estate was searched for ImpEx — inert, because Magento has none, but inert by luck
+    # rather than by decision. The same is true of the cronjob stage below. [4.6]
+    impex = {"impex_files": [], "objects": [], "record_total": 0}
+    if _is_shipped_pair:
+        from src.impex import translate_impex_dir
+        impex = translate_impex_dir(input_dir, output_dir)   # after metadata, so ext-id fields are patched
     if impex["impex_files"]:
         # Kept for the sign-off: an object the runbook tells you to load and the org
         # cannot accept is a cutover blocker, not a footnote in a table. [1.25]
@@ -1295,8 +1422,11 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
               f"{len(impex['objects'])} object(s) → data/ + DATA_MIGRATION.md")
 
     # ── Cronjob scheduling (Phase 2) ──
-    from src.cronjob import translate_cronjobs_dir
-    cron = translate_cronjobs_dir(input_dir, output_dir)
+    # SAP Hybris cronjob definitions → Apex `schedule.apex`. See the note above ImpEx.
+    cron = {"triggers": [], "resolved_count": 0, "unresolved_count": 0}
+    if _is_shipped_pair:
+        from src.cronjob import translate_cronjobs_dir
+        cron = translate_cronjobs_dir(input_dir, output_dir)
     if cron["triggers"]:
         bb.record("JobScheduler", "cronjobs",
                   f"{cron['resolved_count']} trigger(s) resolved, {cron['unresolved_count']} unresolved")
@@ -1305,7 +1435,17 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
 
     # ── Parity strengthening (real provider only) ──
     parity_strengthen = None
-    if (config.get("parity") or {}).get("strengthen", True) and not offline and _get_provider(config) != "mock":
+    # Asked of the target, because the strengthener writes Apex into `force-app`. A target
+    # that cannot do it says so, and the run says so too — a stage that silently does
+    # nothing is indistinguishable from one that ran and found nothing to fix. [4.6]
+    _can_strengthen = (_pl is None
+                       or bool(getattr(_pl.target, "strengthens_tests", False)))
+    _wants_strengthen = ((config.get("parity") or {}).get("strengthen", True)
+                         and not offline and _get_provider(config) != "mock")
+    if _wants_strengthen and not _can_strengthen:
+        print(f"    · Parity strengthening skipped — {_pl.target.label.split(' (')[0]} "
+              "has no test strengthener; the parity score below is measured, not improved")
+    if _wants_strengthen and _can_strengthen:
         # Parity is about Apex test assertions; LWC bundles are excluded.
         generated = [g for g in bb.generated_dicts() if g.get("layer") != "Component"]
         parity_strengthen = close_parity_gaps(
@@ -1329,14 +1469,21 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
 
     # ── Final validation + parity + reports ──
     from src.validate_lwc import validate_lwc
+    # These filenames are what the Feasibility report prints in its validation table, so
+    # they are the names a reader goes looking for on disk. Hardcoded `.cls` listed an
+    # emitted SAP Commerce extension's Java classes under Salesforce's extension; and
+    # with no run context the Java checker reported this migration's own classes as
+    # unresolved types, in the table a stakeholder reads as the quality result. [4.6]
+    _ext = bb.target_suffix()
+    _vctx_report = bb.validation_context()
     for a in bb.artifacts:
         if a.is_lwc:
             # LWC artifacts get the LWC validator, not the Apex governor/schema checks.
             bb.validation_results[f"lwc/{a.target_name}"] = validate_lwc(a.lwc_bundle or {})
             continue
-        m, t = f"{a.target_name}.cls", f"{a.target_name}Test.cls"
-        bb.validation_results[m] = validate_artifact(a.main_class, m, bb.schema)
-        bb.validation_results[t] = validate_artifact(a.test_class, t, bb.schema)
+        m, t = f"{a.target_name}{_ext}", f"{a.target_name}Test{_ext}"
+        bb.validation_results[m] = validate_artifact(a.main_class, m, bb.schema, _vctx_report)
+        bb.validation_results[t] = validate_artifact(a.test_class, t, bb.schema, _vctx_report)
 
     bb.parity = build_parity([g for g in bb.generated_dicts() if g.get("layer") != "Component"])
     if parity_strengthen:
@@ -1466,6 +1613,20 @@ def run_agentic_migration(input_dir: str, output_dir: str, *, offline: bool = Fa
     print(f"  Report: {report_file}")
     print(f"  Plan + decisions: {Path(output_dir) / 'MIGRATION_PLAN.md'}")
     print(f"  Completeness: {ledger_line}")
+    # How much of the emitted logic a model actually wrote. On a target that assembles a
+    # package this is the difference between a migration and a scaffold, and it went
+    # unreported for as long as the answer was "none of it". [1.48]
+    if bb.pipeline_id and getattr(_pl, "target", None) is not None \
+            and not getattr(_pl.target, "has_oracle", True):
+        _bodies = len(bb.generated_bodies)
+        _methods = sum(len(getattr(c, "methods", None) or [])
+                       for c in (bb.source_model.units if getattr(bb, "source_model", None)
+                                 else []))
+        if _methods:
+            print(f"  Generated logic: {_bodies}/{_methods} method bodies written by a "
+                  f"model and merged into the emitted classes"
+                  + ("  ⚠ nothing was merged — the emitted classes are scaffolding"
+                     if not _bodies else ""))
     if rule_ledger["summary"]["total"]:
         print(f"  Business rules: {headline(rule_ledger['summary'])}")
         if rule_ledger["summary"]["dropped"]:
@@ -1559,10 +1720,9 @@ def _write_plan_doc(bb) -> str:
     # every reader their code was being converted "to Apex" and screened against native
     # Salesforce products, in a run emitting Java for SAP Hybris. [1.39]
     try:
-        from src import pipeline, runctx
+        from src import pipeline
         pipeline.ensure_registered()
-        _pid = runctx.pipeline_id()
-        _p = pipeline.get(_pid) if _pid else pipeline.default_pipeline()
+        _p = pipeline.active_or_shipped()
         _lang = getattr(_p.target, "code_language", "the target language")
         _plat = _p.target.label.split(" (")[0]
     except Exception:

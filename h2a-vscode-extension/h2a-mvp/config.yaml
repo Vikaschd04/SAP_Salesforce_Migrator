@@ -2,30 +2,41 @@
 # ─────────────────────
 # provider:
 #   anthropic  → real Claude calls           (needs ANTHROPIC_API_KEY)   — best quality
-#   openrouter → free/cheap models via OpenRouter (needs OPENROUTER_API_KEY) — dev/testing
+#   unorouter  → free/cheap models via Unorouter (needs UNOROUTER_API_KEY)  — dev/testing
 #   mock       → deterministic keyless stub   (no key)                    — CI / dry runs
 #
 # Same pipeline, prompts, schema grounding, and validation for every provider —
 # only the underlying LLM changes.
 provider: anthropic
-model: claude-opus-4-8        # used when provider=anthropic
+model: claude-opus-5          # used when provider=anthropic (routing overrides per stage)
 
-# Used when provider=openrouter — which is really "any OpenAI-compatible endpoint":
-# the provider names the *wire format*, and the host is configuration. OpenRouter is
+# Used when provider=unorouter — which is really "any OpenAI-compatible endpoint":
+# the provider names the *wire format*, and the host is configuration. Unorouter is
 # only the default. Point it anywhere that speaks /v1/chat/completions:
 #
-#   OPENROUTER_BASE_URL=https://api.unorouter.com/v1 \
-#   OPENROUTER_API_KEY=...  H2A_PROVIDER=openrouter \
-#   H2A_CUSTOM_MODEL=glm-5.3-flash-think-search:free
+#   UNOROUTER_BASE_URL=https://some-other-gateway/v1 \
+#   UNOROUTER_API_KEY=...  H2A_PROVIDER=unorouter \
+#   H2A_CUSTOM_MODEL=some/other-model
 #
 # All three are environment overrides, so a key never has to be written to a file.
 # Structured output is requested by a prompt directive rather than the OpenAI
 # structured-output API, so any chat model works — no schema support required.
-openrouter:
-  base_url: https://openrouter.ai/api/v1
-  # Free tiers change often & rate-limit; if one 404s/429s, pick another from
-  # https://openrouter.ai/models?max_price=0 (code-capable ones work best).
-  model: anthropic/claude-sonnet-5
+unorouter:
+  base_url: https://api.unorouter.com/v1
+  # Free tiers on a shared gateway change often and queue hard, so this is chosen for
+  # *availability* as much as quality — a model that answers is worth more than a better
+  # one that times out. Two rules learned the expensive way [1.47–1.49]:
+  #
+  #   · Avoid the `think`/`search` variants. They exceed the gateway's ~100s origin
+  #     timeout on a generate prompt and come back as a Cloudflare 524.
+  #   · Check the model is still listed. `glm-4.7-flash:free`, which the first
+  #     end-to-end Adobe→Hybris run used, was withdrawn from the catalogue; the
+  #     gateway answers a request for it with a 503 that says the providers are
+  #     "busy", which reads like load and is really a missing model.
+  #
+  # `glm-5.3-flash:free` is the surviving GLM equivalent and does work, but was taking
+  # minutes per call when this was set. Override per run with H2A_CUSTOM_MODEL.
+  model: codestral-latest:free
 
 cache_dir: cache/
 # Layer→artifact mapping rules, prompts and the RAG corpus now live in a per-pipeline
@@ -105,7 +116,9 @@ effort:
 # Output token budgets per stage
 max_tokens:
   comprehend: 800
-  generate: 8000        # large fflib test classes need headroom to avoid truncation
+  generate: 24000       # a class *and* its test, with adaptive thinking sharing the
+                        # same budget. At 8000 an Opus 5 generate spent the entire
+                        # allowance reasoning and returned no text at all. [1.59]
 
 # Behavioral parity: after generation, add test assertions for any comprehended
 # business rule the tests don't yet check (skipped for the mock provider).
@@ -130,10 +143,22 @@ agentic:
     enabled: true
     models:
       cheap: claude-haiku-4-5     # $1 / $5 per 1M tokens
-      frontier: claude-opus-4-8   # $5 / $25 per 1M tokens
+      mid: claude-sonnet-5        # $3 / $15
+      frontier: claude-opus-5     # $5 / $25 — same price as Opus 4.8, newer
     tiers:                   # which tier each task family uses
-      comprehend: cheap
+      # Comprehension is *not* the cheap classification job it looks like. It extracts
+      # the business rules, and those rules are the input to the rule ledger, alignment,
+      # parity and the sign-off — every assurance claim the product makes. A rule missed
+      # here is not recovered later; it is silently absent from a report that says 46%
+      # preserved and cannot know the denominator was already wrong. Cheapest place to
+      # save money, most expensive place to be wrong, so it sits on the middle tier.
+      comprehend: mid
+      # Planning genuinely is classification: which layer, which pattern, convert or
+      # skip. Wrong answers here are visible in the plan a person reviews at the gate.
       plan: cheap
+      # Everything that writes or judges code stays frontier. These carry most of the
+      # tokens, so routing is a trim rather than a halving — the bigger levers are
+      # incremental re-runs and prompt slimming.
       generate: frontier
       repair: frontier
       critic: frontier

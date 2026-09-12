@@ -72,6 +72,31 @@ def pipeline_id() -> str | None:
     return _pipeline_id.get()
 
 
+#: Every ContextVar this module owns, so `propagate()` cannot be partially correct.
+#:
+#: It was, for a long time, and the cost was high. `propagate` listed provider, model and
+#: credential by hand and silently omitted `pipeline_id` and `cost_cap` — so inside every
+#: `_map_parallel` worker (which is where *all* comprehension and generation happens, at
+#: the default concurrency of 8) the run had no identity and no budget:
+#:
+#:   * `packs.pack_name()` fell back to the shipped pack, so an Adobe→Hybris run was given
+#:     the Salesforce `generate`, `generate_system`, `comprehend` and `repair` prompts and
+#:     the Salesforce `mappings.yaml`. The first line the model read was "Translate the
+#:     following SAP Hybris class into Salesforce Apex", in a PHP→Java migration.
+#:   * `pipeline.current_target()` returned None, so the Critic's objective floor and the
+#:     Builder's repair loop ran the *Apex* validator over generated Java — raising
+#:     `ERROR java_syntax_leak: Java 'package' statement found` on a correct Java package
+#:     declaration, which then drove a frontier-model repair round against every artifact
+#:     and left each one `needs_review` for a reason that did not exist.
+#:   * `cost_cap_override()` returned None, so a per-run spend ceiling was not enforced on
+#:     the calls that spend nearly all of the money.
+#:
+#: Enumerating the vars in one place is the fix, not a longer hand-written list: a new
+#: per-run variable is propagated because it is a per-run variable, and cannot be
+#: forgotten at the one call site that matters. [4.6]
+_VARS = (_provider, _model, _api_key, _cost_cap, _pipeline_id)
+
+
 def propagate(fn):
     """Wrap `fn` so a pool worker sees the submitting run's overrides.
 
@@ -83,14 +108,11 @@ def propagate(fn):
     concurrently — so `ctx.run(...)` raises "context is already entered". Re-setting the
     values at the top of each call is both simpler and safe against pool-thread reuse.
     """
-    prov, mdl, key = _provider.get(), _model.get(), _api_key.get()
+    captured = [(v, v.get()) for v in _VARS]
 
     def run(*a, **kw):
-        if prov is not None:
-            _provider.set(prov)
-        if mdl is not None:
-            _model.set(mdl)
-        if key is not None:
-            _api_key.set(key)
+        for var, value in captured:
+            if value is not None:
+                var.set(value)
         return fn(*a, **kw)
     return run

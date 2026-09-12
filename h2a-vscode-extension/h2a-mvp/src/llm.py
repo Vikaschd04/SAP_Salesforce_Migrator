@@ -19,7 +19,7 @@ Design goals (production rework):
     `--offline` replay are free and deterministic.
   - Honest token + cache accounting.
 
-The previous OpenRouter multi-model fallback and the giant hardcoded `_PREBAKED`
+The previous multi-model fallback and the giant hardcoded `_PREBAKED`
 dictionary have been removed. Retries/backoff are handled by the Anthropic SDK.
 """
 
@@ -86,7 +86,21 @@ _TRANSIENT_EXC = {
     "RateLimitError", "APIConnectionError", "APITimeoutError", "APIConnectionTimeoutError",
     "InternalServerError", "OverloadedError", "ServiceUnavailableError", "Timeout",
 }
-_TRANSIENT_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 529}
+# 520-524 are Cloudflare's origin errors, and a hosted endpoint behind it returns
+# them instead of the 5xx the origin meant. 524 in particular is a gateway timeout
+# — the same thing as 504, which was already here — and a run that met one simply
+# stalled: unclassified, so the SDK's own retries ran to a 600s timeout each. [1.47]
+_TRANSIENT_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523,
+                     524, 529}
+
+
+class TruncatedResponse(RuntimeError):
+    """The budget ran out before the model said anything. [1.59]
+
+    Distinct from an ordinary failure because it is not transient and not the model's
+    fault: retrying spends the same budget on the same prompt for the same result. The
+    fix is configuration, and the message says which knob.
+    """
 
 
 class ProviderAuthError(RuntimeError):
@@ -131,6 +145,79 @@ def _retry_cfg(config: dict) -> dict:
     }
 
 
+def _retry_after(exc) -> float | None:
+    """How long the server said to wait, if it said. [1.48]
+
+    A 429 usually carries `Retry-After`, and guessing instead of reading it is what turned
+    a rate limit into a failed Phase 0 run: `base_delay * 2**attempt` caps at 60s, so four
+    attempts against a per-minute quota all landed inside the same closed window and the
+    run exhausted its budget without ever waiting for the reset.
+
+    Capped at five minutes. A server asking for longer than that is not rate-limiting a
+    run, it is refusing it, and a migration silently asleep for an hour is worse than one
+    that stops and says why.
+    """
+    resp = getattr(exc, "response", None)
+    headers = getattr(resp, "headers", None) or getattr(exc, "headers", None) or {}
+    try:
+        raw = headers.get("retry-after") or headers.get("Retry-After")
+    except Exception:
+        return None
+    if raw is None:
+        return None
+    try:
+        return max(0.0, min(300.0, float(str(raw).strip())))
+    except (TypeError, ValueError):
+        # The header also permits an HTTP date. Rare from JSON APIs, and worth reading
+        # rather than discarding as unparseable.
+        try:
+            from email.utils import parsedate_to_datetime
+            import datetime as _dt
+            when = parsedate_to_datetime(str(raw))
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=_dt.timezone.utc)
+            secs = (when - _dt.datetime.now(_dt.timezone.utc)).total_seconds()
+            return max(0.0, min(300.0, secs))
+        except Exception:
+            return None
+
+
+#: How long a single provider call may run before the run says so. A request timeout of
+#: 600s across four attempts means one wedged call can hold a stage for forty minutes
+#: while stdout shows nothing at all — which is how Phase 0 spent twenty minutes
+#: indistinguishable from a hang. This does not cancel anything; it just refuses to let
+#: the run look idle while it is waiting. [1.48]
+_SLOW_CALL_SECONDS = 45.0
+
+
+def _cancelling(fn, stop):
+    """Run `fn`, stopping the watchdog on every path out — success or failure."""
+    try:
+        return fn()
+    finally:
+        stop()
+
+
+def _watchdog(stage: str, seconds: float = _SLOW_CALL_SECONDS):
+    """A timer that reports a call still in flight, then keeps reporting."""
+    state = {"timer": None, "waited": 0.0}
+
+    def _fire():
+        state["waited"] += seconds
+        print(f"    … {stage}: still waiting on the provider "
+              f"({state['waited']:.0f}s)", flush=True)
+        _arm()
+
+    def _arm():
+        tm = threading.Timer(seconds, _fire)
+        tm.daemon = True                # must never hold the process open
+        state["timer"] = tm
+        tm.start()
+
+    _arm()
+    return lambda: state["timer"] and state["timer"].cancel()
+
+
 def _with_retry(fn, *, stage: str, config: dict):
     """Run fn(), retrying transient failures with jittered exponential backoff.
 
@@ -142,8 +229,9 @@ def _with_retry(fn, *, stage: str, config: dict):
     for attempt in range(cfg["max_attempts"]):
         check_fatal()          # a sibling worker already proved this cannot succeed
         check_budget(config, stage)
+        stop_watchdog = _watchdog(stage)
         try:
-            return fn()
+            return _cancelling(fn, stop_watchdog)
         except Exception as exc:                       # noqa: BLE001 — re-raised below
             last = exc
             # Re-typed before anything else, so the per-stage `except` blocks downstream
@@ -152,19 +240,28 @@ def _with_retry(fn, *, stage: str, config: dict):
                 fatal = ProviderAuthError(
                     f"{stage}: the provider rejected the credentials "
                     f"({type(exc).__name__}). Check ANTHROPIC_API_KEY / "
-                    "OPENROUTER_API_KEY, or set provider to mock.")
+                    "UNOROUTER_API_KEY, or set provider to mock.")
                 fatal.__cause__ = exc
                 _latch_fatal(fatal)
                 raise fatal
             if attempt == cfg["max_attempts"] - 1 or not _is_transient(exc):
                 raise
-            # Full jitter: spreads concurrent workers instead of retrying in lockstep.
-            delay = min(cfg["max_delay"], cfg["base_delay"] * (2 ** attempt))
-            delay *= 0.5 + random.random()
+            # What the server asked for beats what we would have guessed — see
+            # `_retry_after`. Jitter is still applied on top, because a dozen workers all
+            # waking at the identical instant the window reopens re-creates the burst.
+            stated = _retry_after(exc)
+            if stated is not None:
+                delay = stated + random.random()
+            else:
+                # Full jitter: spreads concurrent workers instead of retrying in lockstep.
+                delay = min(cfg["max_delay"], cfg["base_delay"] * (2 ** attempt))
+                delay *= 0.5 + random.random()
             with _STATE_LOCK:
                 _accounting["retries"] = _accounting.get("retries", 0) + 1
-            print(f"    ⟳ {stage}: {type(exc).__name__} — retry "
-                  f"{attempt + 1}/{cfg['max_attempts'] - 1} in {delay:.1f}s")
+            print(f"    ⟳ {stage}: {type(exc).__name__}"
+                  + (f" (HTTP {_status_of(exc)})" if _status_of(exc) else "")
+                  + f" — retry {attempt + 1}/{cfg['max_attempts'] - 1} in {delay:.1f}s"
+                  + (" (server-stated)" if stated is not None else ""), flush=True)
             time.sleep(delay)
     raise last                                          # pragma: no cover
 
@@ -204,7 +301,11 @@ def _load_config() -> dict:
         return yaml.safe_load(f) or {}
 
 
-_DEFAULT_OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+#: Fallback when config names none. Free tier, code-capable, and — unlike the "think"
+#: and "search" variants — it stays inside the gateway's ~100s origin timeout on a
+#: generate prompt instead of drawing a 524. See `config.yaml` for why availability
+#: rather than quality decides this. [1.49]
+_DEFAULT_UNOROUTER_MODEL = "codestral-latest:free"
 _KEY_PLACEHOLDERS = {
     "your-key-here", "sk-ant-your-key-here", "sk-or-v1-your-key-here",
 }
@@ -227,8 +328,8 @@ def _get_model(config: dict, provider: str = "anthropic") -> str:
     custom = model_override() or os.environ.get("H2A_CUSTOM_MODEL")
     if custom:
         return custom
-    if provider == "openrouter":
-        return (config.get("openrouter") or {}).get("model") or _DEFAULT_OPENROUTER_MODEL
+    if provider == "unorouter":
+        return (config.get("unorouter") or {}).get("model") or _DEFAULT_UNOROUTER_MODEL
     return config.get("model") or "claude-opus-4-8"
 
 
@@ -379,13 +480,26 @@ def _log_call(stage: str, provider: str, model: str, key: str, *, cached: bool,
 
 
 def _cache_key(stage: str, model: str, prompt: str) -> str:
-    """SHA-256 cache key from stage + model + prompt (kept for API stability)."""
+    """SHA-256 cache key from stage + model + prompt (kept for API stability).
+
+    `prompt` is the *combined* prompt the caller assembles — system, user and schema — so
+    the system half is covered even though it has no parameter of its own here. Worth
+    saying: this signature reads as though a changed system prompt would keep serving
+    stale answers, which would matter enormously (a run once generated Apex on the Hybris
+    pipeline because of a system-prompt defect, and a cache blind to that would have
+    replayed it after the fix). It does not; the caller folds it in. [1.57]
+    """
     raw = f"{stage}|{model}|{prompt}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _cache_dir(config: dict) -> Path:
-    d = Path(config.get("cache_dir", "cache/"))
+    # Overridable so a run can be given a cache of its own. The golden harness needs
+    # that: sharing the repo's cache made its output depend on whether a previous run had
+    # warmed it, and the reports that carry token counts then differed between a cold and
+    # a warm run of identical code. Changing the model invalidated every entry and turned
+    # that latent trap into two failing baselines. [1.51]
+    d = Path(os.environ.get("H2A_CACHE_DIR") or config.get("cache_dir", "cache/"))
     if not d.is_absolute():
         d = _PROJECT_ROOT / d
     return d
@@ -494,6 +608,23 @@ def _call_anthropic(
 
     content = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
     usage = resp.usage
+
+    # Adaptive thinking shares `max_tokens` with the answer, so a hard prompt can spend
+    # the whole budget reasoning and return no text at all. That is what happened on the
+    # first single-target validation: 8000 completion tokens, empty content — and the
+    # artifact became an empty class that every downstream stage accepted in silence.
+    #
+    # A stop this specific deserves its own error. "The model produced nothing" and "the
+    # model was cut off mid-thought" call for different fixes, and only one of them is
+    # about the prompt. [1.59]
+    if not content.strip():
+        reason = getattr(resp, "stop_reason", None)
+        spent = getattr(usage, "output_tokens", 0) or 0
+        if reason == "max_tokens" or spent >= max_tokens:
+            raise TruncatedResponse(
+                f"{stage}: the model used its entire {max_tokens}-token budget without "
+                f"emitting an answer (stop_reason={reason!r}). Adaptive thinking shares "
+                "that budget, so raise `max_tokens` for this stage or lower `effort`.")
     return {
         "content": content,
         "prompt_tokens": getattr(usage, "input_tokens", 0) or 0,
@@ -503,18 +634,18 @@ def _call_anthropic(
     }
 
 
-# ── OpenRouter backend (OpenAI-compatible; free models for dev/testing) ───────
+# ── Unorouter backend (OpenAI-compatible; free models for dev/testing) ────────
 
 _or_client = None
 
 
-def _openrouter_client(api_key: str, base_url: str):
+def _unorouter_client(api_key: str, base_url: str):
     global _or_client
     if _or_client is not None:
         return _or_client
     with _STATE_LOCK:                        # double-checked, as above
         if _or_client is None:
-            from openai import OpenAI  # lazy — only needed for provider=openrouter
+            from openai import OpenAI  # lazy — only needed for provider=unorouter
             r = (_load_config().get("resilience") or {})
             _or_client = OpenAI(base_url=base_url, api_key=api_key,
                                 max_retries=int(r.get("sdk_max_retries", 3) or 3),
@@ -525,7 +656,7 @@ def _openrouter_client(api_key: str, base_url: str):
 def _schema_directive(json_schema: dict) -> str:
     """
     Translate a JSON schema into a plain-text instruction, so providers without
-    native structured-output support (OpenRouter free models) still return the
+    native structured-output support (free models on a gateway) still return the
     same JSON shape. The core prompt templates are unchanged — this is a
     provider-adapter concern appended only for such providers.
     """
@@ -539,7 +670,7 @@ def _schema_directive(json_schema: dict) -> str:
     )
 
 
-def _call_openrouter(
+def _call_unorouter(
     *,
     model: str,
     system_prompt: str,
@@ -549,7 +680,7 @@ def _call_openrouter(
     base_url: str,
     api_key: str,
 ) -> dict:
-    client = _openrouter_client(api_key, base_url)
+    client = _unorouter_client(api_key, base_url)
 
     user_content = prompt + (_schema_directive(json_schema) if json_schema is not None else "")
     messages = []
@@ -587,6 +718,73 @@ def _mock_target_name(stage: str, prompt: str) -> str:
     return "GeneratedClass"
 
 
+def _mock_language() -> str:
+    """The language the *target* of this run is written in. [1.48]
+
+    The mock emitted Apex on every pipeline, including Adobe→Hybris, whose target is Java.
+    That was invisible for as long as it lasted because the Hybris emitter discarded the
+    Builder's output entirely — two defects, each hiding the other. With the bodies now
+    merged, a mock that speaks the wrong language would put Apex inside a `.java` file, so
+    the golden baseline becomes a real net over the merge instead of a net over a skeleton.
+    """
+    try:
+        from src import runctx
+        from src.pipeline import ensure_registered, get as get_pipeline
+        pid = runctx.pipeline_id()
+        if not pid:
+            return "Apex"
+        ensure_registered()
+        return getattr(get_pipeline(pid).target, "code_language", "Apex")
+    except Exception:
+        # A mock must never be the reason a run fails. Falling back to the historical
+        # behaviour is wrong-language at worst, which the emitter's compile step reports.
+        return "Apex"
+
+
+def _mock_java(name: str, json_schema: dict | None) -> dict:
+    """Structurally valid Java, in the shape the Hybris emitter merges from.
+
+    The method is deliberately named `execute` and not any real source method: nothing
+    should silently match, because a mock inventing business logic is exactly the
+    success-shaped failure this project exists to prevent. What it proves is that the
+    *path* works — that generated Java reaches disk — not that the logic is right.
+    """
+    main_class = (
+        f"public class {name}\n"
+        f"{{\n"
+        f"    // [mock] deterministic stub — replace by running with a real provider.\n"
+        f"    public java.util.List<Object> execute(final java.util.List<Object> records)\n"
+        f"    {{\n"
+        f"        if (records == null) {{ return java.util.Collections.emptyList(); }}\n"
+        f"        return records;\n"
+        f"    }}\n"
+        f"}}"
+    )
+    test_class = (
+        f"public class {name}Test\n"
+        f"{{\n"
+        f"    @org.junit.Test\n"
+        f"    public void testExecute()\n"
+        f"    {{\n"
+        f"        org.junit.Assert.assertTrue(new {name}().execute("
+        f"java.util.Collections.emptyList()).isEmpty());\n"
+        f"    }}\n"
+        f"}}"
+    )
+    if json_schema is not None:
+        content = json.dumps({
+            "main_class": main_class, "test_class": test_class, "sobject_refs": [],
+            "mapping_notes": "[mock] Deterministic stub output (provider=mock).",
+        })
+    else:
+        content = ("===MAIN_CLASS===\n" + main_class + "\n===END_MAIN_CLASS===\n\n"
+                   "===TEST_CLASS===\n" + test_class + "\n===END_TEST_CLASS===\n\n"
+                   "===MAPPING_NOTES===\n[mock] Deterministic stub output."
+                   "\n===END_MAPPING_NOTES===")
+    return {"content": content, "prompt_tokens": 0, "completion_tokens": 0,
+            "cache_read_tokens": 0, "cache_write_tokens": 0}
+
+
 def _call_mock(*, stage: str, prompt: str, json_schema: dict | None) -> dict:
     """
     Deterministic stub used for keyless dry-runs and CI. Produces *structurally
@@ -613,6 +811,8 @@ def _call_mock(*, stage: str, prompt: str, json_schema: dict | None) -> dict:
 
     # generate / repair stages
     name = _mock_target_name(stage, prompt)
+    if _mock_language() == "Java":
+        return _mock_java(name, json_schema)
     main_class = (
         f"public with sharing class {name} {{\n"
         f"    // [mock] deterministic stub — replace by running with a real provider.\n"
@@ -677,13 +877,19 @@ def call_llm(
     provider = _get_provider(config)
     # Model routing: an explicit override (from the agentic router) wins, but only
     # for the anthropic provider — routed model ids are Claude ids and would be
-    # meaningless slugs for openrouter/mock.
+    # meaningless slugs for unorouter/mock.
     model = model if (model and provider == "anthropic") else _get_model(config, provider)
     cache_dir = _cache_dir(config)
 
     full_prompt = f"{system_prompt}\n---\n{prompt}"
     if json_schema is not None:
         full_prompt += "\n---schema---\n" + json.dumps(json_schema, sort_keys=True)
+    # The budget belongs in the key. It decides whether an answer fits at all — an 8000
+    # token allowance returned nothing where 24000 returns a class — so a cached reply
+    # from a smaller budget is an answer to a different question. Raising the limit and
+    # replaying the truncated result is a confusing way to conclude a fix did not
+    # work. [1.59]
+    full_prompt += f"\n---budget---\n{max_tokens}|{effort or ''}"
     key = _cache_key(stage, f"{provider}:{model}", full_prompt)
 
     # Disk cache first (free replay for both providers).
@@ -712,29 +918,29 @@ def call_llm(
             max_tokens=max_tokens, json_schema=json_schema, effort=effort,
             cache_system=cache_system,
         ), stage=stage, config=config)
-    elif provider == "openrouter":
-        orcfg = config.get("openrouter") or {}
-        api_key = _get_api_key("OPENROUTER_API_KEY")
+    elif provider == "unorouter":
+        orcfg = config.get("unorouter") or {}
+        api_key = _get_api_key("UNOROUTER_API_KEY")
         if not api_key:
             raise EnvironmentError(
-                "OPENROUTER_API_KEY not found. Set it in the environment or .env, "
-                "get a key at https://openrouter.ai/keys, or use provider=anthropic / mock."
+                "UNOROUTER_API_KEY not found. Set it in the environment or .env, "
+                "or use provider=anthropic / mock."
             )
-        # Any OpenAI-compatible endpoint, not only OpenRouter: the provider is the *wire
+        # Any OpenAI-compatible endpoint, not only Unorouter: the provider is the *wire
         # format*, and the host is configuration. Overridable by environment so a base URL
         # and a key never have to be written into a file to try one. Mirrors
-        # `ANTHROPIC_BASE_URL` on the other backend. [1.46]
-        base_url = (_get_api_key("OPENROUTER_BASE_URL")
+        # `ANTHROPIC_BASE_URL` on the other backend. [1.46, 1.49]
+        base_url = (_get_api_key("UNOROUTER_BASE_URL")
                     or orcfg.get("base_url")
-                    or "https://openrouter.ai/api/v1")
-        result = _with_retry(lambda: _call_openrouter(
+                    or "https://api.unorouter.com/v1")
+        result = _with_retry(lambda: _call_unorouter(
             model=model, system_prompt=system_prompt, prompt=prompt,
             max_tokens=max_tokens, json_schema=json_schema,
             base_url=base_url,
             api_key=api_key,
         ), stage=stage, config=config)
     else:
-        raise ValueError(f"Unknown provider '{provider}'. Use 'anthropic', 'openrouter', or 'mock'.")
+        raise ValueError(f"Unknown provider '{provider}'. Use 'anthropic', 'unorouter', or 'mock'.")
 
     _record(
         provider,
@@ -757,7 +963,11 @@ def call_llm(
         "provider": provider,
         "model": model,
     }
-    _write_cache(cache_dir, key, to_cache)
+    # An empty answer is not worth keeping. Caching one makes a single bad response
+    # permanent and every later run inherits it for free — which is exactly how a
+    # truncated generate survived a budget increase and looked like a failed fix.
+    if (to_cache.get("content") or "").strip():
+        _write_cache(cache_dir, key, to_cache)
     _log_call(stage, result.get("provider", provider), result.get("model", model), key,
               cached=False, prompt_chars=len(full_prompt), effort=effort)
 

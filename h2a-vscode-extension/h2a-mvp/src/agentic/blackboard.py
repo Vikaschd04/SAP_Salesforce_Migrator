@@ -68,6 +68,18 @@ class Artifact:
     def is_lwc(self) -> bool:
         return self.layer == "Component"
 
+    #: The source that actually reached disk, when the target rewrote it. Empty on a
+    #: target that writes `main_class` verbatim — Salesforce puts it straight into the
+    #: `.cls`, so there the two are the same string and this stays unset.
+    #:
+    #: The Hybris target does not: since 1.48 the emitted class is a merge of a derived
+    #: skeleton and selected generated bodies. Provenance and alignment read `main_class`,
+    #: so on that pipeline they were measuring a population that largely never shipped —
+    #: they reported 0/21 traced about methods that were not in the output. A metric
+    #: describing something other than the artifact is the defect this whole item began
+    #: with, so it is fixed the same way: measure what was written. [1.51]
+    shipped_source: str = ""
+
     def to_generated_dict(self) -> dict:
         """Shape the rest of the pipeline (report, parity, write_outputs) expects."""
         return {
@@ -103,6 +115,12 @@ class Blackboard:
     #: went into items.xml was reported under an invented `.java` filename that a reader
     #: would look for and not find. [1.35]
     emitted_as: dict = field(default_factory=dict)
+    #: `Target.method` for every body a model wrote that reached the emitted file, as
+    #: opposed to being derived or left as a TODO. The counter-metric to the defect that
+    #: motivated it: when the Hybris emitter silently discarded everything the Builder
+    #: produced, this is the number that would have been zero while the ledger reported a
+    #: complete migration. It is asserted at the end of a run for that reason. [1.48]
+    generated_bodies: list = field(default_factory=list)
 
     #: `target name -> the checker's findings against the file emitted for it`. The
     #: static check and the compiler both run *after* the Builder is done, so neither
@@ -226,6 +244,23 @@ class Blackboard:
             return self._SUFFIX.get(lang, ".cls")
         except Exception:
             return ".cls"
+
+    def validation_context(self) -> dict:
+        """Facts about *this run* that a target's objective validator needs. [4.6]
+
+        Neutral on purpose: the names this migration plans to produce, and nothing about
+        what any platform calls them. Salesforce's validator ignores it; the Hybris one
+        turns `planned_targets` into the class names it expects to resolve. A validator
+        that has to be told what the run is building belongs to the platform, and a
+        Blackboard that knows what Hybris calls a service implementation does not.
+
+        Added because every agent called `validate_artifact(code, filename, schema)` with
+        `config` left to default, so the one platform that reads it never received it —
+        and reported a type the run was actively generating as missing.
+        """
+        names = {getattr(p, "target_name", "") for p in (self.plan or [])}
+        names |= {getattr(a, "target_name", "") for a in (self.artifacts or [])}
+        return {"planned_targets": sorted(n for n in names if n)}
 
     def data_model_target(self) -> str:
         """Where this target keeps its data model, in that platform's own words. [1.35]"""

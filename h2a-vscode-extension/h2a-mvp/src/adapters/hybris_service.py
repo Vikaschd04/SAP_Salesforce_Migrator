@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import re
 
+from src.adapters import java_bodies
 from src.adapters.hybris_extension import pascal
 
 #: Resolved IR types → Java. Deliberately the same table the items.xml emitter uses, so a
@@ -226,8 +227,21 @@ def build_interface(unit, package: str, resolutions: list,
 def build_implementation(unit, package: str, resolutions: list,
                          renames: dict | None = None, name: str | None = None,
                     source_names: set | None = None,
-                    models: set | None = None) -> str:
-    """The Spring service. Signatures derived; bodies left for the Builder. [3.2]
+                    models: set | None = None,
+                    bodies: dict | None = None,
+                    generated_class: str = "") -> str:
+    """The Spring service: signatures derived, bodies from the Builder. [3.2, 1.48]
+
+    `bodies` is `method name -> the Java a model wrote for it`. Until 1.48 there was no
+    such parameter and the second half of that sentence was not true: every method threw
+    `UnsupportedOperationException` no matter what the Builder produced.
+
+    `generated_class` is the whole class those bodies came out of, because a body is only
+    as portable as what it names. The first realistic output merged here called
+    `base.multiply(RATE)` — `RATE` a constant on the model's own class, `BigDecimal` an
+    import on it — and taking the body alone produced a file that would not compile. The
+    imports, the private fields and the private helpers come across with it; the public
+    surface does not, because the plan owns that.
 
     See `build_interface` on `name`: the planner owns it, and re-deriving it here is what
     put `class DefaultIndexService` inside `DefaultAdminhtmlIndexService.java`. [1.40]
@@ -247,19 +261,61 @@ def build_implementation(unit, package: str, resolutions: list,
             if word in (renames or {}).values():
                 referenced.add(word)
 
+    # Only bodies that actually land in a method of this class. `bodies` also carries the
+    # model's private helpers, and counting those made the header claim more methods were
+    # generated than the class even has. [1.48]
+    _public = {m.name for m in _public_methods(unit)}
+    merged_names = {mn for mn in (bodies or {})
+                    if mn in _public and not java_bodies.is_stub((bodies or {})[mn])}
+    support = (java_bodies.support(generated_class,
+                                   public_names={m.name for m in _public_methods(unit)})
+               if generated_class and merged_names else
+               {"imports": [], "fields": [], "helpers": {}})
+
+    derived_imports = [f"import {package}.service.{n};" for n in sorted(referenced)]
     out = [f"package {package}.service.impl;", ""]
-    out += [f"import {package}.service.{n};" for n in sorted(referenced)]
+    out += derived_imports
+    # What the generated bodies name. Deduplicated against the derived imports so a type
+    # the emitter already resolved is not imported twice under two spellings.
+    already = {i.rsplit(".", 1)[-1].rstrip(";") for i in derived_imports}
+    extra = [i for i in support["imports"]
+             if i.rsplit(".", 1)[-1].rstrip(";") not in already]
+    if extra:
+        out += extra
     out += ["",
            "/**",
            f" * Migrated from the Adobe Commerce class {unit.name}"
            f" ({getattr(unit, 'file', '')}).",
-           " *",
-           " * Method bodies are not translated here — the signatures, the wiring and the",
-           " * documentation are derived from the source; the logic is generated and",
-           " * reviewed separately, so that what was *known* and what was *decided* stay",
-           " * distinguishable in the output.",
-           " */",
-           f"public class {name} implements {iface}", "{"]
+           " *"]
+    if merged_names:
+        # The comment has to match the file. Saying bodies are not translated here, over
+        # a file where some of them are, is the kind of small untruth that makes a
+        # reviewer stop believing the rest of the header. [1.48]
+        out += [" * The signatures, the wiring and the documentation are DERIVED from the",
+                " * source and are as reliable as it is. The method bodies marked"
+                " `Generated`",
+                f" * below — {len(merged_names)} of {len(_public_methods(unit))} — were"
+                " written by a model and are",
+                " * not: review them as you would a colleague's first draft. Anything"
+                " still",
+                " * marked TODO was not generated at all.",
+                " */"]
+    else:
+        out += [" * Method bodies are not translated here — the signatures, the wiring"
+                " and the",
+                " * documentation are derived from the source; the logic is generated and",
+                " * reviewed separately, so that what was *known* and what was *decided*"
+                " stay",
+                " * distinguishable in the output.",
+                " */"]
+    out += [f"public class {name} implements {iface}", "{"]
+
+    if support["fields"]:
+        out.append("")
+        out.append("    // Declared by the generated logic below, and carried across with"
+                   " it — a body")
+        out.append("    // that names a constant is meaningless without it.")
+        out += [f"    {f}" for f in support["fields"]]
 
     for m in _public_methods(unit):
         sig, unresolved = _signature(m, types, renames, source_names, models)
@@ -267,12 +323,34 @@ def build_implementation(unit, package: str, resolutions: list,
         out += ["", "    @Override"]
         if unresolved:
             out.append(f"    // TYPE-UNRESOLVED: {', '.join(unresolved)}")
-        out += [f"    public {sig}", "    {",
-                f"        // TODO migrate: {unit.name}::{m.name}"]
-        if ret != "void":
-            out.append("        throw new UnsupportedOperationException("
-                       f'"Not migrated yet: {m.name}");')
+        generated = (bodies or {}).get(m.name)
+        if generated is not None and not java_bodies.is_stub(generated):
+            # Parameter names are local to an implementation — the interface fixes the
+            # types and the order and nothing else. The derived types stay; the model's
+            # labels come across with its body, because the body says `subtotal` and the
+            # PHP-derived signature may well say `amount`. [1.48]
+            got = java_bodies.param_names(generated_class, m.name)
+            if got:
+                sig = java_bodies.rename_params(sig, got)
+        out += [f"    public {sig}", "    {"]
+        if generated is not None and not java_bodies.is_stub(generated):
+            # The model's logic, inside the derived signature. Marked, because a reader
+            # must be able to tell what was *known* from what was *decided* — that
+            # distinction is what the provenance and alignment reports are built on.
+            # [1.48]
+            out.append(f"        // Generated from {unit.name}::{m.name}. Reviewed as"
+                       " generated logic, not derived — see PROVENANCE.md.")
+            out += java_bodies.indent(generated)
+        else:
+            out.append(f"        // TODO migrate: {unit.name}::{m.name}")
+            if ret != "void":
+                out.append("        throw new UnsupportedOperationException("
+                           f'"Not migrated yet: {m.name}");')
         out.append("    }")
+
+    for _hname, hsrc in sorted(support["helpers"].items()):
+        out += ["", "    // Generated helper, called by the logic above."]
+        out += [("    " + ln) if ln.strip() else "" for ln in hsrc.splitlines()]
 
     out += ["}", ""]
     return "\n".join(out)

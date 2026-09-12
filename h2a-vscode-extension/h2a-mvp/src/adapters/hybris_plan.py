@@ -34,6 +34,11 @@ DAO = "dao"
 INTERCEPTOR = "interceptor"
 DECORATOR = "decorator"
 EVENT_LISTENER = "event-listener"
+#: A Magento storefront controller answers a URL. On SAP Commerce a Spartacus
+#: front end reaches the same behaviour through an OCC REST endpoint, so that is
+#: what it becomes. Routing these to `service` produced correct Java that threw
+#: the route away and read, to a Hybris developer, as an ordinary bean. [1.53]
+CONTROLLER = "controller"
 JOB = "job"
 DATA = "data"
 BACKOFFICE = "backoffice"
@@ -71,8 +76,12 @@ _BY_LAYER = {
                 "items.xml and are generated. A custom button or column action is not — "
                 "it is a widget with its own behaviour, and what it should do on the "
                 "target is a decision"),
-    "Controller": (SERVICE, "a controller's logic moves to a service; the endpoint itself "
-                            "is a separate decision about the storefront"),
+    # Superseded for storefront controllers by `_controller_route`, which reads the
+    # actual URL. Kept as the answer when no route can be resolved: a controller whose
+    # `routes.xml` is missing or unreadable still has logic worth carrying, and a service
+    # is the honest home for logic whose entry point is unknown. [1.53]
+    "Controller": (SERVICE, "a controller's logic moves to a service; no route could be "
+                            "resolved for it, so the endpoint itself is still a decision"),
 }
 
 #: Never planned. Each is a positive statement, not an omission.
@@ -105,7 +114,8 @@ def _plugin_route(unit, wiring: dict | None) -> tuple:
                        "directions are not symmetric")
 
 
-def plan_targets(units: list, wiring: dict | None = None) -> list:
+def plan_targets(units: list, wiring: dict | None = None,
+                 routes: dict | None = None) -> list:
     """`[{target_name, kind, layer, rationale, source_classes}]`, one per unit.
 
     Every unit that is not planned is returned in `skipped` by `plan_report`, with a
@@ -120,6 +130,8 @@ def plan_targets(units: list, wiring: dict | None = None) -> list:
 
         if layer == "Plugin":
             kind, why = _plugin_route(u, wiring)
+        elif layer == "Controller" and routes:
+            kind, why = _controller_route(u, routes)
         elif layer in _BY_LAYER:
             kind, why = _BY_LAYER[layer]
         else:
@@ -127,8 +139,21 @@ def plan_targets(units: list, wiring: dict | None = None) -> list:
                                  "what this unit *is* was never established — guessing a "
                                  "target from its name would be a guess about behaviour")
 
+        # A controller is named from its *route*, not its class. Three of the Appointment
+        # module's controllers are literally called `Index`, so a class name collides —
+        # they were folded together by `_merge` and then split apart again by
+        # disambiguation, which handed both halves the rationale of whichever won. The URL
+        # is what makes them different, so the URL is what names them, and the collision
+        # never happens. [1.53]
+        name = _name_for(u, kind)
+        if kind == CONTROLLER:
+            from src.adapters import hybris_occ, magento_config
+            name = hybris_occ.controller_name(
+                getattr(u, "name", ""),
+                magento_config.route_for(getattr(u, "file", "") or "", routes))
+
         out.append({
-            "target_name": _name_for(u, kind),
+            "target_name": name,
             "kind": kind,
             "layer": layer,
             "rationale": why,
@@ -141,6 +166,33 @@ def plan_targets(units: list, wiring: dict | None = None) -> list:
                                 .get("namespace", "")}],
         })
     return _merge(out)
+
+
+def _controller_route(unit, routes: dict) -> tuple:
+    """Where a controller goes, decided by the URL it answered. [1.53]
+
+    Until now every controller became a service, and the rationale said the endpoint was
+    "a separate decision about the storefront". That was honest while it lasted, but it
+    meant `/appointment/index/create` arrived as `DefaultCreateService` — correct Java
+    that a Hybris developer could not recognise as an entry point.
+
+    The two areas diverge completely on the target, which is why the route has to be read
+    rather than the class inspected. A storefront action becomes an OCC endpoint a
+    Spartacus front end can call. An *admin* action does not: admin CRUD is Backoffice,
+    whose configuration this migration already writes, and republishing an internal
+    operation as a public REST endpoint is a security decision nobody asked for.
+    """
+    from src.adapters import magento_config
+
+    route = magento_config.route_for(getattr(unit, "file", "") or "", routes)
+    if not route:
+        return _BY_LAYER["Controller"]
+    if route.get("area") == "adminhtml":
+        from src.adapters import hybris_occ
+        return MANUAL, hybris_occ.manual_reason(getattr(unit, "name", ""), route)
+    return CONTROLLER, (f"answered `/{route.get('path', '')}` on the source, so it is an "
+                        "entry point rather than a bean: it becomes an OCC endpoint a "
+                        "Spartacus storefront can call")
 
 
 def _merge(targets: list) -> list:

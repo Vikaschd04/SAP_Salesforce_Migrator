@@ -78,6 +78,11 @@ class SourceUnit:
     # Populated only when the file could not be read or parsed. A unit that carries this
     # is reported in the completeness ledger rather than dropped.
     unreadable: str = ""
+    #: Why this file was not migrated, when it was not. Empty for everything that
+    #: was. On the unit rather than on a parallel list, because the list is also
+    #: fed to the planner — turning it into dicts to carry a reason broke
+    #: twenty-two tests, and the reason belongs to the file either way. [1.66]
+    reason: str = ""
     # Anything a platform carries that the IR does not model yet, preserved verbatim.
     #
     # Not a shortcut — a rule. A frontend Component arrives with `selector`, `inputs`,

@@ -22,8 +22,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.adapters import (hybris_backoffice, hybris_data, hybris_extension,
-                          hybris_hooks, hybris_service)
-from src.adapters.hybris_plan import (BACKOFFICE, DAO, DATA, DECORATOR,
+                          hybris_occ, magento_config,
+                          hybris_hooks, hybris_service, java_bodies)
+from src.adapters.hybris_plan import (BACKOFFICE, CONTROLLER, DAO, DATA, DECORATOR,
                                       EVENT_LISTENER, INTERCEPTOR, JOB, SERVICE)
 
 #: Kinds assembly writes today — services and DAOs through the target loop, jobs through
@@ -34,7 +35,7 @@ from src.adapters.hybris_plan import (BACKOFFICE, DAO, DATA, DECORATOR,
 #: and `build_items_xml` already wrote its EAV attributes onto the platform type they
 #: extend. Listing it as unwritten claimed a loss that had not happened — the mirror of
 #: the failure this set exists to prevent. [1.34]
-EMITTABLE = {SERVICE, DAO, JOB, DATA, DECORATOR, INTERCEPTOR, EVENT_LISTENER,
+EMITTABLE = {SERVICE, DAO, JOB, DATA, DECORATOR, INTERCEPTOR, EVENT_LISTENER, CONTROLLER,
              BACKOFFICE}
 
 
@@ -43,8 +44,15 @@ def _pkg_dir(root: Path, package: str, *parts: str) -> Path:
 
 
 def emit_extension(output_dir: str, *, name: str, package: str, source_model,
-                   targets: list) -> dict:
+                   targets: list, generated: dict | None = None) -> dict:
     """Write the whole extension. Returns `{created, manual, static}`.
+
+    `generated` is `target name -> the Java a model wrote for it`. The skeleton here
+    is derived and correct about structure; the bodies are merged into it by method
+    name. Before 1.48 this parameter did not exist, the Builder's output was dropped
+    on the floor, and every method on disk threw `UnsupportedOperationException` —
+    which no mock run could show, because a mock and a real model produced the same
+    bytes.
 
     `static` is the checker's verdict on what was actually written, which is the closest
     thing to a compiler available without a licensed platform.
@@ -119,6 +127,16 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
     #: items.xml — the right outcome under an invented filename. The emitter is the only
     #: thing that knows. [1.35]
     emitted_as: dict = {}
+    #: `Target.method` for every body taken from the Builder rather than
+    #: derived. The ledger reports the split; a reader should never have to
+    #: guess which half of the file a model wrote. [1.48]
+    bodies_used: set = set()
+    #: `target name -> the Java actually written` for the class that carries this
+    #: target's logic. The reports measure what *ships*, and since 1.48 that is a merge
+    #: of derived skeleton and selected bodies — no longer the model's raw output. A
+    #: metric describing something other than the artifact is the defect this whole item
+    #: began with. [1.51]
+    emitted_source: dict = {}
 
     for t in targets or []:
         kind = t.get("kind")
@@ -161,12 +179,19 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                                              name=t['target_name'],
                                              source_names=source_names,
                                              models=generated_models))
+        written = (generated or {}).get(t['target_name']) or ""
+        merged = java_bodies.bodies(written)
+        impl_src = hybris_service.build_implementation(
+            unit, package, resolutions, renames, name=t['target_name'],
+            source_names=source_names, models=generated_models,
+            bodies=merged, generated_class=written)
         write(_pkg_dir(src, package, "service", "impl",
                        f"Default{t['target_name']}.java"),
-              hybris_service.build_implementation(unit, package, resolutions, renames,
-                                                  name=t['target_name'],
-                                             source_names=source_names,
-                                             models=generated_models))
+              impl_src)
+        emitted_source[t['target_name']] = impl_src
+        for m in getattr(unit, "methods", None) or []:
+            if merged.get(getattr(m, "name", "")) is not None:
+                bodies_used.add(f"{t['target_name']}.{m.name}")
         services.append(unit)
         for c in t.get("source_classes", []):
             # Keyed by the source *file*. Three controllers in one Magento module are all
@@ -175,6 +200,42 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
             if c.get("file"):
                 emitted_as[c["file"]] = (
                     f"src/{package.replace('.', '/')}/service/{t['target_name']}.java")
+
+    # Storefront controllers. Their own pass because each needs its route, which no other
+    # kind does — and a DTO, which the controller will not compile without. [1.53]
+    routes = (getattr(source_model, "extra", None) or {}).get("routes") or {}
+    seen_dto = set()
+    for t_row in targets or []:
+        if t_row.get("kind") != CONTROLLER:
+            continue
+        # By *file*, not by class name. Three of this module's controllers are called
+        # `Index`, so `units_by_name` holds one of them and the other two would be emitted
+        # from a namesake's source — with its route, its name, and its logic. The file is
+        # the only thing that tells them apart. [1.53]
+        wanted_files = {c.get("file") for c in t_row.get("source_classes", []) if c.get("file")}
+        unit = next((u for u in (getattr(source_model, "units", None) or [])
+                     if getattr(u, "file", "") in wanted_files), None)
+        if unit is None:
+            continue
+        route = magento_config.route_for(getattr(unit, "file", "") or "", routes)
+        ctrl_src = (generated or {}).get(t_row["target_name"]) or ""
+        written_ctrl = hybris_occ.build_controller(
+            unit, package, route, generated_class=ctrl_src)
+        write(_pkg_dir(src, package, "controllers", f"{t_row['target_name']}.java"),
+              written_ctrl)
+        emitted_source[t_row["target_name"]] = written_ctrl
+        if "Reviewed as generated logic" in written_ctrl:
+            bodies_used.add(f"{t_row['target_name']}.{hybris_occ._method_name(route.get('action',''))}")
+        dto = hybris_occ.dto_name(route)
+        if dto not in seen_dto:
+            seen_dto.add(dto)
+            write(_pkg_dir(src, package, "dto", f"{dto}.java"),
+                  hybris_occ.build_dto(route, package))
+        for c in t_row.get("source_classes", []):
+            if c.get("file"):
+                emitted_as[c["file"]] = (
+                    f"src/{package.replace('.', '/')}/controllers/"
+                    f"{t_row['target_name']}.java")
 
     # DAOs come from the data model rather than from source units: a Magento
     # ResourceModel is optional, and the tables exist either way.
@@ -194,8 +255,13 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
     # springId nothing defined.
     jobs = _jobs_by_target(source_model, targets)
     for performable, job in sorted(jobs.items()):
-        write(_pkg_dir(src, package, "jobs", f"{performable}.java"),
-              hybris_data.build_job_performable(job, package, class_name=performable))
+        job_src = (generated or {}).get(performable) or ""
+        written_job = hybris_data.build_job_performable(
+            job, package, class_name=performable, generated_class=job_src)
+        write(_pkg_dir(src, package, "jobs", f"{performable}.java"), written_job)
+        emitted_source[performable] = written_job
+        if "Reviewed as generated logic" in written_job:
+            bodies_used.add(f"{performable}.perform")
         for t_row in targets or []:
             if t_row.get("target_name") != performable:
                 continue
@@ -276,15 +342,40 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
         unit = sources[0]
         target_name = t_row.get("target_name", "")
         if kind == DECORATOR:
+            # A decorator emits one method per source method, so the Builder's bodies map
+            # onto it by name exactly as they do for a service. The two kinds below do
+            # not: each collapses *every* source method into a single platform hook
+            # (`onValidate`, `onEvent`), so there is no method for a body to belong to.
+            # Concatenating separately-written bodies into one would rarely compile and
+            # would always *look* migrated, which is the trade this project never
+            # makes — they keep their TODO. [1.48]
+            hook_src = (generated or {}).get(target_name) or ""
+            hook_bodies = java_bodies.bodies(hook_src)
+            written_decorator = hybris_hooks.build_decorator(
+                unit, package, di, emitted_service_names, bodies=hook_bodies,
+                generated_class=hook_src)
             write(_pkg_dir(src, package, "decorators", f"{target_name}.java"),
-                  hybris_hooks.build_decorator(
-                      unit, package, di, emitted_service_names))
+                  written_decorator)
+            emitted_source[target_name] = written_decorator
+            for m in getattr(unit, "methods", None) or []:
+                mn = getattr(m, "name", "")
+                for key in (hybris_hooks.wrapped_method(mn), mn):
+                    if hook_bodies.get(key) is not None \
+                            and not java_bodies.is_stub(hook_bodies[key]):
+                        bodies_used.add(f"{target_name}.{key}")
+                        break
             hooks.append({"kind": kind, "name": target_name})
             emitted_as[getattr(unit, "file", "") or unit.name] = (
                 f"src/{package.replace('.', '/')}/decorators/{target_name}.java")
         elif kind == INTERCEPTOR:
+            interceptor_src = (generated or {}).get(target_name) or ""
+            written_interceptor = hybris_hooks.build_interceptor(
+                unit, package, di, generated_class=interceptor_src)
             write(_pkg_dir(src, package, "interceptors", f"{target_name}.java"),
-                  hybris_hooks.build_interceptor(unit, package, di))
+                  written_interceptor)
+            emitted_source[target_name] = written_interceptor
+            if "Reviewed as generated logic" in written_interceptor:
+                bodies_used.add(f"{target_name}.{hybris_hooks.interceptor_hook(unit)}")
             hooks.append({"kind": kind, "name": target_name,
                           "type_code": hybris_hooks._short(
                               hybris_hooks._target_type(unit, di))})
@@ -297,8 +388,14 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                 write(_pkg_dir(src, package, "events",
                                f"{hybris_hooks.event_class_for(event)}.java"),
                       hybris_hooks.build_event(event, package))
+            listener_src = (generated or {}).get(target_name) or ""
+            written_listener = hybris_hooks.build_event_listener(
+                unit, package, event, generated_class=listener_src)
             write(_pkg_dir(src, package, "listeners", f"{target_name}.java"),
-                  hybris_hooks.build_event_listener(unit, package, event))
+                  written_listener)
+            emitted_source[target_name] = written_listener
+            if "Reviewed as generated logic" in written_listener:
+                bodies_used.add(f"{target_name}.onEvent")
             hooks.append({"kind": kind, "name": target_name, "event": event})
             emitted_as[getattr(unit, "file", "") or unit.name] = (
                 f"src/{package.replace('.', '/')}/listeners/{target_name}.java")
@@ -344,7 +441,9 @@ def emit_extension(output_dir: str, *, name: str, package: str, source_model,
                       "issues": list(compiled["issues"]),
                       "message": compiled["message"], "compiler": True}
     return {"created": sorted(set(created)), "manual": manual, "static": static,
-            "emitted_as": emitted_as, "modelling": modelling}
+            "emitted_as": emitted_as, "modelling": modelling,
+            "generated_bodies": sorted(bodies_used),
+            "emitted_source": emitted_source}
 
 
 def _spring(units: list, arguments: list, package: str, extension: str,

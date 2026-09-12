@@ -60,11 +60,10 @@ def _languages() -> tuple:
     A report that names the wrong platform is not a cosmetic problem: it is the clearest
     signal a reader has that the tool knows what it just did.
     """
-    from src import pipeline, runctx
+    from src import pipeline
     try:
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         return (getattr(p.source, "code_language", "source"),
                 getattr(p.target, "code_language", "target"))
     except Exception:

@@ -77,7 +77,7 @@ def profile_for(pipeline_id: str = "") -> Profile:
     try:
         _pl.ensure_registered()
         pid = pipeline_id or runctx.pipeline_id() or ""
-        p = _pl.get(pid) if pid else _pl.default_pipeline()
+        p = _pl.get(pid) if pid else _pl.active_or_shipped()
         return getattr(p, "forecast_profile", None) or DEFAULT_PROFILE
     except Exception:
         return DEFAULT_PROFILE
@@ -94,15 +94,21 @@ _REVIEW_MINS_ROUTINE = (1.0, 3.0)
 _REVIEW_MINS_INVOLVED = (8.0, 20.0)
 
 
-def _tier_models(config: dict) -> tuple[str, str]:
-    """(cheap, frontier) model ids actually in play for this configuration."""
-    agentic = (config or {}).get("agentic") or {}
-    routing = agentic.get("routing") or {}
-    default = (config or {}).get("model") or "claude-opus-4-8"
-    if not routing.get("enabled"):
-        return default, default
-    models = routing.get("models") or {}
-    return models.get("cheap", default), models.get("frontier", default)
+def _model_for(config: dict, stage: str) -> str:
+    """The model this stage will actually receive, asked of the router. [1.51]
+
+    This used to re-derive it from a two-tier `{cheap, frontier}` map and assign
+    comprehension to the cheap one. That was a second copy of the router's decision, and
+    the two disagreed the moment a third tier appeared: comprehension moved to Sonnet and
+    the forecast went on quoting Haiku, so the estimate priced a model the run would not
+    use — and under-quoted, which is the direction that matters when the number exists to
+    let someone approve a spend.
+
+    One source of truth. A forecast is only worth the ceiling it justifies.
+    """
+    from src.agentic.router import route_model
+
+    return route_model(config, stage) or (config or {}).get("model") or "claude-opus-5"
 
 
 def _cost(model: str, tin: int, tout: int, config: dict | None = None) -> float | None:
@@ -129,19 +135,24 @@ def forecast(classes: list[dict], targets: int, config: dict,
     out_comprehend = max_tokens.get("comprehend", 800)
     out_generate = max_tokens.get("generate", 8000)
 
-    cheap, frontier = _tier_models(config)
+    m_comprehend = _model_for(config, "comprehend")
+    m_plan = _model_for(config, "plan")
+    m_generate = _model_for(config, "generate")
+    m_critic = _model_for(config, "critic")
+    m_repair = _model_for(config, "repair")
+    frontier = m_generate          # the repair estimate below prices against generation
 
     calls = []
     if n_classes:
-        calls.append(("comprehend", cheap, n_classes,
+        calls.append(("comprehend", m_comprehend, n_classes,
                       (avg_class + prof.comprehend_overhead), out_comprehend, _SECS_CHEAP))
     if domains:
-        calls.append(("plan", cheap, domains, prof.plan_overhead + avg_class, 1200, _SECS_CHEAP))
+        calls.append(("plan", m_plan, domains, prof.plan_overhead + avg_class, 1200, _SECS_CHEAP))
     if n_targets:
-        calls.append(("generate", frontier, n_targets,
+        calls.append(("generate", m_generate, n_targets,
                       avg_target_src + prof.generate_overhead, out_generate, _SECS_FRONTIER))
         if critic_on:
-            calls.append(("critic", frontier, n_targets,
+            calls.append(("critic", m_critic, n_targets,
                           avg_target_src + prof.critic_overhead, 1500, _SECS_FRONTIER))
 
     stages, lo_usd, hi_usd, lo_s, hi_s, tin_tot, unpriced = [], 0.0, 0.0, 0.0, 0.0, 0, set()
@@ -165,9 +176,9 @@ def forecast(classes: list[dict], targets: int, config: dict,
     if n_targets:
         rep_lo, rep_hi = int(n_targets * prof.repair_low), int(n_targets * prof.repair_high)
         tin_rep = int(rep_hi * (avg_target_src + prof.generate_overhead) / prof.chars_per_token)
-        lo_usd += _cost(frontier, int(tin_rep * rep_lo / max(1, rep_hi)),
+        lo_usd += _cost(m_repair, int(tin_rep * rep_lo / max(1, rep_hi)),
                         int(rep_lo * out_generate * prof.out_low), config) or 0.0
-        hi_usd += _cost(frontier, tin_rep,
+        hi_usd += _cost(m_repair, tin_rep,
                         int(rep_hi * out_generate * prof.out_high), config) or 0.0
         hi_s += rep_hi * _SECS_FRONTIER[1]
 
@@ -234,8 +245,16 @@ def _assumptions(config, conc, critic_on, reused, free, prof=None) -> list[str]:
     routing = ((config.get("agentic") or {}).get("routing") or {})
     if routing.get("enabled"):
         m = routing.get("models") or {}
-        a.append(f"Routing on: comprehension and planning on {m.get('cheap')}, "
-                 f"generation and review on {m.get('frontier')}.")
+        # Named per stage rather than as two tiers: the assumption line is what a
+        # reader checks the number against, and it has to describe the run.
+        seen, order = {}, []
+        for stage in ("comprehend", "plan", "generate", "critic", "repair"):
+            model = _model_for(config, stage)
+            if model not in seen:
+                seen[model], _ = [], order.append(model)
+            seen[model].append(stage)
+        a.append("Routing on: " + "; ".join(
+            f"{', '.join(seen[mdl])} on {mdl}" for mdl in order) + ".")
     else:
         a.append(f"Routing off: every stage on {config.get('model')}.")
     a.append(f"Concurrency {conc} — this compresses wall-clock, not spend.")

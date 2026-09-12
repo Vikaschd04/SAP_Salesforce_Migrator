@@ -13,7 +13,7 @@ rate change — or a negotiated/partner rate — never means editing code:
       models:
         claude-opus-5: {input: 5.00, output: 25.00}
 
-Unknown models (e.g. an arbitrary OpenRouter slug) are reported as *unpriced*
+Unknown models (e.g. an arbitrary gateway slug) are reported as *unpriced*
 rather than guessed — a wrong cost estimate is worse than an honest "unknown".
 """
 

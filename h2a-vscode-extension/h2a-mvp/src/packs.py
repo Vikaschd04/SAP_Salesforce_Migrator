@@ -37,9 +37,15 @@ _ROOT = Path(__file__).resolve().parent.parent / "packs"
 #: What an unqualified run means — the pipeline that shipped.
 DEFAULT_PACK = "hybris_to_salesforce"
 
-#: pipeline id → pack directory name. A pipeline whose id is not listed falls back to the
-#: default, which is right while only one pack exists and wrong the moment a second one is
-#: added without a mapping — so `available()` exists to make that visible.
+#: pipeline id → pack directory name.
+#:
+#: A *registered* pipeline missing from this map is an error, not a default. The old
+#: behaviour — fall back to the shipped pack — is the single worst failure this system
+#: can have: a run configured for one platform pair, quietly handed the other pair's
+#: prompts, mappings and RAG corpus, producing fluent output for the wrong target. That
+#: is not hypothetical. It is what happened on every Adobe→Hybris run for as long as the
+#: pipeline id failed to reach the worker threads, and the first line the model read was
+#: "Translate the following SAP Hybris class into Salesforce Apex". [4.6]
 _PACK_FOR_PIPELINE = {
     "hybris->salesforce": "hybris_to_salesforce",
     "adobe->hybris": "adobe_to_hybris",
@@ -54,10 +60,24 @@ def available() -> list[str]:
 
 
 def pack_name(pipeline_id: str = "") -> str:
-    """Which pack this run uses. Explicit argument wins, then the run context."""
+    """Which pack this run uses. Explicit argument wins, then the run context.
+
+    No pipeline at all resolves to the shipped pack — that is the v1 path and a handful of
+    tools that read a prompt outside a run. A pipeline that *is* named but has no pack
+    raises: it means someone registered a platform pair and did not give it a pack, and
+    the only safe answer to "which prompts does this pair use" is that nobody has said.
+    """
     from src import runctx
     pid = pipeline_id or runctx.pipeline_id() or ""
-    return _PACK_FOR_PIPELINE.get(pid, DEFAULT_PACK)
+    if not pid:
+        return DEFAULT_PACK
+    if pid not in _PACK_FOR_PIPELINE:
+        raise KeyError(
+            f"pipeline {pid!r} has no knowledge pack. Add it to packs._PACK_FOR_PIPELINE "
+            f"and create packs/<name>/. Mapped: {sorted(_PACK_FOR_PIPELINE)}. "
+            "Refusing to fall back to the shipped pack — that would generate for the "
+            "wrong platform without saying so.")
+    return _PACK_FOR_PIPELINE[pid]
 
 
 def pack_dir(pipeline_id: str = "") -> Path:

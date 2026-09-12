@@ -41,6 +41,34 @@ def _transitive_deps(adjacency: dict, domain: str) -> set:
 
 def run_repo_migration(input_dir: str, output_dir: str, *, offline: bool = False,
                        verify: bool | None = None):
+    """Run the linear engine. SAP Hybris → Salesforce only, and it now says so.
+
+    This module *is* the v1 path: it calls the Hybris ingest, the Apex generator, the
+    Apex validator and the Salesforce writer by name, and there is no version of it that
+    can run another pair. The agentic orchestrator has known that since 1.35 and routes
+    every other migration away from v1 because of it — but nothing stopped this function
+    being called directly for one.
+
+    The cockpit offers "linear" as an engine choice beside "agentic" and never restricted
+    it by migration, so an Adobe Commerce project could be sent here. The result was not
+    an error: the Hybris ingest found 0 classes in a directory full of PHP, and the run
+    walked every stage, converted nothing, and wrote a clean report over an empty output.
+    That is the exact failure this product exists to prevent, so it is now a refusal
+    rather than a quiet success. [4.6]
+    """
+    from src import pipeline as _pipeline, runctx as _runctx
+
+    _pid = _runctx.pipeline_id()
+    if _pid:
+        _pipeline.ensure_registered()
+        _shipped = _pipeline.default_pipeline()
+        if _pid != _shipped.id:
+            raise NotImplementedError(
+                f"The linear engine runs {_shipped.label} only — it reads Java and writes "
+                f"Apex directly, with no adapter layer. This run is configured for "
+                f"{_pipeline.get(_pid).label}. Use the agentic engine, which routes every "
+                "migration through the pipeline adapters.")
+
     reset_accounting()
     config = _load_config()
 

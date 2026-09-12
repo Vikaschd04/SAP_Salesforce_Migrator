@@ -59,6 +59,11 @@ _SECRETS = [
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "an AWS access key id"),
     (re.compile(r"\bsk-ant-[A-Za-z0-9_\-]{20,}"), "an Anthropic API key"),
     (re.compile(r"\bsk-or-v1-[A-Za-z0-9]{20,}"), "an OpenRouter API key"),
+    # OpenAI-shaped keys, which is what most gateways issue (Unorouter included).
+    # Anchored at 32+ so it cannot fire on `sk-` followed by a short identifier,
+    # and placed after the two more specific patterns so those keep their better
+    # names. [1.49]
+    (re.compile(r"\bsk-(?!ant-|or-v1-)[A-Za-z0-9]{32,}\b"), "an API key"),
     (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}\b"), "a GitHub token"),
     (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), "a Slack token"),
     # [^\S\n]* is horizontal whitespace only. Plain \s* crosses the newline, so

@@ -76,7 +76,7 @@ def test_llm_review_survives_a_finding_missing_message(monkeypatch):
                            "findings": [{"severity": "ERROR", "category": "security"}]}}
 
     monkeypatch.setattr(critic_mod, "call_structured", fake_call_structured)
-    monkeypatch.setattr(critic_mod, "_get_provider", lambda cfg: "openrouter")
+    monkeypatch.setattr(critic_mod, "_get_provider", lambda cfg: "unorouter")
 
     agent = CriticAgent()
     findings = agent._llm_review(_Artifact(), schema={}, offline=False)

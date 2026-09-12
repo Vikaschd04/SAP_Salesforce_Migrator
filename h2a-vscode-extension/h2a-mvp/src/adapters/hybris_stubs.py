@@ -43,6 +43,45 @@ MODEL_SUBPACKAGE = "model"
 #: emitters actually use. Deliberately narrow: every member here is a claim about SAP's
 #: API that nothing in this repository can check, so the fewer the better.
 _API: dict[str, str] = {
+    # ── the OCC web layer [1.53] ─────────────────────────────────────────────
+    # Spring's annotations rather than SAP's, because that is what an OCC extension
+    # actually imports. Annotations only: an emitted controller names them and never
+    # calls into them, so declaring behaviour here would be claiming more than the
+    # generated code relies on.
+    "org.springframework.web.bind.annotation.RestController": """
+public @interface RestController { String value() default ""; }""",
+    "org.springframework.web.bind.annotation.RequestMapping": """
+public @interface RequestMapping { String[] value() default {}; }""",
+    "org.springframework.web.bind.annotation.GetMapping": """
+public @interface GetMapping { String[] value() default {}; String[] produces() default {}; }""",
+    "org.springframework.web.bind.annotation.PostMapping": """
+public @interface PostMapping { String[] value() default {}; String[] produces() default {}; }""",
+    "org.springframework.web.bind.annotation.PutMapping": """
+public @interface PutMapping { String[] value() default {}; String[] produces() default {}; }""",
+    "org.springframework.web.bind.annotation.DeleteMapping": """
+public @interface DeleteMapping { String[] value() default {}; String[] produces() default {}; }""",
+    "org.springframework.web.bind.annotation.PathVariable": """
+public @interface PathVariable { String value() default ""; }""",
+    "org.springframework.web.bind.annotation.RequestParam": """
+public @interface RequestParam { String value() default ""; boolean required() default true; }""",
+    "org.springframework.web.bind.annotation.RequestBody": """
+public @interface RequestBody { boolean required() default true; }""",
+    "org.springframework.beans.factory.annotation.Autowired": """
+public @interface Autowired { boolean required() default true; }""",
+    "org.springframework.http.MediaType": """
+public class MediaType
+{
+    public static final String APPLICATION_JSON_VALUE = "application/json";
+}""",
+    # OCC's DTO mapper. Declared with the one method a generated controller would call,
+    # so a merged body that maps a model to a WsDTO compiles.
+    "de.hybris.platform.webservicescommons.mapping.DataMapper": """
+public interface DataMapper
+{
+    <S, T> T map(S source, Class<T> targetClass);
+    <S, T> java.util.List<T> mapAsList(java.util.List<S> source, Class<T> targetClass,
+            String fields);
+}""",
     "de.hybris.platform.servicelayer.search.SearchResult": """
 public interface SearchResult<T>
 {

@@ -236,11 +236,31 @@ def cmd_metadata(args):
 
 
 def cmd_repo_migrate(args):
-    """Run sequential repository-scale multi-domain migrations."""
+    """Run sequential repository-scale multi-domain migrations.
+
+    Takes `--pipeline` like `agent-migrate`, and for the same reason: a selection that
+    an entry point does not accept is a selection that cannot be honoured. Without it
+    the VS Code extension — which passes `--pipeline` for *both* engines — failed here
+    with an argparse usage dump, and the person who chose a migration was shown a list
+    of subcommands. The linear engine runs one pair and refuses the rest (see
+    `pipeline_driver.run_repo_migration`); pinning the id is what lets it say so. [4.6]
+    """
+    from src import pipeline, runctx
     from src.pipeline_driver import run_repo_migration
+
+    chosen = _resolve_pipeline(args.input, getattr(args, "pipeline", None))
+    runctx.set_overrides(pipeline_id=chosen.id)
+    pipeline.require_runnable(chosen)
+
     offline = getattr(args, "offline", False)
     verify = True if getattr(args, "verify", False) else None
-    run_repo_migration(args.input, args.output, offline=offline, verify=verify)
+    try:
+        run_repo_migration(args.input, args.output, offline=offline, verify=verify)
+    except NotImplementedError as e:
+        # The engine holds the guard, so every caller is protected by it; this only
+        # renders it the way this CLI renders its other refusals — `_resolve_pipeline`
+        # raises SystemExit too. A traceback is a bug report, not an answer.
+        raise SystemExit(f"  ✗ {e}")
 
 
 def cmd_agent_migrate(args):
@@ -461,6 +481,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_repo.add_argument("--input", required=True, help="Path to codebase root directory")
     p_repo.add_argument("--output", required=True, help="Path to output directory")
     p_repo.add_argument("--offline", action="store_true", help="Replay cached responses only")
+    p_repo.add_argument("--pipeline", default=None,
+                        help="Which migration to run (e.g. hybris->salesforce). The linear "
+                             "engine runs the shipped pair only and refuses the rest.")
     p_repo.add_argument("--verify", action="store_true",
                         help="Dry-run deploy the output against a Salesforce org (needs `sf` CLI)")
 

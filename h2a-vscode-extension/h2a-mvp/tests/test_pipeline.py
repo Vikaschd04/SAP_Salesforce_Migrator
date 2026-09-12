@@ -251,13 +251,23 @@ def test_metadata_generator(tmp_path):
     out_dir = tmp_path / "out"
     generate_salesforce_metadata(str(items_xml), str(out_dir))
     
-    # Verify outputs
-    obj_meta = out_dir / "force-app" / "main" / "default" / "objects" / "TestObj__c" / "TestObj__c.object-meta.xml"
-    field_meta = out_dir / "force-app" / "main" / "default" / "objects" / "TestObj__c" / "fields" / "active__c.field-meta.xml"
-    
+    # Verify outputs. `Active__c`, capitalised: Salesforce field API names are, and the
+    # generator has always written it that way. This asserted `active__c` and passed for
+    # as long as it ran on a case-insensitive filesystem — macOS matched the file, Linux
+    # did not, and CI caught it on its first honest run. [1.55]
+    objects = out_dir / "force-app" / "main" / "default" / "objects" / "TestObj__c"
+    obj_meta = objects / "TestObj__c.object-meta.xml"
+    field_meta = objects / "fields" / "Active__c.field-meta.xml"
+
     assert obj_meta.exists()
     assert field_meta.exists()
     assert "<type>Checkbox</type>" in field_meta.read_text(encoding="utf-8")
+
+    # Asserted by listing rather than by `exists()`, so the case is checked even where the
+    # filesystem would not care. A test that only fails on someone else's machine is worse
+    # than no test: it passes review, ships, and then blames the runner.
+    written = sorted(p.name for p in (objects / "fields").iterdir())
+    assert written == ["Active__c.field-meta.xml", "Name__c.field-meta.xml"], written
 
 
 def test_domain_classifier(tmp_path):
@@ -368,10 +378,10 @@ def test_schema_directive_lists_keys():
     assert _schema_directive({}) == ""  # no schema → no directive
 
 
-def test_openrouter_provider_adapter(monkeypatch, tmp_path):
-    """OpenRouter path builds a chat request and parses the response (stubbed client)."""
-    monkeypatch.setenv("H2A_PROVIDER", "openrouter")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+def test_unorouter_provider_adapter(monkeypatch, tmp_path):
+    """Unorouter path builds a chat request and parses the response (stubbed client)."""
+    monkeypatch.setenv("H2A_PROVIDER", "unorouter")
+    monkeypatch.setenv("UNOROUTER_API_KEY", "sk-uno-test")
     monkeypatch.setenv("H2A_CUSTOM_MODEL", "some/free-model:free")
 
     captured = {}
@@ -402,7 +412,7 @@ def test_openrouter_provider_adapter(monkeypatch, tmp_path):
     import src.llm as llm
     llm._or_client = None
     llm.reset_accounting()
-    monkeypatch.setattr(llm, "_openrouter_client", lambda key, base_url: _FakeClient())
+    monkeypatch.setattr(llm, "_unorouter_client", lambda key, base_url: _FakeClient())
     monkeypatch.setattr(llm, "_cache_dir", lambda config: tmp_path / "cache")  # isolate cache
 
     from src.comprehend import comprehend_class
@@ -414,10 +424,10 @@ def test_openrouter_provider_adapter(monkeypatch, tmp_path):
     assert captured["model"] == "some/free-model:free"
     assert captured["messages"][-1]["role"] == "user"
     assert result["purpose"] == "adapter test"
-    # Accounting recorded the openrouter request + tokens.
+    # Accounting recorded the unorouter request + tokens.
     from src.llm import get_accounting
     acct = get_accounting()
-    assert acct["providers"].get("openrouter", 0) >= 1
+    assert acct["providers"].get("unorouter", 0) >= 1
 
 
 # ── Schema reconciliation (auto-resolve warnings) ─────────────────────────────

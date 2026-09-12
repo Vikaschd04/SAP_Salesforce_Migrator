@@ -39,11 +39,10 @@ def _languages() -> tuple:
     report that names the wrong platform is not cosmetic: it is the clearest signal a
     reader has about whether the tool knows what it just did.
     """
-    from src import pipeline, runctx
+    from src import pipeline
     try:
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         return (getattr(p.source, "code_language", "source"),
                 getattr(p.target, "code_language", "target"))
     except Exception:
@@ -58,21 +57,16 @@ def _source_symbols(text: str) -> list[dict]:
     Java-shaped regex returns one method in six: it does not fail, it under-reports — in
     the module whose entire output is how much of the source can be accounted for.
     """
-    from src import pipeline, runctx
+    from src import pipeline
     pipeline.ensure_registered()
-    pid = runctx.pipeline_id()
-    src = (pipeline.get(pid) if pid else pipeline.default_pipeline()).source
+    src = pipeline.active_or_shipped().source
     return src.symbols(text)
 
 
 def _target_symbols(text: str) -> list[dict]:
     """Methods in the *generated* code, located by the target platform's own reader."""
     from src import pipeline
-    target = pipeline.current_target()
-    if target is None:
-        pipeline.ensure_registered()
-        target = pipeline.default_pipeline().target
-    return target.symbols(text)
+    return pipeline.active_or_shipped().target.symbols(text)
 
 
 def _norm(name: str) -> str:
@@ -99,7 +93,12 @@ def _class_name(text: str) -> str:
 
 def map_artifact(artifact) -> dict:
     """Trace each generated method back to the Java that produced it."""
-    target_src = getattr(artifact, "main_class", "") or ""
+    # What reached disk, when the target rewrote it on the way out; otherwise the
+    # generated class, which on a verbatim target is the same string. Reading
+    # `main_class` unconditionally measured the model's draft on any pipeline whose
+    # emitter assembles a package. [1.51]
+    target_src = (getattr(artifact, "shipped_source", "")
+                  or getattr(artifact, "main_class", "") or "")
     # A constructor has no Java origin by definition and listing it as unexplained
     # would be noise in exactly the column that is supposed to mean something.
     ctor = _class_name(target_src)

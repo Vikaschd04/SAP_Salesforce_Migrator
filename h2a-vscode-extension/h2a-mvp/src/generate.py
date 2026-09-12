@@ -33,21 +33,50 @@ from src.schema import schema_prompt_block
 
 
 # Structured-output schema for one generated artifact.
-GENERATION_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "main_class": {"type": "string", "description": "Complete Apex main class source."},
-        "test_class": {"type": "string", "description": "Complete @isTest Apex class source."},
-        "sobject_refs": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Custom objects (X__c) referenced by the main class.",
-        },
-        "mapping_notes": {"type": "string", "description": "Brief notes on mapping decisions."},
-    },
-    "required": ["main_class", "test_class", "mapping_notes"],
-    "additionalProperties": False,
+#: Field descriptions when no target says otherwise — Salesforce, which is what the v1
+#: path produces.
+_SCHEMA_TEXT = {
+    "main_class": "Complete Apex main class source.",
+    "test_class": "Complete @isTest Apex class source.",
+    "refs": "Custom objects (X__c) referenced by the main class.",
 }
+
+
+def generation_schema(descriptions: dict | None = None) -> dict:
+    """The structured-output schema, described in the target's own terms. [1.58]
+
+    This was a module constant saying "Complete Apex main class source" on every
+    pipeline. A field description is the most binding instruction a structured response
+    carries — it states exactly what belongs in that field — so the Adobe→Hybris run had
+    a system prompt insisting on "pure Java, never Apex" and a response schema asking for
+    "Complete Apex main class source" in the same request. It filled the field as
+    described, and $24 of real runs went to Apex before this was found.
+
+    The heading fix in 1.56 was necessary and looked sufficient. It was not, because the
+    schema is not part of the prompt text and was never read while hunting for the
+    contradiction.
+    """
+    d = {**_SCHEMA_TEXT, **(descriptions or {})}
+    return {
+        "type": "object",
+        "properties": {
+            "main_class": {"type": "string", "description": d["main_class"]},
+            "test_class": {"type": "string", "description": d["test_class"]},
+            "sobject_refs": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": d["refs"],
+            },
+            "mapping_notes": {"type": "string",
+                              "description": "Brief notes on mapping decisions."},
+        },
+        "required": ["main_class", "test_class", "mapping_notes"],
+        "additionalProperties": False,
+    }
+
+
+#: Kept for callers that predate `generation_schema`; the v1 path is Salesforce.
+GENERATION_SCHEMA = generation_schema()
 
 _SKIP_LAYERS = {"Model", "Facade"}
 
@@ -224,7 +253,29 @@ def _format_dependency_sigs(dependency_sigs: list[str]) -> str:
     return "\n".join(f"  {s}" for s in dependency_sigs)
 
 
-def build_system_prompt(mappings: dict, schema: dict | None) -> str:
+#: What the sections are called when no pipeline is pinned — the v1 path, which is
+#: Salesforce by construction.
+_DEFAULT_SECTIONS = {
+    "types": "Java -> Salesforce type mappings",
+    "schema": "Target SObject schema (write SOQL only against these objects/fields)",
+}
+
+
+def _prompt_sections(sections: dict | None = None) -> dict:
+    """Section headings for the system prompt. [1.56, 1.57]
+
+    Passed in, not looked up. The first version asked `pipeline.current_target()`, which
+    reads a ContextVar that is not set inside the Builder's worker threads — so it
+    silently returned the Salesforce defaults and the fix appeared to do nothing across
+    two paid runs. That is the identical mistake 1.51 fixed in `builders.py`, made again
+    here; the lesson that did not carry was *never resolve run identity from ambient
+    state when the caller already holds it*.
+    """
+    return {**_DEFAULT_SECTIONS, **(sections or {})}
+
+
+def build_system_prompt(mappings: dict, schema: dict | None,
+                        sections: dict | None = None) -> str:
     """
     Build the stable, cacheable system prompt: role + global rules + type table +
     constraints + SObject schema. Identical across every class in a repo, so it is
@@ -237,12 +288,16 @@ def build_system_prompt(mappings: dict, schema: dict | None) -> str:
         "RestResource controllers). Output pure Apex only — never Java packages, "
         "imports, or Spring annotations."
     )]
-    parts.append("\n== Java -> Salesforce type mappings ==\n" + _format_type_mappings(mappings))
+    # Named by the target, not by this function. Hardcoding "Salesforce type mappings"
+    # and "Target SObject schema (write SOQL only...)" put them in *every* pipeline's
+    # prompt — so the Adobe→Hybris system prompt forbade Apex in its own words and then
+    # demanded SOQL in ours. A real run resolved the contradiction against us and wrote
+    # `public with sharing class ... magemonk_appointment__c` into a Hybris
+    # migration. [1.56]
+    sections = _prompt_sections(sections)
+    parts.append(f"\n== {sections['types']} ==\n" + _format_type_mappings(mappings))
     parts.append("\n== Hard constraints (must always hold) ==\n" + _format_constraints(mappings))
-    parts.append(
-        "\n== Target SObject schema (write SOQL only against these objects/fields) ==\n"
-        + schema_prompt_block(schema or {})
-    )
+    parts.append(f"\n== {sections['schema']} ==\n" + schema_prompt_block(schema or {}))
     return "\n".join(parts)
 
 
@@ -332,17 +387,35 @@ def _extract_field(raw: str, field: str) -> str:
     if s.startswith("{"):
         try:
             obj = json.loads(s)
-            if isinstance(obj, dict) and isinstance(obj.get(field), str):
-                return obj[field]
+            if isinstance(obj, dict):
+                if isinstance(obj.get(field), str):
+                    return obj[field]
+                # A JSON object of some *other* shape. A real run returned
+                # `{"code": "..."}` and this fell through to the plain-text branch, so the
+                # raw JSON — braces, escaped newlines and all — was stored as the class
+                # and merged verbatim into an emitted `.java` file. The guard below
+                # existed for a truncated object and never for a differently-named one.
+                # [1.56]
+                alt = next((obj[k] for k in _CODE_KEYS
+                            if isinstance(obj.get(k), str) and obj[k].strip()), None)
+                if alt is not None:
+                    return alt
+                return ""
         except Exception:
             pass
-        if f'"{field}"' in s:      # a JSON object for this field that won't parse → give up
-            return ""
+        # Unparseable JSON. Returning it would write a brace-wrapped blob into a source
+        # file; returning nothing is a visible gap, which is the failure worth having.
+        return ""
     if "```" in s:
         blocks = re.findall(r"```(?:apex|java|cls)?\s*\n(.*?)```", s, re.DOTALL)
         if blocks:
             return blocks[0].strip()
     return s
+
+
+#: Keys a model reaches for when it answers with an object of its own design instead of
+#: the requested schema. Ordered by how unambiguously each names source code.
+_CODE_KEYS = ("code", "source", "java", "apex", "class", "content", "text")
 
 
 def _parse_generation_response(content: str) -> dict:
@@ -379,6 +452,28 @@ def _parse_generation_response(content: str) -> dict:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def _unwrap_code(value) -> str:
+    """Source, even when the model wrapped it in an object of its own design.
+
+    A field declared `"type": "string"` is honoured by returning a *string* — and a JSON
+    document is one. So `{"code": "public class A {}"}` satisfies the schema while being
+    the opposite of what the field is for.
+    """
+    s = _as_str(value).strip()
+    if not s.startswith("{"):
+        return _as_str(value)
+    try:
+        obj = json.loads(s)
+    except Exception:
+        return ""       # a brace-wrapped blob is never source; an empty field is visible
+    if not isinstance(obj, dict):
+        return ""
+    for key in _CODE_KEYS:
+        if isinstance(obj.get(key), str) and obj[key].strip():
+            return obj[key]
+    return ""
+
+
 def generate_apex(
     target: dict,
     comprehensions: dict,
@@ -388,6 +483,9 @@ def generate_apex(
     schema: dict | None = None,
     mappings: dict | None = None,
     grounding: str = "",
+    class_name: str = "",
+    prompt_sections: dict | None = None,
+    schema_text: dict | None = None,
 ) -> dict:
     """
     Generate the Apex class + test class for one target artifact.
@@ -399,6 +497,12 @@ def generate_apex(
             dict {target_name: [sigs]} (flattened for backward compatibility).
         schema: SObject schema (from schema.build_schema).
         mappings: pre-loaded mapping rules (avoids re-reading the yaml per call).
+        class_name: what to *ask* for, when that differs from the target's name. The
+            artifact is still keyed by `target_name`; only the prompt changes. On the
+            Hybris pipeline a service target is named `PricingService`, which on that
+            platform is the *interface* — so the Builder was asked for `PricingService`
+            and correctly returned an interface, while the emitter needed bodies for
+            `DefaultPricingService` and got none. [1.48]
     """
     config = _load_config()
     max_tokens = config.get("max_tokens", {}).get("generate", 4000)
@@ -417,7 +521,7 @@ def generate_apex(
 
     combined_source, combined_comp = _build_source_summary(target["source_classes"], comprehensions)
 
-    system_prompt = build_system_prompt(mappings, schema)
+    system_prompt = build_system_prompt(mappings, schema, prompt_sections)
     template = _load_prompt_template()
     user_prompt = template.format(
         comprehension_json=combined_comp,
@@ -425,7 +529,7 @@ def generate_apex(
         target_kind=apex_kind,
         layer_rules=layer_rules,
         dependency_signatures=_format_dependency_sigs(dependency_sigs),
-        target_class_name=target_name,
+        target_class_name=class_name or target_name,
     )
     if grounding:
         user_prompt += "\n\n" + grounding
@@ -453,13 +557,20 @@ def generate_apex(
         max_tokens=max_tokens,
         offline=offline,
         system_prompt=system_prompt,
-        json_schema=GENERATION_SCHEMA,
+        json_schema=generation_schema(schema_text),
         effort=effort,
     )
 
     parsed = result.get("parsed")
     if not parsed:  # defensive fallback for legacy/marker responses
         parsed = _parse_generation_response(result.get("content", ""))
+    # A structurally valid response can still carry a JSON blob *inside* a field: the
+    # model filled `main_class` with `{"code": "..."}` rather than with source. Unwrapped
+    # here, at the one point every path passes through — 1.56 fixed only the branch that
+    # parses unstructured content, so twelve of twenty artifacts still reached disk as
+    # brace-wrapped JSON with escaped newlines. [1.58]
+    parsed = {**parsed, "main_class": _unwrap_code(parsed.get("main_class")),
+              "test_class": _unwrap_code(parsed.get("test_class"))}
 
     return {
         "target_name": target_name,

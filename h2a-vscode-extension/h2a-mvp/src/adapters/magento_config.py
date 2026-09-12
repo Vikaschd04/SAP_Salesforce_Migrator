@@ -281,3 +281,68 @@ def read_db_schema(root: str) -> list:
                     "whole entity — see the EAV report (item 2.8)."),
             ))
     return types
+
+
+def read_routes(root: str) -> dict:
+    """Front names declared in `etc/*/routes.xml`, by area. [1.53]
+
+    A Magento controller's URL is not in the controller. It is assembled from three
+    things: the `frontName` declared here, the directory the class sits in, and the class
+    name — `Controller/Index/Create.php` under `frontName="appointment"` answers
+    `/appointment/index/create`. The adapter read every other `etc/` file and skipped this
+    one, so every controller arrived as a class with an `execute()` method and no hint
+    that it was an entry point at all. They were emitted as Spring services: correct Java,
+    and a Hybris developer opening one would have no way to know a URL used to reach it.
+
+    Returns `{area: {route_id: front_name}}` — `frontend` and `adminhtml` kept apart,
+    because an admin route is reached through a different mechanism on the target and
+    merging them would lose exactly the distinction that decides which.
+    """
+    base = Path(root)
+    out: dict = {}
+    for path in _files(base, "routes.xml"):
+        # `etc/frontend/routes.xml` → frontend; `etc/adminhtml/routes.xml` → adminhtml;
+        # `etc/routes.xml` → whichever the router says, defaulting to frontend.
+        area = path.parent.name if path.parent.name != "etc" else ""
+        tree = _parse(path)
+        if tree is None:
+            continue
+        for router in tree.iter("router"):
+            rid = router.get("id", "")
+            resolved = area or ("adminhtml" if rid == "admin" else "frontend")
+            for route in router.iter("route"):
+                front = route.get("frontName") or route.get("id") or ""
+                if front:
+                    out.setdefault(resolved, {})[route.get("id", front)] = front
+    return out
+
+
+def route_for(rel_path: str, routes: dict) -> dict:
+    """The URL a controller answers, from its path. `{}` when it is not a controller.
+
+    Magento's convention *is* the routing table: the directory under `Controller/` is the
+    path segment and the class name is the action, with `Index` meaning "no segment" in
+    both positions. `Controller/Adminhtml/...` is the admin area and reaches a different
+    subsystem on the target, so it is reported separately rather than folded in.
+    """
+    parts = [p for p in rel_path.replace("\\", "/").split("/") if p]
+    if "Controller" not in parts:
+        return {}
+    tail = parts[parts.index("Controller") + 1:]
+    if not tail:
+        return {}
+    area = "frontend"
+    if tail and tail[0] == "Adminhtml":
+        area, tail = "adminhtml", tail[1:]
+    if not tail:
+        return {}
+
+    action = tail[-1].removesuffix(".php")
+    segments = [s.lower() for s in tail[:-1]] or ["index"]
+    front = next(iter((routes or {}).get(area, {}).values()), "")
+
+    # `Index` is Magento's default at both levels, so `Index/Index.php` is the bare route.
+    path_parts = [p for p in segments if p != "index"] + \
+                 ([action.lower()] if action.lower() != "index" else [])
+    return {"area": area, "front_name": front, "action": action,
+            "path": "/".join([front, *path_parts]) if front else "/".join(path_parts)}

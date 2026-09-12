@@ -343,13 +343,66 @@ def identify(root: str) -> dict:
 
 
 def default_pipeline() -> Pipeline:
-    """The shipped path. What an unqualified run means."""
+    """The shipped path — Hybris → Salesforce.
+
+    **Not a fallback for a run whose identity is unknown.** Fifteen call sites once read
+    `get(pid) if pid else default_pipeline()`, which made "no pipeline pinned" mean "the
+    shipped pair" — and because `runctx.propagate` did not carry the pipeline id into
+    worker threads, *every* Adobe→Hybris comprehension, generation, critique and repair
+    took that branch. Use `active()` inside a run and `active_or_shipped()` on a surface
+    that must render a label with no run in progress. [4.6]
+    """
     for p in available():
         if p.shipped:
             return p
     if not _REGISTRY:
         raise RuntimeError("no pipelines registered")
     return available()[0]
+
+
+class NoActivePipeline(RuntimeError):
+    """No migration is in progress, so there is no pipeline to speak for."""
+
+
+def active() -> Pipeline:
+    """The pipeline this run is performing. Raises if there is no run.
+
+    Every run pins its identity — both engine paths, from the moment the orchestrator
+    resolves it (see `run_agentic_migration`). So inside a run this cannot fail, and
+    outside one it must not quietly answer "Salesforce": a report, a validator or a
+    prompt that names the wrong platform is the clearest signal a reader has that the
+    tool does not know what it just did.
+
+    The v1 path pins `hybris->salesforce` here and leaves `Blackboard.pipeline_id` empty.
+    The two carry different questions and were previously conflated: this one is *which
+    migration is this*, and that one is *which engine route writes the output*. [4.6]
+    """
+    from src import runctx
+    pid = runctx.pipeline_id()
+    if not pid:
+        raise NoActivePipeline(
+            "no migration is in progress — runctx.pipeline_id is unset. A caller inside "
+            "a run must not reach this: the orchestrator pins the id for both engine "
+            "paths. If this is a surface rendering a label outside a run, call "
+            "active_or_shipped() and say so.")
+    ensure_registered()
+    return get(pid)
+
+
+def active_or_shipped() -> Pipeline:
+    """`active()`, or the shipped pipeline when called with no run in progress.
+
+    For the handful of surfaces that legitimately render platform words outside a run —
+    a standalone report regenerated from disk, a CLI that prints a label, a unit test
+    exercising a formatter. Deliberately a *different function* from `active()` so the
+    assumption is greppable, and so a new call site inside a run cannot inherit it by
+    accident.
+    """
+    try:
+        return active()
+    except NoActivePipeline:
+        ensure_registered()
+        return default_pipeline()
 
 
 def resolve(root: str = "", pipeline_id: str = "") -> Pipeline:
@@ -398,12 +451,10 @@ def current_target():
     Threading a pipeline id down to them would mean changing signatures that have nothing
     else to do with platforms.
     """
-    from src import runctx
-    pid = runctx.pipeline_id()
-    if not pid:
+    try:
+        return active().target
+    except NoActivePipeline:
         return None
-    ensure_registered()
-    return get(pid).target
 
 
 def validate_artifact(code: str, filename: str, schema: dict,

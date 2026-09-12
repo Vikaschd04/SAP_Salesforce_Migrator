@@ -17,10 +17,9 @@ def _pipeline_words() -> dict:
     cosmetic problem: it is the first thing a stakeholder reads.
     """
     try:
-        from src import pipeline, runctx
+        from src import pipeline
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         src_lang = getattr(p.source, "code_language", "code")
         tgt_lang = getattr(p.target, "code_language", "code")
         return {
@@ -531,8 +530,15 @@ def generate_report(output_dir: str, validation_results: dict = None,
                 sections.append(f"{i}. **{target_name}**: {notes}")
             else:
                 layer = gen.get("layer", "Utility")
+                # `_pattern_for` has existed for both platforms since the second
+                # pipeline landed, and this one line never called it — so an
+                # Adobe→Hybris feasibility report said its DAO became an "Apex Selector
+                # Pattern" and its controller an "Apex REST Resource (@RestResource)".
+                # The table was made pipeline-aware and one of its readers was
+                # missed. [1.63]
                 sections.append(
-                    f"{i}. **{target_name}**: Translated from {layer} layer to Apex {_LAYER_PATTERNS.get(layer, 'class')}."
+                    f"{i}. **{target_name}**: Translated from {layer} layer to "
+                    f"{_w.get('target_lang', 'Apex')} {_pattern_for(layer, _w)}."
                 )
     else:
         sections.append("_(No mapping decisions recorded)_")

@@ -45,6 +45,64 @@ class HybrisTarget:
     #: No free compile oracle. See the module docstring — this is honest, not pending.
     has_oracle = False
     code_language = "Java"
+    #: See `SalesforceTarget.retrieval_terms`. These name what the Adobe→Hybris
+    #: pack actually documents: the type system, the query language, the two hook
+    #: mechanisms and the scheduler. [1.48]
+    def contract_for(self, plan_item, source_units: list) -> str:
+        """What the emitter will write for this target, for the Builder's prompt.
+
+        On the adapter because it is knowledge about *this platform's* class shapes,
+        and the Builder must stay ignorant of which platform it is building for.
+        [1.51]
+        """
+        methods = []
+        for u in source_units or []:
+            methods += list(getattr(u, "methods", None) or [])
+        return target_contract(getattr(plan_item, "kind", ""),
+                               getattr(plan_item, "target_name", ""), methods)
+
+    #: See `SalesforceTarget.prompt_sections`. This pipeline's target has item types and
+    #: FlexibleSearch, not SObjects and SOQL, and saying so is the difference between a
+    #: prompt that contradicts itself and one that does not. [1.56]
+    #: See `SalesforceTarget.schema_text`. This target's artifacts are Java classes and
+    #: JUnit tests, and saying "Apex" here asked for Apex however firmly the system
+    #: prompt forbade it. [1.58]
+    schema_text = {
+        "main_class": "Complete Java class source for a SAP Hybris extension. "
+                      "Never Apex: no SOQL, no `with sharing`, no `__c` suffixes.",
+        "test_class": "Complete JUnit test class source (de.hybris.platform tests).",
+        "refs": "Item types from items.xml referenced by the main class.",
+    }
+    prompt_sections = {
+        "types": "PHP -> Java type mappings",
+        "schema": "Item types declared in items.xml (query these with FlexibleSearch)",
+    }
+    retrieval_terms = ("hybris service layer spring bean flexiblesearch interceptor "
+                       "decorator cronjob performable items.xml model impex")
+    #: See `SalesforceTarget.code_extension`.
+    code_extension = ".java"
+    #: See `SalesforceTarget.output_globs`. An extension is assembled under
+    #: `hybris/bin/custom/<extension>/src/...`, which `emit` owns.
+    output_globs = ("hybris/bin/custom/**/*.java",)
+    #: See `SalesforceTarget.strengthens_tests`. There is no JUnit equivalent of that
+    #: strengthener yet, and an Apex one is worse than none: it would spend real money to
+    #: produce tests this platform cannot run. Declared False rather than left undefined
+    #: so the skip is a decision with a reason, and the run says so out loud.
+    strengthens_tests = False
+    #: See `SalesforceTarget.review_criteria`. These are the things that actually go
+    #: wrong in a generated SAP Commerce extension — the ones a compiler would catch are
+    #: `java_static_check`'s job, so the model is asked about the ones it would not.
+    review_criteria = (
+        "  2. PLATFORM — extends the right platform base class, uses the injected\n"
+        "     ModelService/FlexibleSearchService rather than constructing them, and\n"
+        "     touches no Salesforce construct (no SOQL, no `with sharing`, no `__c`)\n"
+        "  3. SERVICE LAYER — the service holds logic and the DAO holds queries; Spring\n"
+        "     dependencies are injected, not looked up; the class is stateless\n"
+        "  4. QUERIES — no FlexibleSearch inside a loop, results are bounded, and every\n"
+        "     itemtype and attribute named is one items.xml actually declares")
+    #: See `SalesforceTarget.review_terms`.
+    review_terms = ("flexiblesearch modelservice service layer spring injection "
+                    "interceptor decorator transaction review")
 
     #: Nothing to query before generating — an extension is built from source. [1.33]
     has_org = False
@@ -64,7 +122,8 @@ class HybrisTarget:
         from src.ir import SourceUnit
         units = [u if hasattr(u, "name") else SourceUnit.from_dict(u)
                  for u in (units or [])]
-        return plan_targets(units, (config or {}).get("wiring"))
+        return plan_targets(units, (config or {}).get("wiring"),
+                            (config or {}).get("routes"))
 
     def schema(self, item_types: list, relations: list, enum_types: list) -> dict:
         """The `items.xml` type model, in the shape everything downstream reads. [1.33]
@@ -152,12 +211,21 @@ class HybrisTarget:
                 "source_classes": list(getattr(item, "source_classes", []) or []),
             })
 
+        # The Builder's Java, keyed the way the plan names targets. `emit()` has always
+        # received these and, until 1.48, passed none of them on. [1.48]
+        generated = {}
+        for a in artifacts or []:
+            row = a if isinstance(a, dict) else getattr(a, "to_generated_dict", dict)()
+            if row.get("target_name") and row.get("main_class"):
+                generated[row["target_name"]] = row["main_class"]
+
         result = emit_extension(
             output_dir,
             name=cfg.get("extension_name", "migrated"),
             package=cfg.get("package", "com.migrated"),
             source_model=source_model,
             targets=plan_rows,
+            generated=generated,
         )
         # Kept for the caller: what was written, what was planned and deliberately not
         # written, and how strongly the result was checked.
@@ -169,11 +237,47 @@ class HybrisTarget:
 
         The strongest check available without a licensed platform, and it says so: a type
         mismatch or a missing override needs real type checking, which is rung 3.11.
+
+        **What counts as resolvable, and why the caller has to say.** A generated class is
+        checked on its own, so its siblings in the same migration are invisible to it —
+        `AcmeLoyaltyServiceTest` names `AcmeLoyaltyService`, which this run emits and no
+        classpath here knows about. `emitted_types` is how the caller supplies that, and
+        for three items nothing ever did: every call site passed `(code, filename, schema)`
+        and let `config` default to `{}`. The result was one fabricated
+        `unresolved_type` ERROR per test class, which the Critic escalated into a
+        frontier-model repair round against a type that was never missing, and which left
+        every artifact `needs_review`. It was invisible only because the *other* defect —
+        the pipeline id not reaching worker threads — meant the Apex validator ran here
+        instead. [4.6]
+
+        Model types are derived from `schema` rather than asked for: this target's schema
+        *is* the items.xml type set, so `{code}Model` is already known from a parameter the
+        protocol passes on every call. `items_xml` stays accepted for the emit-time caller
+        that has the real file.
+
+        Deliberately a *superset* where it is uncertain — a service target `PricingService`
+        is emitted as both the interface and `DefaultPricingService`, and this cannot see
+        which the emitter chose. Over-including risks missing a genuinely absent type;
+        under-including invents errors about types that are right there. The authoritative
+        answer is `check_tree`, which reads the whole emitted extension after it is
+        written and has no need to guess — so the permissive choice here is covered, and
+        the strict one would not be.
         """
         from src.adapters.java_static_check import check
-        return check(code, filename,
-                     emitted=(config or {}).get("emitted_types"),
-                     items_xml=(config or {}).get("items_xml", ""))
+
+        cfg = config or {}
+        emitted = set(cfg.get("emitted_types") or set())
+        for name in (cfg.get("planned_targets") or []):
+            if not name:
+                continue
+            emitted.add(name)
+            emitted.add(f"Default{name}")
+        for spec in (schema or {}).values():
+            code_name = (spec or {}).get("code") if isinstance(spec, dict) else ""
+            if code_name:
+                emitted.add(f"{code_name}Model")
+        return check(code, filename, emitted=emitted,
+                     items_xml=cfg.get("items_xml", ""))
 
     def verify(self, request, config: dict, log=print) -> dict:
         """No oracle yet. Reports that plainly rather than claiming a clean verification."""
@@ -227,3 +331,91 @@ class HybrisTarget:
         raise NotImplementedYet("Bridging reshaped calls onto Java", "3.11")
 
 ADAPTER = HybrisTarget()
+
+
+def target_contract(kind: str, target_name: str, source_methods: list) -> str:
+    """The class and methods the emitter will write, told to the Builder. [1.51]
+
+    The merge that lands generated logic in the emitted file is keyed by method name, and
+    for three runs it matched almost nothing — because nobody had told the model what to
+    name anything. It was asked to migrate a PHP class and left to guess the target's
+    shape, so a job came back with `execute`, a listener with `perform`, an interceptor
+    with `onValidate` where the emitter had derived `onPrepare`. Real logic, written well,
+    discarded on arrival for wearing the wrong name.
+
+    Guessing was never the model's job. The emitter *knows* the answer — it is about to
+    write the file — and had simply never said so. Everything below is derived from the
+    same helpers the emitters call, so the contract cannot drift from what is emitted.
+    """
+    from src.adapters import hybris_hooks
+    from src.adapters.hybris_plan import (CONTROLLER, DECORATOR, EVENT_LISTENER,
+                                          INTERCEPTOR, JOB, SERVICE)
+    from src.adapters.hybris_service import _camel
+
+    names = [getattr(m, "name", "") for m in (source_methods or [])
+             if getattr(m, "name", "")]
+
+    if kind == JOB:
+        body = [f"- Write `public class {target_name} extends "
+                "AbstractJobPerformable<CronJobModel>`.",
+                "- Put the logic in `public PerformResult perform(final CronJobModel "
+                "cronJob)`. That is the platform's entry point and the only method that "
+                "runs; a method named after the PHP one will never be called.",
+                "- Return `new PerformResult(CronJobResult.SUCCESS, "
+                "CronJobStatus.FINISHED)` on success."]
+    elif kind == EVENT_LISTENER:
+        body = [f"- Write `public class {target_name} extends AbstractEventListener<E>`, "
+                "where `E` is the event type.",
+                "- Put the logic in `protected void onEvent(final E event)`. That is the "
+                "platform's entry point — a method named after the PHP observer will "
+                "never be called."]
+    elif kind == INTERCEPTOR:
+        # Derived by the same function the emitter uses, from the same method names, so
+        # the contract cannot name a hook the emitted class does not declare.
+        shim = type("U", (), {"methods": list(source_methods or [])})()
+        hook = hybris_hooks.interceptor_hook(shim)
+        kindname = hybris_hooks._interceptor_shape(shim)[0]
+        body = [f"- Write `public class {target_name} implements {kindname}`.",
+                f"- Put the logic in `public void {hook}(final Object model, final "
+                "InterceptorContext ctx) throws InterceptorException`.",
+                f"- Use `{hook}` and no other hook. Which one this is was derived from "
+                "the plugin's own prefix; moving logic to a different hook changes when "
+                "it runs and whether it can reject the model."]
+    elif kind == DECORATOR:
+        emitted = [hybris_hooks.wrapped_method(n) for n in names]
+        body = [f"- Write `public class {target_name}`.",
+                "- One method per plugin method, named exactly: "
+                + (", ".join(f"`{e}`" for e in emitted) or "(none)") + ".",
+                "- Each takes `(final Object... args)` and returns `Object`."]
+    elif kind == CONTROLLER:
+        body = [f"- Write `public class {target_name}` — an OCC REST controller.",
+                "- One method, named for the action, taking "
+                "`(@PathVariable String baseSiteId, @RequestParam String code)` and "
+                "returning the `WsDTO` named in the file.",
+                "- The route, the HTTP verb and the class name are already decided and "
+                "written; do not restate them.",
+                "- Translate what the Magento action *did* — the reads, the writes, the "
+                "validation. It ended by rendering a page, and this returns a DTO "
+                "instead: map what the page would have shown, and say in a comment where "
+                "you had to choose."]
+    elif kind == SERVICE:
+        emitted = [_camel(n) for n in names]
+        body = [f"- Write the **implementation**, `public class {target_name}`. The "
+                "interface is derived from the source and you do not need to write it.",
+                "- Implement exactly these methods: "
+                + (", ".join(f"`{e}`" for e in emitted) or "(none)") + ".",
+                "- Keep the parameter order; the types are fixed by the interface."]
+    else:
+        return ""
+
+    return "\n".join([
+        "## The class this becomes",
+        "",
+        "The migration writes this file and merges your method bodies into it **by "
+        "method name**. A body under a name that is not listed here is discarded — not "
+        "because it is wrong, but because there is nowhere for it to go.",
+        "", *body,
+        "",
+        "Anything you cannot migrate faithfully: say so in a comment and leave the "
+        "method unfinished. An honest gap is reviewable; an invented one is not.",
+    ])

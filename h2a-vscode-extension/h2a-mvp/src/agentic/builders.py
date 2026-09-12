@@ -25,11 +25,10 @@ def _derived_queries(source_classes: list) -> str:
     """
     try:
         from src.adapters.hybris_flexsearch import grounding_for
-        from src import pipeline, runctx
+        from src import pipeline
 
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         if p.source_platform != "hybris":
             return ""
         return grounding_for([c.get("source", "") for c in (source_classes or [])])
@@ -45,12 +44,11 @@ def _transaction_shapes(source_classes: list) -> str:
     and the second is the common shape.
     """
     try:
-        from src import pipeline, runctx
+        from src import pipeline
         from src.adapters.java_transactions import grounding_for
 
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         if p.source_platform != "hybris":
             return ""
         return grounding_for([c.get("source", "") for c in (source_classes or [])])
@@ -64,8 +62,19 @@ def _data_model_notes(bb) -> str:
     Generated code that quietly picks a value for an unknown enum, or treats a suspected
     foreign key as a number, is a guess wearing the same clothes as a fact. Telling the
     model which calls are open is cheaper than reviewing what it invented.
+
+    Gated on the source platform like the three helpers above it. This was the one Adobe
+    Commerce module reachable from shared code with no gate — inert on the other pipeline
+    only because `bb.modelling` is filled on the Adobe path alone, which is a fact about
+    the orchestrator rather than a decision made here. The symmetry matters more than the
+    behaviour: a reader checking whether Magento logic can reach a Salesforce run should
+    find the answer in the function, not three files away. [4.6]
     """
     try:
+        from src import pipeline
+
+        if pipeline.active_or_shipped().source_platform != "adobe-commerce":
+            return ""
         from src.adapters.magento_modelling import grounding_for
         return grounding_for(getattr(bb, "modelling", None) or [])
     except Exception:
@@ -80,12 +89,11 @@ def _rest_shapes(source_classes: list) -> str:
     becomes a `urlMapping` that never matches, which does.
     """
     try:
-        from src import pipeline, runctx
+        from src import pipeline
         from src.adapters.rest_surface import grounding_for
 
         pipeline.ensure_registered()
-        pid = runctx.pipeline_id()
-        p = pipeline.get(pid) if pid else pipeline.default_pipeline()
+        p = pipeline.active_or_shipped()
         if p.source_platform != "hybris":
             return ""
         return grounding_for([c.get("source", "") for c in (source_classes or [])])
@@ -106,6 +114,51 @@ def _angular_gaps(component: dict) -> str:
     return grounding_for(component)
 
 
+#: What the Builder searched for before the target was asked. Now only reachable outside
+#: a run, since every run pins a pipeline and every target declares its own terms —
+#: losing these silently shrank the shipped migration's prompt by ~500 tokens a call,
+#: which the golden baseline caught. [1.48]
+_LEGACY_TERMS = "apex fflib governor limits SOQL DML security bulkification testing"
+
+
+def _target_of(bb):
+    """The target adapter for this run.
+
+    Reads the run context, not the Blackboard. It read the Blackboard because
+    `pipeline.current_target()` used to return None on the v1 path — where the Builder
+    still runs and still needs its terms — and because `runctx` did not survive the worker
+    threads the Builder runs on. Both are now fixed: every run pins its identity on both
+    engine paths, and `propagate` carries it. Two notions of "which migration is this",
+    one of which was empty on a live path, is how the fallbacks below came to exist.
+
+    The v1 path is unchanged and checked, not assumed: `salesforce_target`'s
+    `retrieval_terms`, `prompt_sections` and `schema_text` are byte-identical to the
+    defaults this returned None to select, and the golden baseline asserts the shipped
+    prompt is unchanged to the byte. [4.6]
+
+    `bb` is kept in the signature: the caller has it, and a target resolved per-run rather
+    than per-call is the next thing to want here.
+    """
+    try:
+        from src import pipeline
+        return pipeline.active().target
+    except Exception:
+        return None
+
+
+def _target_extension() -> str:
+    """The running target's source-file extension. [4.6]
+
+    `.cls` outside a run, which is what this was hardcoded to and what the shipped
+    pipeline uses — so the v1 path and the golden baseline are unchanged.
+    """
+    try:
+        from src import pipeline
+        return getattr(pipeline.active().target, "code_extension", ".cls")
+    except Exception:
+        return ".cls"
+
+
 class BuilderAgent:
     """Generates one target's Apex, then repairs objective (governor/schema) issues."""
     name = "Builder"
@@ -121,21 +174,61 @@ class BuilderAgent:
             rules = []
             for c in plan_item.source_classes:
                 rules += bb.comprehensions.get(c.get("class_name", ""), {}).get("business_rules", []) or []
+            # The retriever reads the *pipeline's* pack, so on Adobe→Hybris the shelf is
+            # already Hybris documents — but the query was Apex vocabulary and the heading
+            # said "Salesforce reference (use these facts, don't invent APIs)". A model
+            # writing Java was handed the worst matches on a Java shelf and told they were
+            # authoritative Salesforce. Both halves now come from the target. [1.48]
+            _t = _target_of(bb)
+            _terms = getattr(_t, "retrieval_terms", "") or _LEGACY_TERMS
+            _platform = (getattr(_t, "label", "") or "").split(" (")[0] if _t else ""
+            # Spaced exactly as the hardcoded string was, so a pipeline whose terms are
+            # unchanged sends a byte-identical prompt and the shipped baseline holds.
             grounding = retriever.grounding_block(
-                f"{plan_item.apex_pattern} apex fflib governor limits SOQL DML security "
-                f"bulkification testing {' '.join(rules)}")
+                f"{plan_item.kind or plan_item.apex_pattern} {_terms} "
+                f"{' '.join(rules)}",
+                **({"label": f"{_platform} reference (retrieved — use these facts, "
+                             "don't invent APIs)"} if _platform else {}))
+
+        # What the emitter is about to write. The merge is keyed by method name, and for
+        # three runs it matched almost nothing because the model had never been told what
+        # to call anything — a job came back with `execute`, a listener with `perform`.
+        # Good logic, discarded on arrival for wearing the wrong name. The emitter knew
+        # the answer the whole time. [1.51]
+        contract = ""
+        _t = _target_of(bb)
+        if _t is not None and hasattr(_t, "contract_for"):
+            wanted = {c.get("class_name", "") for c in plan_item.source_classes}
+            units = [u for u in (getattr(bb.source_model, "units", None) or [])
+                     if getattr(u, "name", "") in wanted]
+            try:
+                contract = _t.contract_for(plan_item, units)
+            except Exception:
+                contract = ""      # a prompt improvement must never fail a build
 
         # Queries this target's own source contains, already translated. Derived, not
         # generated — and a query that can be derived should never be generated. [1.23b]
-        for block in (_derived_queries(plan_item.source_classes),
+        for block in (contract,
+                      _derived_queries(plan_item.source_classes),
                       _transaction_shapes(plan_item.source_classes),
                       _rest_shapes(plan_item.source_classes),
                       _data_model_notes(bb)):
             if block:
                 grounding = (grounding + "\n\n" + block) if grounding else block
+        # A Hybris service target is named for its *interface* — `PricingService` — and
+        # asking a model to write `PricingService` gets an interface, which is exactly
+        # what the first real run produced: a correct artifact of the wrong kind, with no
+        # method bodies for the emitter to merge. The interface is derived from the source
+        # anyway; what nobody can derive is the logic, so ask for the class that holds
+        # it. The artifact stays keyed by `target_name`. [1.48]
+        ask_for = ""
+        if getattr(plan_item, "kind", "") == "service":
+            ask_for = f"Default{plan_item.target_name}"
         gen = generate_apex(target, bb.comprehensions, scoped_sigs,
                             offline=bb.offline, schema=bb.schema, mappings=mappings,
-                            grounding=grounding)
+                            grounding=grounding, class_name=ask_for,
+                            prompt_sections=getattr(_t, "prompt_sections", None),
+                            schema_text=getattr(_t, "schema_text", None))
 
         rules = []
         for c in plan_item.source_classes:
@@ -155,7 +248,8 @@ class BuilderAgent:
                              "source": c.get("source", "")} for c in plan_item.source_classes],
             status="generated",
         )
-        self._repair_objective(art, bb.schema, max_repair, scoped_sigs, bb.offline, log)
+        self._repair_objective(art, bb.schema, max_repair, scoped_sigs, bb.offline, log,
+                               context=bb.validation_context())
 
         # Completeness policy: a native-product fit never suppresses conversion — the
         # logic is fully built above; here we only flag it for human review.
@@ -194,17 +288,28 @@ class BuilderAgent:
             status="generated",
         )
 
-    def _repair_objective(self, art, schema, max_repair, sigs, offline, log) -> None:
+    def _repair_objective(self, art, schema, max_repair, sigs, offline, log,
+                          *, context: dict | None = None) -> None:
+        """Repair what the target's own objective validator objects to.
+
+        Two things here used to be the shipped pipeline's rather than the running one's,
+        and both cost real money on the other pipeline: the `.cls` extension, and a
+        `context` nobody passed. Without the context the Hybris checker reported this
+        migration's own sibling classes as unresolved types, and this loop then spent up
+        to `max_repair` frontier-model calls per artifact trying to repair them. [4.6]
+        """
+        ext = _target_extension()
+        ctx = context or {}
         for field_name in ("main_class", "test_class"):
             is_test = field_name == "test_class"
-            filename = f"{art.target_name}{'Test' if is_test else ''}.cls"
+            filename = f"{art.target_name}{'Test' if is_test else ''}{ext}"
             code = getattr(art, field_name)
-            issues = validate_artifact(code, filename, schema)
+            issues = validate_artifact(code, filename, schema, ctx)
             attempt = 1
             while issues and attempt <= max_repair:
                 repaired = repair(code, issues, attempt=attempt, offline=offline,
                                   signatures=sigs, schema=schema)
-                new_issues = validate_artifact(repaired, filename, schema)
+                new_issues = validate_artifact(repaired, filename, schema, ctx)
                 if not new_issues or len(new_issues) < len(issues):
                     code, issues = repaired, new_issues
                 attempt += 1
