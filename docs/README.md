@@ -40,6 +40,7 @@ This folder is the single home for every project document.
 | **Deploy the web platform** | [DEPLOY_RENDER.md](DEPLOY_RENDER.md) |
 | **Know what's shipped vs still open** | [ROADMAP.md](ROADMAP.md) · [ROADMAP_INDUSTRIAL.md](ROADMAP_INDUSTRIAL.md) |
 | **Understand how one engine runs two migrations** | [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md) |
+| **Decide whether to add SAP Hybris → Shopify** (a proposal, not built) | [SHOPIFY_BRIEF.md](SHOPIFY_BRIEF.md) in plain English · [SHOPIFY_DECK.pptx](SHOPIFY_DECK.pptx), five slides · [SHOPIFY_FEASIBILITY.md](SHOPIFY_FEASIBILITY.md), the technical design |
 | **Run or verify the v2 engine** | [V2_ENGINE.md](V2_ENGINE.md) |
 | **See what is built and what is next, task by task** | [V2_DELIVERY_PLAN.md](V2_DELIVERY_PLAN.md) |
 | **Understand where a plausible-looking conversion is silently wrong** | [EDGE_CASES.md](EDGE_CASES.md) |
@@ -107,6 +108,8 @@ recording who approved what — including, prominently, whatever it could not pr
 | [V2_DELIVERY_PLAN.md](V2_DELIVERY_PLAN.md) | **The build sheet** — every phase broken into work items, with current status, what "done" means, and how each is checked |
 | [V2_ENGINE.md](V2_ENGINE.md) | **Running the v2 engine** — how to select a version, and the three tests that prove v1 is untouched |
 | [ROADMAP_MULTI_PLATFORM.md](ROADMAP_MULTI_PLATFORM.md) | **Two Pipelines, One Engine** — the scope-locked build plan for Adobe Commerce → SAP Hybris alongside Hybris → Salesforce: the adapter architecture, six testable correctness gates, four efficiency budgets, and how the shipped pipeline is protected |
+| [SHOPIFY_FEASIBILITY.md](SHOPIFY_FEASIBILITY.md) | **SAP Hybris → Shopify, proposed** — feasibility and technical design for a third pipeline: what Shopify can and cannot host, where each Hybris capability lands, verification, build options, risks and an estimate. Reverses the two-pipeline scope lock if adopted; a stakeholder decision, not a plan of record |
+| [SHOPIFY_BRIEF.md](SHOPIFY_BRIEF.md) · `SHOPIFY_DECK.pptx` | The same proposal **in plain English**, and as a five-slide deck: can it be done, how confident we can be, whether it is a good idea, and the three decisions needed |
 
 ### Regenerating the artifacts
 | Script | Regenerates |
