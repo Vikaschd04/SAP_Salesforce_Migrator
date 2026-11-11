@@ -614,8 +614,13 @@ async def api_report(run_id: str, name: str):
 
 @app.get("/api/runs/{run_id}/diff")
 async def api_diff(run_id: str, target: str):
-    """Original source (Java/Angular) paired with the generated Apex/LWC for one target,
-    for the side-by-side Monaco diff review."""
+    """Original source paired with the generated code for one target, for the
+    side-by-side Monaco diff review.
+
+    For a target whose generated body the emitter refused (see `java_bodies.plan_merge`),
+    `generated` is still the model's class: this view is where a reviewer reads the logic
+    the emitted stub says was left out.
+    """
     run = get_run(run_id)
     if not run:
         raise HTTPException(404, "run not found")
@@ -633,8 +638,20 @@ async def api_diff(run_id: str, target: str):
     else:
         generated = art.main_class
         right_lang = "java"          # Apex highlights well as Java in Monaco
+    # The source pane is highlighted in the *source* platform's language. It was hardcoded
+    # Java, so an Adobe Commerce run showed PHP coloured as Java in the one view a reviewer
+    # opens to compare the two. [4.8]
+    left_lang = "java"
+    try:
+        from src import pipeline as _pipeline
+        _pipeline.ensure_registered()
+        _pid = getattr(run, "pipeline", "") or getattr(bb, "pipeline_id", "")
+        if _pid and getattr(_pipeline.get(_pid).source, "code_language", "") == "PHP":
+            left_lang = "php"
+    except Exception:
+        pass                          # highlighting must never fail a review
     return {"target": target, "is_lwc": art.is_lwc, "source": source, "generated": generated,
-            "left_lang": "java", "right_lang": right_lang,
+            "left_lang": left_lang, "right_lang": right_lang,
             "targets": [a.target_name for a in bb.artifacts]}
 
 

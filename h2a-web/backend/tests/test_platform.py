@@ -363,3 +363,32 @@ def test_cancelling_at_a_gate_does_not_look_like_an_approval(fresh, tmp_path):
     run.request_cancel()
     assert run._gate_decision["action"] == "cancelled"
     assert _await(run) == "cancelled"
+
+
+def test_the_diff_view_shows_each_side_in_its_own_language(monkeypatch):
+    """The side-by-side review highlighted the source as Java for every run. [4.8]
+
+    On an Adobe Commerce run that put PHP in Java colours in the one view a reviewer opens
+    to compare the two — and it is the view the cockpit guide points to for reading a body
+    the emitter refused. The generated side stays the model's class, because that is the
+    logic the refused stub says was left out.
+    """
+    from types import SimpleNamespace as NS
+
+    from fastapi.testclient import TestClient
+
+    import app as backend
+    import run_manager
+
+    art = NS(target_name="AppointmentCreateController", is_lwc=False, lwc_bundle=None,
+             main_class="public class Refused { }",
+             source_classes=[{"class_name": "Create", "layer": "Controller",
+                              "source": "<?php class Create {}"}])
+    for pid, want in (("adobe->hybris", "php"), ("hybris->salesforce", "java")):
+        run = NS(pipeline=pid, bb=NS(artifacts=[art], pipeline_id=pid))
+        monkeypatch.setitem(run_manager._runs, "r-diff-lang", run)
+        got = TestClient(backend.app).get("/api/runs/r-diff-lang/diff",
+                                          params={"target": art.target_name})
+        assert got.status_code == 200, got.text
+        assert got.json()["left_lang"] == want, pid
+        assert got.json()["generated"] == "public class Refused { }"

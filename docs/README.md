@@ -120,10 +120,10 @@ recording who approved what — including, prominently, whatever it could not pr
 
 | Folder | What it is |
 |---|---|
-| `h2a-mvp/` | **The engine** — the Python pipeline that does the actual work, both pipelines and the adapters between them. 1,109 tests. |
-| `h2a-web/` | **The web platform** — FastAPI backend + React cockpit, with accounts, per-tenant keys, a run queue and durable history. 45 tests. |
-| `h2a-vscode-extension/` | **The VS Code extension** — bundles a synced copy of the engine, so it is self-contained |
-| `Testing/` | Three sample estates: `acme-commerce-hybris` (SAP Commerce), `acme-commerce-magento` (a single Magento module, the fast regression fixture) and `acme-commerce-magento-full` (an industry-scale three-module Adobe Commerce suite), plus a deterministic capability tour |
+| `h2a-mvp/` | **The engine** — the Python pipeline that does the actual work, both pipelines and the adapters between them. 1,349 tests. |
+| `h2a-web/` | **The web platform** — FastAPI backend + React cockpit, with accounts, per-tenant keys, a run queue and durable history. 88 tests. |
+| `h2a-vscode-extension/` | **The VS Code extension** — bundles a copy of the engine, so it is self-contained. The bundled copy wins over any workspace engine, so it must be re-synced after engine changes; left alone it once drifted 128 paths behind |
+| `Testing/` | Five sample estates: `acme-commerce-hybris` (SAP Commerce), `acme-commerce-magento` (a single Magento module, the fast regression fixture), `acme-commerce-magento-full` (an industry-scale three-module Adobe Commerce suite), `appointment-magento` (a real open-source Magento module, 24 PHP files) and `appointment-demo` (8 files from it, unmodified, for a short demo run that exercises every part of the Adobe pipeline — including a storefront controller, which the regression fixture has none of) — plus a deterministic capability tour |
 
 ## Quick start
 

@@ -8,14 +8,18 @@ checked. Status is current, not aspirational.
 
 ## Where we are
 
+*Updated 2026-11-11, from the phase sections below. This table had not moved since Phase 1
+was in progress, and read "not started" against phases whose every item was struck through.*
+
 | Phase | | Status |
 |---|---|---|
-| **0** | Real-provider validation | ⛔ **Blocked — needs a provider key** |
-| **1** | The seam | 🔶 **~80% — seams for plan/emit/validate, knowledge packs, the purity ratchet, and a second pipeline registered** |
-| **2** | Adobe Commerce source adapter | ⏳ Not started |
-| **3** | SAP Hybris target adapter + oracle | ⏳ Not started |
-| **4** | Two-pipeline product surface | ⏳ Not started |
-| **5** | Scale hardening | ⏳ Not started |
+| **0** | Real-provider validation | ✅ **Run** — real-model runs on both pipelines; found the emitter discarding every generated body |
+| **1** | The seam | ✅ **Complete** |
+| **1.5** | Edge-case hardening | 🔶 **All but two** — 1.20b (shape ceilings) and 1.29 (dead-code flagging) open; 1.22 dropped |
+| **2** | Adobe Commerce source adapter | ✅ **Complete** — 2.1–2.14, with 2.13 dropped by decision |
+| **3** | SAP Hybris target adapter + oracle | 🔶 **Adapter complete; oracle to `typechecked`** — 3.11–3.12 wait for a licensed SAP platform |
+| **4** | Two-pipeline product surface | ✅ **Complete** — including the isolation audit (4.7) and the body-merge gate (4.8) |
+| **5** | Scale hardening | ⏳ **Not started — the next phase** |
 
 Two v1 bugs were found while building Phase 1 and fixed on `main` first, because they cost
 money on the shipped pipeline: the recipe hash was non-deterministic across processes (so
@@ -330,7 +334,9 @@ accounted for, and the sign-off distinguishes *statically checked* from *compile
 | ~~4.4~~ | ✅ **Reports name the pipeline that ran** | Source adapters gained `code_language` to match the targets', and `provenance`, `alignment` and `signoff` derive both. On the shipped pipeline the text renders *identically* — the only golden change was "the original JUnit suite" → "test suite", since PHPUnit is the Adobe equivalent. **The purity ratchet is now empty**: every assurance module is platform-neutral, and adding vocabulary back fails CI. |
 | ~~4.5~~ | ✅ **All three surfaces expose the choice** | CLI `--pipeline`, a new `identify` command, and an `h2aMigrator.pipeline` setting. The default everywhere is **detection**, because there is one valid answer for almost every codebase and a source/target dropdown would mostly offer invalid pairs. `identify` returns three exit codes — 0 runnable, 1 unrecognised, 2 recognised-but-not-yet — so a script can act on the difference rather than parsing prose. An explicit choice that contradicts detection is obeyed *and* said out loud, because the likeliest cause is a wrong flag. |
 | ~~4.1b~~ | ✅ **The cockpit redesigned around the choice** | Renamed **Portage**, new mark (a crossing, not an "A" for Apex). The landing is now identify-then-choose: the source is inspected before anything is committed, what it *is* is shown, and the destinations on offer come from the engine — each card carrying whether a run to it could be compile-verified or only statically checked. Same tokens and palette throughout. |
-| 4.6 | Docs, decks and COCKPIT_GUIDE updated | Both pipelines documented |
+| ~~4.6~~ | ✅ **Docs, decks and COCKPIT_GUIDE updated** | Done 2026-09-04 (`4d9534d`). Its row was filed in the Phase 1.5 table, which is why this one stayed open for two months. |
+| ~~4.7~~ | ✅ **The two migrations made independent execution paths** — `7d34b9d`, `7687ba1` | The pipeline id did not survive the thread boundary: `runctx.propagate` carried provider, model and credential into pool workers and silently dropped `pipeline_id` and `cost_cap`, and nineteen call sites read the missing id as "the shipped pair". Inside every Adobe→Hybris worker the Salesforce pack supplied the prompts, the Apex validator judged generated Java, and the per-run spend cap was not enforced. Also: the Critic was hardcoded Apex for both pipelines; the user's explicit selection was overridden by detection; the linear engine ingested 0 classes from PHP and reported a clean, empty run. Fixed at the root, with a 26-test isolation ratchet and the vendored extension engine re-synced. *Committed under the tag `[4.6]`, which was already taken — a numbering slip, recorded here so the history stays traceable.* |
+| ~~4.8~~ | ✅ **A lifted body is emitted only if it is Java and fits its signature** — `e61f040` | The first real Adobe run emitted a controller holding a JSON blob with a Salesforce Apex class inside it, and a body reading `records` under a signature declaring `baseSiteId, code`. Every lifted body and helper must now parse, and emitters with platform-derived signatures declare a contract the body must fit; a refused body is named in the file, not dropped. The demo corpus's extension went from three `javac` errors to `typechecked`. The golden Adobe corpus has **no controllers**, which is how this survived every test. *Committed under the tag `[4.7]`.* |
 
 **Exit:** either pipeline runs from one instance; neither knows about the other.
 **Estimate:** 2–3 weeks.

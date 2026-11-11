@@ -225,7 +225,7 @@ input class: converted, flagged, skipped (with a reason), or — loudly — unac
 
 ## Demoing Adobe Commerce → SAP Hybris instead
 
-Everything above holds, with four visible differences. Say them before someone asks.
+Everything above holds, with six visible differences. Say them before someone asks.
 
 | What changes | Why | The line to say |
 |---|---|---|
@@ -233,6 +233,8 @@ Everything above holds, with four visible differences. Say them before someone a
 | **No Flow scaffolds** | Flows are a Salesforce construct. Magento also has no business-process definitions, so there is nothing to convert *into* one — that is a fact about the source, and the run says so rather than leaving a gap. | *"Magento has no process definitions. We report that we looked, rather than silently finding nothing."* |
 | **Different hazards** | The radar reads the source's own habits: `around` plugins that can skip the original, observers mutating the shared event payload, EAV attributes that exist only in the database. | *"These are Magento habits that become problems on Hybris. Different platform, different landmines."* |
 | **"Type-checked", not "deploy-verified"** | SAP lends no hosted compiler. The output is compiled by a real compiler against a declared stand-in for the platform, which catches signatures and imports — and cannot catch a stand-in that is itself wrong. | *"We compile it for real, against our own declaration of SAP's API. That is weaker than SAP's own build and the sign-off says so in those words."* |
+| **The download is a Hybris extension** | The button on the Reports tab names the package of the migration that ran — *Download SAP Hybris extension*, not the Salesforce DX package. Every label in the cockpit is taken from the running pipeline. | *"Same screen, different destination. What you download is the extension a Hybris developer would build."* |
+| **Some storefront endpoints arrive as stubs, with a reason** | A Magento storefront controller becomes an OCC REST endpoint whose signature comes from the route. When the model wrote logic for a different signature, it is kept out of the file and the method says so — *"A body WAS generated for this endpoint and was not used: … it reads `records`, which this method does not declare."* On `appointment-demo`, open `AppointmentCreateController.java` to show it, then open the same target in the side-by-side view: the right-hand pane is the model's own class, so the logic that was left out is one click away. | *"We would rather hand you a method that compiles and tells you what is missing than one that looks finished and does not build. Here is the logic it would have used."* |
 
 The last one is worth dwelling on rather than glossing. It is the same discipline as the
 rest of the product: the run reports the rung it actually reached and never borrows the

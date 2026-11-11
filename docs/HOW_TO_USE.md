@@ -16,6 +16,10 @@ before you commit to a run.
 | Adobe Commerce → SAP Hybris | a Magento 2 project (`app/code/...`) | a Hybris extension |
 
 Use `--pipeline` only when there is more than one valid answer, which there is not today.
+When you do name one it is obeyed, not second-guessed by detection. If the codebase does not
+match it, the run stops before reading a file or spending anything, and says so in the chosen
+platform's own terms — *"This does not look like an Adobe Commerce (Magento 2) codebase — no
+`registration.php`, `etc/module.xml` or Magento composer type was found."*
 
 ---
 
@@ -60,7 +64,7 @@ Open **Settings → H2A Migrator** and set:
 | `h2aMigrator.provider` | `anthropic` (best quality) · `unorouter` (free/cheap, for dev) · `mock` (free, keyless, for testing the pipeline) |
 | `h2aMigrator.anthropicApiKey` | Your key from [console.anthropic.com](https://console.anthropic.com/) — only if provider = `anthropic` |
 | `h2aMigrator.unorouterApiKey` | Your key from [api.unorouter.com](https://api.unorouter.com) — only if provider = `unorouter` |
-| `h2aMigrator.engine` | `agentic` (recommended — Planner + Critic + RAG) or `linear` (fewer LLM calls, lower cost) |
+| `h2aMigrator.engine` | `agentic` (recommended — Planner + Critic + RAG) or `linear` (fewer LLM calls, lower cost; **SAP Hybris → Salesforce only** — any other migration is refused with a message naming `agentic`) |
 | `h2aMigrator.incrementalMode` | `true` (default) — skip re-translating domains that haven't changed |
 
 ### 3. Run it
@@ -92,6 +96,8 @@ python -m src.main agent-migrate --input <path-to-source-code> --output <output-
 
 # Or the simpler linear pipeline (fewer LLM calls)
 python -m src.main repo-migrate --input <path-to-hybris-code> --output <output-dir>   # Hybris → Salesforce only
+# repo-migrate takes --pipeline too, and refuses any migration it cannot run rather than
+# converting nothing and reporting a clean, empty result
 ```
 
 ### 3. Try it for free first (no API key needed)
